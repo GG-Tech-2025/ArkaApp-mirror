@@ -317,3 +317,34 @@ export interface Role {
   minimum_requirement: number | null;
   active: boolean;
 }
+
+export type AttendanceStatus = "Present" | "Absent" | "Half Day" | "Leave";
+
+export interface EmployeeForAttendance {
+  id: string;
+  name: string;
+  phone: string;
+  role_id: string;
+  roles: {
+    id: string;
+    name: string;
+    category: EmployeeCategory;
+  };
+}
+
+export interface AttendanceRecord {
+  employee_id: string;
+  date: string;
+  status: "PRESENT" | "ABSENT" | "HALF_DAY" | "LEAVE";
+}
+
+export interface AttendanceEntry {
+  employee: EmployeeForAttendance;
+  status: AttendanceStatus | "";
+}
+
+export interface SaveAttendanceInput {
+  employee_id: string;
+  date: string;
+  status: AttendanceRecord['status'];
+}

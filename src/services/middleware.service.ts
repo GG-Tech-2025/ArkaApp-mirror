@@ -31,6 +31,10 @@ import {
   CreateRoleInput,
   UpdateRoleInput,
   Role,
+  EmployeeForAttendance,
+  AttendanceRecord,
+  SaveAttendanceInput,
+  AttendanceStatus,
 } from './types'
 import { MaterialPurchaseInput, ProductionInput } from "../employee/types";
 import { getRange, getRangeForProductionStatistics, PAGE_SIZE , mapPaymentModeToDb } from "../utils/reusables";
@@ -2868,6 +2872,67 @@ export async function updateRoleStatus(
     .from("roles")
     .update({ active: isActive })
     .eq("id", roleId);
+
+  if (error) throw error;
+}
+
+/* ------------------------------------------------------------------
+  Get All Active Employees (for Attendance)
+---------------------------------------------------------------------*/
+export async function getEmployeesForAttendance(): Promise<EmployeeForAttendance[]> {
+  const { data, error } = await supabase
+    .from("employees")
+    .select(`
+      id,
+      name,
+      phone,
+      role_id,
+      roles!inner ( id, name, category )
+    `)
+    .eq("active", true)
+    .neq("roles.category", "LOADMEN" satisfies EmployeeCategory)
+    .order("name");
+
+  if (error) throw error;
+  return (data ?? []) as unknown as EmployeeForAttendance[];
+}
+
+/* ------------------------------------------------------------------
+  Get Attendance Records For a Specific Date
+---------------------------------------------------------------------*/
+export async function getAttendanceForDate(
+  date: string // YYYY-MM-DD
+): Promise<AttendanceRecord[]> {
+  const { data, error } = await supabase
+    .from("attendance")
+    .select("employee_id, date, status")
+    .eq("date", date);
+
+  if (error) throw error;
+
+  return (data ?? []) as AttendanceRecord[];
+}
+
+/* ------------------------------------------------------------------
+  Save (Upsert) Attendance For a Date
+  - If a record already exists for the employee+date → update
+  - Otherwise → insert
+---------------------------------------------------------------------*/
+export async function saveAttendance(
+  records: SaveAttendanceInput[]
+): Promise<void> {
+  if (records.length === 0) return;
+
+  const { error } = await supabase
+    .from("attendance")
+    .upsert(
+      records.map((r) => ({
+        employee_id: r.employee_id,
+        date: r.date,
+        status: r.status,
+      })),
+      { onConflict: "employee_id,date" }
+    );
 
   if (error) throw error;
 }

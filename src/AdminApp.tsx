@@ -14,8 +14,6 @@ import { MetricsScreen } from './admin/pages/MetricsScreen';
 import { EmployeeManagementScreen } from './admin/pages/EmployeeManagementScreen';
 import { CreateEmployeeScreen } from './components/admin/CreateEmployeeScreen';
 import { EditEmployeeScreen } from './components/admin/EditEmployeeScreen';
-import { EmployeeAttendanceScreen } from './components/admin/EmployeeAttendanceScreen';
-import { RoleSalarySetupScreen } from './components/admin/RoleSalarySetupScreen';
 import { CreateRoleScreen } from './admin/pages/employees/pages/CreateRoleScreen';
 import { EditRoleScreen } from './components/admin/EditRoleScreen';
 import { SalaryLedgerScreen } from './admin/pages/SalaryLedgerScreen';
