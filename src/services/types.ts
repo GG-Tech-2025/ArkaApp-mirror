@@ -348,3 +348,12 @@ export interface SaveAttendanceInput {
   date: string;
   status: AttendanceRecord['status'];
 }
+
+export interface EmployeeSearchResult {
+  id: string;
+  name: string;
+  phone: string;
+  role_name: string;
+  category: "DAILY" | "FIXED" | "LOADMEN";
+  running_balance: number;
+}

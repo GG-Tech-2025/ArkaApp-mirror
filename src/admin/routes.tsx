@@ -3,7 +3,6 @@ import { AdminLoginScreen } from "./pages/AdminLoginScreen";
 import { AdminHomeScreen } from "./pages/AdminHomeScreen";
 import { ProductionStatisticsScreen } from "./pages/ProductionStatisticsScreen";
 import { MetricsScreen } from "./pages/MetricsScreen";
-import { SalaryLedgerScreen } from "./pages/SalaryLedgerScreen";
 import { CashRoutes } from "./pages/cash/routes";
 import { LoansRoutes } from "./pages/loans/routes";
 import { OrdersRoutes } from "./pages/orders/routes";
@@ -33,7 +32,7 @@ export function AdminRoutes() {
       <Route path="accounts/*" element={<AccountsRoutes />} />
       <Route path="metrics" element={<MetricsScreen />} />
       <Route path="employees/*" element={<EmployeesRoutes />} />
-      <Route path="salarys" element={<SalaryLedgerScreen />} />
+      <Route path="salarys" element={<Navigate to="/admin/employees/salary-ledger" replace />} />
       <Route path="vendors/*" element={<VendorsRoutes />} />
       <Route path="cash/*" element={<CashRoutes />} />
       <Route path="loans/*" element={<LoansRoutes />} />
