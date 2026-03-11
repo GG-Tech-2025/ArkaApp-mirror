@@ -35,6 +35,7 @@ import {
   AttendanceRecord,
   SaveAttendanceInput,
   AttendanceStatus,
+  EmployeeSearchResult,
 } from './types'
 import { MaterialPurchaseInput, ProductionInput } from "../employee/types";
 import { getRange, getRangeForProductionStatistics, PAGE_SIZE , mapPaymentModeToDb } from "../utils/reusables";
@@ -2935,4 +2936,40 @@ export async function saveAttendance(
     );
 
   if (error) throw error;
+}
+
+/* ------------------------------------------------------------------
+  Search Employees
+---------------------------------------------------------------------*/
+
+export async function searchEmployees(
+  searchTerm: string,
+  page: number
+): Promise<PaginatedResult<EmployeeSearchResult>> {
+
+  const { from, to } = getRange(page);
+  const trimmed = searchTerm?.trim() ?? "";
+
+  let query = supabase
+    .from("employee_with_balance")
+    .select("*", { count: "exact" })
+    .order("name", { ascending: true });
+
+  if (trimmed.length > 0) {
+    query = query.or(
+      `name.ilike.%${trimmed}%,phone.ilike.%${trimmed}%`
+    );
+  }
+
+  query = query.range(from, to);
+
+  const { data, count, error } = await query;
+
+  if (error) throw error;
+
+  return {
+    data: data ?? [],
+    total: count ?? 0,
+    hasMore: from + PAGE_SIZE < (count ?? 0),
+  };
 }
