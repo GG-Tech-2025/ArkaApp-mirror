@@ -36,6 +36,7 @@ import {
   SaveAttendanceInput,
   AttendanceStatus,
   EmployeeSearchResult,
+  EmployeeLedgerResponse,
 } from './types'
 import { MaterialPurchaseInput, ProductionInput } from "../employee/types";
 import { getRange, getRangeForProductionStatistics, PAGE_SIZE , mapPaymentModeToDb } from "../utils/reusables";
@@ -2972,4 +2973,38 @@ export async function searchEmployees(
     total: count ?? 0,
     hasMore: from + PAGE_SIZE < (count ?? 0),
   };
+}
+
+/* ------------------------------------------------------------------
+  Get Employee Ledger with Pagination and Date Range
+  - Fetches salary ledger transactions for a specific employee
+  - Supports pagination and optional date range filtering
+  - Used in EmployeeDetailsScreen - Salary Ledger section
+---------------------------------------------------------------------*/
+
+export async function getEmployeeLedger(
+  empId: string,
+  page: number,
+  isAscending: boolean,
+  fromDate?: string,
+  toDate?: string
+): Promise<EmployeeLedgerResponse> {
+
+  const { data, error } = await supabase.rpc(
+    "get_employee_ledger",
+    {
+      p_employee_id: empId,
+      p_is_ascending: isAscending,
+      p_from_date: fromDate ?? null,
+      p_to_date: toDate ?? null,
+      p_page: page,
+      p_page_size: 20
+    }
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  return data as EmployeeLedgerResponse;
 }

@@ -357,3 +357,29 @@ export interface EmployeeSearchResult {
   category: "DAILY" | "FIXED" | "LOADMEN";
   running_balance: number;
 }
+
+export interface EmployeeSummary {
+  id: string;
+  name: string;
+  phone: string;
+  role_name: string | null;
+  role_category: string | null;
+  running_balance: number;
+}
+
+export interface SalaryLedgerTransaction {
+  id: string;
+  entry_type: string;
+  amount: number;
+  payment_mode: string | null;
+  sender_account_id: string | null;
+  receiver_account: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface EmployeeLedgerResponse {
+  employee: EmployeeSummary;
+  transactions: SalaryLedgerTransaction[];
+  total_count: number;
+}
