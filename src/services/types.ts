@@ -383,3 +383,37 @@ export interface EmployeeLedgerResponse {
   transactions: SalaryLedgerTransaction[];
   total_count: number;
 }
+
+export interface SalaryLedger {
+  id: string;
+  employee_id: string;
+  entry_type: SalaryLedgerEntryType;
+  amount: number;
+  running_balance: number;
+  payment_mode: string | null;
+  sender_account_id: string | null;
+  receiver_account: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export type SalaryLedgerEntryType =
+  | "ADVANCE"
+  | "WEEKLY"
+  | "EMERGENCY"
+  | "DAILY"
+  | "PARTIAL_SETTLEMENT"
+  | "FULL_SETTLEMENT"
+  | "SALARY_AUTO_ENTRY"
+  | "AUTO";
+
+export interface CreateSalaryLedgerInput {
+  employee_id: string;
+  entry_type: SalaryLedgerEntryType;
+  amount: number;
+  payment_mode?: string | null;
+  sender_account_id?: string | null;
+  receiver_account?: string | null;
+  notes?: string | null;
+  created_at?: string | null; // ISO string for backdating
+}

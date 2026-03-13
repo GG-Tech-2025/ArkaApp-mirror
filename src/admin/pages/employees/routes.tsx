@@ -9,6 +9,7 @@ import { EditRoleScreen } from "./pages/EditRoleScreen";
 import { AttendanceScreen } from "./pages/AttendanceScreen";
 import { SalaryLedgerScreen } from "./pages/SalaryLedgerScreen";
 import { SalaryLedgerDetailScreen } from "./pages/SalaryLedgerDetailScreen";
+import { AddPaymentScreen } from "./pages/AddPaymentScreen";
 
 export function EmployeesRoutes() {
   return (
@@ -22,6 +23,7 @@ export function EmployeesRoutes() {
       <Route path="attendance" element={<AttendanceScreen />} />
       <Route path="salary-ledger" element={<SalaryLedgerScreen />} />
       <Route path="salary-ledger/:id" element={<SalaryLedgerDetailScreen />} />
+      <Route path="salary-ledger/:id/add-payment" element={<AddPaymentScreen />} />
 
       <Route path="*" element={<Navigate to="/admin/employees" replace />} />
     </Routes>

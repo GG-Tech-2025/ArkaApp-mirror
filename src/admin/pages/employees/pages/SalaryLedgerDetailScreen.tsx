@@ -220,8 +220,8 @@ export function SalaryLedgerDetailScreen() {
                                 {formatEntryType(entry.entry_type)}
                               </span>
                             </td>
-                            <td className={`px-4 py-4 ${entry.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {entry.amount > 0 ? '+' : ''}₹{Math.abs(entry.amount).toLocaleString()}
+                            <td className={`px-4 py-4 ${entry.entry_type === 'SALARY_AUTO_ENTRY' ? 'text-green-600' : 'text-red-600'}`}>
+                              {entry.entry_type === 'SALARY_AUTO_ENTRY' ? '+' : '-'}₹{Math.abs(entry.amount).toLocaleString()}
                             </td>
                             <td className="px-4 py-4 text-gray-600 text-sm">{entry.notes || '—'}</td>
                             <td className="px-4 py-4 text-gray-900 text-sm">{entry.payment_mode || '—'}</td>
@@ -267,8 +267,8 @@ export function SalaryLedgerDetailScreen() {
                         <div className="space-y-2 text-sm">
                           <div className="flex justify-between">
                             <span className="text-gray-600">Amount:</span>
-                            <span className={entry.amount > 0 ? 'text-green-600' : 'text-red-600'}>
-                              {entry.amount > 0 ? '+' : ''}₹{Math.abs(entry.amount).toLocaleString()}
+                            <span className={entry.entry_type === 'SALARY_AUTO_ENTRY' ? 'text-green-600' : 'text-red-600'}>
+                              {entry.entry_type === 'SALARY_AUTO_ENTRY' ? '+' : '-'}₹{Math.abs(entry.amount).toLocaleString()}
                             </span>
                           </div>
                           {entry.notes && (
