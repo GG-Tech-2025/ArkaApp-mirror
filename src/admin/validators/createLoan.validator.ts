@@ -25,5 +25,10 @@ export function validateCreateLoan(input: CreateLoanInput): Record<string, strin
     errors.start_date = 'Loan start date is required';
   }
 
+  // Disbursement Account validation
+  if (!input.disbursement_account_id) {
+    errors.disbursement_account_id = 'Disbursement account is required';
+  }
+
   return errors;
 }

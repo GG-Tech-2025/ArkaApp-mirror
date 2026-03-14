@@ -127,7 +127,7 @@ export function CreateLoanScreen() {
                 onChange={(e) => updateCreateLoanInput('disbursement_account_id', e.target.value || null)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
               >
-                <option value="">Cash</option>
+                <option value="">Select Account</option>
                 {accountsLoading ? (
                   <option value="" disabled>Loading accounts...</option>
                 ) : accounts.length > 0 ? (
@@ -140,6 +140,9 @@ export function CreateLoanScreen() {
                   <option value="" disabled>No accounts found</option>
                 )}
               </select>
+              {errors.disbursement_account_id && (
+                <p className="text-red-600 text-sm mt-1">{errors.disbursement_account_id}</p>
+              )}
             </div>
 
             {/* Loan Start Date */}
