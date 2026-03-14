@@ -725,25 +725,58 @@ export async function createLoanWithDisbursementAndCashEntry(
   if (loanLedgerError) throw loanLedgerError;
 
   /* -------------------------------------------------------------
-     4. CREATE CASH LEDGER ENTRY (CASH IN)
+     4. INCREMENT DISBURSEMENT ACCOUNT BALANCE
+     Loan money flows IN to the selected account.
   --------------------------------------------------------------*/
-  // const { error: cashLedgerError } = await supabase
-  //   .from("cash_ledger_entries")
-  //   .insert({
-  //     ledger_day_id: openCashLedgerDayId,
-  //     direction: "IN",
-  //     source_type: "LOAN_DISBURSEMENT",
-  //     account_id: input.disbursement_account_id,
-  //     amount: input.principal_amount,
-  //     reason: input.notes ?? "Loan disbursement",
-  //   });
+  if (input.disbursement_account_id) {
+    const { error: accountError } = await supabase.rpc(
+      "increment_account_balance",
+      {
+        p_account_id: input.disbursement_account_id,
+        p_amount: input.principal_amount,
+      }
+    );
 
-  // if (cashLedgerError) throw cashLedgerError;
+    if (accountError) throw accountError;
+  }
 
   /* -------------------------------------------------------------
      5. RETURN LOAN ID
   --------------------------------------------------------------*/
   return { loanId };
+}
+
+/* ------------------------------------------------------------------
+   23a. GET LOAN DISBURSEMENTS BY DATE RANGE
+   Fetches DISBURSEMENT entries from loan_ledger within a date range,
+   joining loans to get lender_name and loan_type.
+   Used by AccountsManagementScreen — Loan Income section.
+-------------------------------------------------------------------*/
+export async function getLoanDisbursementsByDateRange(
+  startDate: string,
+  endDate: string
+): Promise<any[]> {
+  const { data, error } = await supabase
+    .from("loan_ledger")
+    .select(`
+      id,
+      loan_id,
+      amount,
+      payment_mode,
+      transaction_date,
+      notes,
+      loans (
+        lender_name,
+        loan_type
+      )
+    `)
+    .eq("transaction_type", "DISBURSEMENT")
+    .gte("transaction_date", startDate)
+    .lte("transaction_date", endDate)
+    .order("transaction_date", { ascending: false });
+
+  if (error) throw error;
+  return data ?? [];
 }
 
 

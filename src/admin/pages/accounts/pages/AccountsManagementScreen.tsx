@@ -4,6 +4,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recha
 import { useAdminNavigation } from '../../../hooks/useAdminNavigation';
 import { useAccountsIncome } from '../../../hooks/useAccountsIncome';
 import { useAccountsExpenses } from '../../../hooks/useAccountsExpenses';
+import { useAccountsLoanIncome } from '../../../hooks/useAccountsLoanIncome';
 
 type FilterType = 'Current Month' | 'Last month' | 'Last year' | 'Custom range';
 
@@ -48,8 +49,22 @@ export function AccountsManagementScreen() {
     selectedExpenseTypeId
   );
 
-  // Calculate profit (includes procurements)
-  const profit = totalIncome - totalExpenses - totalProcurements;
+  // Fetch loan disbursement income based on filter
+  const {
+    loanDisbursements,
+    loading: loanIncomeLoading,
+    error: loanIncomeError,
+    totalLoanIncome,
+    showError: showLoanIncomeError,
+    closeError: closeLoanIncomeError,
+  } = useAccountsLoanIncome(
+    filterType,
+    filterType === 'Custom range' ? customStartDate : undefined,
+    filterType === 'Custom range' ? customEndDate : undefined
+  );
+
+  // Calculate profit (includes procurements and loan income)
+  const profit = totalIncome + totalLoanIncome - totalExpenses - totalProcurements;
 
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
 
@@ -132,7 +147,7 @@ export function AccountsManagementScreen() {
         </div>
 
         {/* Income and Expenses Split Container */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-96">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-96">
           {/* Income Section */}
           <div className="bg-white rounded-lg shadow-lg flex flex-col">
             <div className="p-6 border-b border-gray-200 flex-shrink-0">
@@ -146,60 +161,113 @@ export function AccountsManagementScreen() {
                   <Wallet className="w-10 h-10 text-green-600" />
                 </div>
                 <p className="text-gray-700 mb-2">Total Income</p>
-                {incomeLoading ? (
+                {incomeLoading || loanIncomeLoading ? (
                   <p className="text-green-600 text-lg">Loading...</p>
                 ) : (
-                  <p className="text-green-600 text-lg">₹{totalIncome.toLocaleString()}</p>
+                  <p className="text-green-600 text-lg">₹{(totalIncome + totalLoanIncome).toLocaleString()}</p>
                 )}
               </div>
             </div>
 
-            {/* Income Bottom Half - Orders List */}
+            {/* Income Bottom Half - Orders & Loan Disbursements List */}
             <div className="p-6 flex flex-col flex-grow overflow-hidden">
-              {incomeLoading ? (
+              {incomeLoading && loanIncomeLoading ? (
                 <div className="flex justify-center items-center flex-grow">
-                  <p className="text-gray-500">Loading orders...</p>
+                  <p className="text-gray-500">Loading income...</p>
                 </div>
-              ) : orders.length === 0 ? (
+              ) : orders.length === 0 && loanDisbursements.length === 0 ? (
                 <div className="flex justify-center items-center flex-grow">
-                  <p className="text-gray-500">No orders found for this period</p>
+                  <p className="text-gray-500">No income found for this period</p>
                 </div>
               ) : (
                 <div className="space-y-3 overflow-y-auto flex-grow">
-                  {orders.map((order) => (
-                    <div
-                      key={order.id}
-                      onClick={() => goTo(`/admin/orders/${order.id}`)}
-                      className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 cursor-pointer transition-colors flex-shrink-0"
-                    >
-                      <div className="grid grid-cols-4 gap-4 text-sm">
-                        <div>
-                          <p className="text-gray-500 mb-1">Name</p>
-                          <p className="text-gray-900">{order.customers?.name || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500 mb-1">Bricks</p>
-                          <p className="text-gray-900">{order.brick_quantity.toLocaleString()}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500 mb-1">Revenue</p>
-                          <p className="text-gray-900">₹{(order.final_price || 0).toLocaleString()}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500 mb-1">Status</p>
-                          <span className={`inline-block px-2 py-1 rounded-full text-xs ${
-                            order.payment_status === 'FULLY_PAID'
-                              ? 'bg-green-100 text-green-800'
-                              : order.payment_status === 'PARTIALLY_PAID'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {order.payment_status === 'FULLY_PAID' ? 'Fully Paid' : order.payment_status === 'PARTIALLY_PAID' ? 'Partially Paid' : 'Not Paid'}
-                          </span>
-                        </div>
+                  {/* Orders Section */}
+                  {orders.length > 0 && (
+                    <>
+                      <div className="border-b border-gray-200 pb-2">
+                        <h4 className="text-sm font-semibold text-gray-700">🧾 Orders (₹{totalIncome.toLocaleString()})</h4>
                       </div>
-                    </div>
-                  ))}
+                      {orders.map((order) => (
+                        <div
+                          key={order.id}
+                          onClick={() => goTo(`/admin/orders/${order.id}`)}
+                          className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 cursor-pointer transition-colors flex-shrink-0"
+                        >
+                          <div className="grid grid-cols-4 gap-4 text-sm">
+                            <div>
+                              <p className="text-gray-500 mb-1">Name</p>
+                              <p className="text-gray-900">{order.customers?.name || 'N/A'}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500 mb-1">Bricks</p>
+                              <p className="text-gray-900">{order.brick_quantity.toLocaleString()}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500 mb-1">Revenue</p>
+                              <p className="text-gray-900">₹{(order.final_price || 0).toLocaleString()}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500 mb-1">Status</p>
+                              <span className={`inline-block px-2 py-1 rounded-full text-xs ${
+                                order.payment_status === 'FULLY_PAID'
+                                  ? 'bg-green-100 text-green-800'
+                                  : order.payment_status === 'PARTIALLY_PAID'
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : 'bg-red-100 text-red-800'
+                              }`}>
+                                {order.payment_status === 'FULLY_PAID' ? 'Fully Paid' : order.payment_status === 'PARTIALLY_PAID' ? 'Partially Paid' : 'Not Paid'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+
+                  {/* Loan Disbursements Section */}
+                  {loanDisbursements.length > 0 && (
+                    <>
+                      <div className="border-b border-gray-200 pb-2 mt-4">
+                        <h4 className="text-sm font-semibold text-gray-700">🏦 Loan Disbursements (₹{totalLoanIncome.toLocaleString()})</h4>
+                      </div>
+                      {loanDisbursements.map((disbursement) => (
+                        <div
+                          key={disbursement.id}
+                          className="border border-purple-200 bg-purple-50 rounded-lg p-4 hover:bg-purple-100 transition-colors flex-shrink-0"
+                        >
+                          <div className="grid grid-cols-4 gap-4 text-sm">
+                            <div>
+                              <p className="text-gray-500 mb-1">Lender</p>
+                              <p className="text-gray-900">{disbursement.loans?.lender_name || 'N/A'}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500 mb-1">Loan Type</p>
+                              <span className={`inline-block px-2 py-1 rounded-full text-xs ${
+                                disbursement.loans?.loan_type === 'GIVEN'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : 'bg-orange-100 text-orange-800'
+                              }`}>
+                                {disbursement.loans?.loan_type === 'GIVEN' ? 'Given' : 'Taken'}
+                              </span>
+                            </div>
+                            <div>
+                              <p className="text-gray-500 mb-1">Amount</p>
+                              <p className="text-purple-700 font-semibold">₹{(disbursement.amount || 0).toLocaleString()}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500 mb-1">Date</p>
+                              <p className="text-gray-900">{new Date(disbursement.transaction_date).toLocaleDateString()}</p>
+                            </div>
+                          </div>
+                          {disbursement.notes && (
+                            <div className="mt-2 pt-2 border-t border-purple-200">
+                              <p className="text-gray-500 text-xs">Notes: {disbursement.notes}</p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -433,6 +501,39 @@ export function AccountsManagementScreen() {
                 <p className="text-gray-600 text-sm mb-4">{expensesError}</p>
                 <button
                   onClick={closeExpensesError}
+                  className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Popup - Loan Income */}
+      {showLoanIncomeError && loanIncomeError && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+            <button
+              onClick={closeLoanIncomeError}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              aria-label="Close error"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0">
+                <div className="flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                  <X className="h-6 w-6 text-red-600" />
+                </div>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Loan Income Data</h3>
+                <p className="text-gray-600 text-sm mb-4">{loanIncomeError}</p>
+                <button
+                  onClick={closeLoanIncomeError}
                   className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
                 >
                   Close
