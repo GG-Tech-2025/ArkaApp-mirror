@@ -13,6 +13,7 @@ import {
   getCustomerPayments,
   getAccountsForPayments,
   createCustomerPayment,
+  deleteCustomerPayment,
 } from "../../../../services/middleware.service";
 import { useAdminNavigation } from "../../../hooks/useAdminNavigation";
 import { validateCustomer } from "../../../validators/customer.validator";
@@ -92,6 +93,10 @@ export function CustomerDetailsScreen() {
   const [paymentsPage, setPaymentsPage] = useState(1);
   const [hasMorePayments, setHasMorePayments] = useState(true);
   const [savingPayment, setSavingPayment] = useState(false);
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
+  const [deletingPayment, setDeletingPayment] = useState(false);
 
   const [exportOrders, setExportOrders] = useState<any[]>([]);
   const [exportPayments, setExportPayments] = useState<any[]>([]);
@@ -353,8 +358,80 @@ export function CustomerDetailsScreen() {
   };
 
   const handleDeletePayment = (paymentId: string) => {
-    // In a real app, this would delete the payment
-    console.log("Delete payment:", paymentId);
+    setDeletingPaymentId(paymentId);
+    setShowDeleteConfirm(true);
+  };
+
+  const handleConfirmDeletePayment = async () => {
+    if (!deletingPaymentId || !customer) return;
+
+    try {
+      setDeletingPayment(true);
+
+      await deleteCustomerPayment(deletingPaymentId);
+
+      setShowDeleteConfirm(false);
+      setDeletingPaymentId(null);
+      setSuccessMessage("Payment deleted successfully");
+      setShowSuccessPopup(true);
+
+      // 🔄 Refresh everything — customer financials, orders, and payments
+      const customerData = await getCustomerFinancialById(customer.id);
+      const ordersRes = await getCustomerOrdersWithSettlement(customer.id, 1);
+      const paymentsRes = await getCustomerPayments(customer.id, 1);
+
+      setCustomer({
+        id: customerData.customer_id,
+        name: customerData.name,
+        phoneNumber: customerData.phone,
+        address: customerData.address,
+        totalSales: customerData.total_sales,
+        unpaidAmount: customerData.outstanding_amount,
+      });
+
+      setOrders(
+        ordersRes.data.map((o: any) => ({
+          id: o.order_id,
+          date: o.order_date,
+          deliveryDate: o.delivery_date,
+          customerName: customerData.name,
+          customerNumber: customerData.phone,
+          customerId: o.customer_id,
+          quantity: o.brick_quantity,
+          finalPrice: o.final_price,
+          amountPaid: o.total_paid,
+          unpaidAmount: o.remaining_balance,
+          gstNumber: o.gst_number,
+          deliveryChallanNumber: o.dc_number,
+          paymentStatus:
+            o.payment_status === "FULLY_PAID"
+              ? "Fully Paid"
+              : o.payment_status === "PARTIALLY_PAID"
+                ? "Partially Paid"
+                : "Not Paid",
+        })),
+      );
+      setHasMoreOrders(ordersRes.hasMore);
+      setPage(1);
+
+      setPayments(
+        paymentsRes.data.map((p: any) => ({
+          id: p.id,
+          date: p.payment_date,
+          amount: p.amount,
+          modeOfPayment: p.mode,
+          senderAccountInfo: p.sender_account ?? "-",
+          receiverAccountInfo: p.receiver_account ?? "-",
+        })),
+      );
+      setPaymentsPage(1);
+      setHasMorePayments(paymentsRes.hasMore);
+    } catch (e) {
+      console.error("Failed to delete payment", e);
+      alert("Failed to delete payment. Please try again.");
+    } finally {
+      setDeletingPayment(false);
+    }
   };
 
   const handleOpenEditCustomer = () => {
@@ -971,8 +1048,7 @@ export function CustomerDetailsScreen() {
                                 <Edit2 className="w-4 h-4" />
                               </button>
                               <button
-                                disabled
-                                // onClick={() => handleDeletePayment(payment.id)}
+                                onClick={() => handleDeletePayment(payment.id)}
                                 className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
                                 aria-label="Delete payment"
                               >
@@ -1362,6 +1438,55 @@ export function CustomerDetailsScreen() {
           onClose={() => setShowSuccessPopup(false)}
           type="success"
         />
+      )}
+
+      {/* Delete Payment Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 relative">
+            <button
+              onClick={() => {
+                setShowDeleteConfirm(false);
+                setDeletingPaymentId(null);
+              }}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              aria-label="Close modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h2 className="text-gray-900 mb-4">Delete Payment</h2>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete this payment? This will reverse the
+              settlement on associated orders and deduct the amount from the
+              receiving account. This action cannot be undone.
+            </p>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setDeletingPaymentId(null);
+                }}
+                disabled={deletingPayment}
+                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDeletePayment}
+                disabled={deletingPayment}
+                className={`px-6 py-2 rounded-lg transition-colors ${
+                  deletingPayment
+                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    : "bg-red-600 text-white hover:bg-red-700"
+                }`}
+              >
+                {deletingPayment ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Export Modal */}

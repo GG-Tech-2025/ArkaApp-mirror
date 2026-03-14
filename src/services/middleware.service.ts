@@ -970,7 +970,17 @@ export async function createCustomerPayment(
   return payment;
 }
 
+/* ------------------------------------------------------------------
+   27a. DELETE CUSTOMER PAYMENT (Reverse FIFO + Account)
+-------------------------------------------------------------------*/
 
+export async function deleteCustomerPayment(paymentId: string): Promise<void> {
+  const { error } = await supabase.rpc("reverse_customer_payment", {
+    p_payment_id: paymentId,
+  });
+
+  if (error) throw error;
+}
 
 /* ------------------------------------------------------------------
    28. GET CUSTOMER PAYMENT
