@@ -36,6 +36,9 @@ import {
   SaveAttendanceInput,
   AttendanceStatus,
   EmployeeSearchResult,
+  EmployeeLedgerResponse,
+  SalaryLedger,
+  CreateSalaryLedgerInput,
 } from './types'
 import { MaterialPurchaseInput, ProductionInput } from "../employee/types";
 import { getRange, getRangeForProductionStatistics, PAGE_SIZE , mapPaymentModeToDb } from "../utils/reusables";
@@ -2972,4 +2975,100 @@ export async function searchEmployees(
     total: count ?? 0,
     hasMore: from + PAGE_SIZE < (count ?? 0),
   };
+}
+
+/* ------------------------------------------------------------------
+  Get Employee Ledger with Pagination and Date Range
+  - Fetches salary ledger transactions for a specific employee
+  - Supports pagination and optional date range filtering
+  - Used in EmployeeDetailsScreen - Salary Ledger section
+---------------------------------------------------------------------*/
+
+export async function getEmployeeLedger(
+  empId: string,
+  page: number,
+  isAscending: boolean,
+  fromDate?: string,
+  toDate?: string
+): Promise<EmployeeLedgerResponse> {
+
+  const { data, error } = await supabase.rpc(
+    "get_employee_ledger",
+    {
+      p_employee_id: empId,
+      p_is_ascending: isAscending,
+      p_from_date: fromDate ?? null,
+      p_to_date: toDate ?? null,
+      p_page: page,
+      p_page_size: 20
+    }
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  return data as EmployeeLedgerResponse;
+}
+
+/* ------------------------------------------------------------------
+  Create Salary Ledger Entry with Running Balance Calculation
+  - Creates a new salary ledger entry for an employee
+  - Automatically calculates the new running balance based on the last entry
+  - Used when recording salary payments or adjustments for an employee
+---------------------------------------------------------------------*/
+export async function createSalaryLedgerEntry(
+  input: CreateSalaryLedgerInput
+): Promise<SalaryLedger> {
+
+  /* -------------------------------------------------------------
+     1. GET CURRENT RUNNING BALANCE
+  --------------------------------------------------------------*/
+  const { data: lastEntry, error: balanceError } = await supabase
+    .from("salary_ledger")
+    .select("running_balance")
+    .eq("employee_id", input.employee_id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (balanceError) throw balanceError;
+
+  const currentBalance = lastEntry?.running_balance ?? 0;
+
+  /* -------------------------------------------------------------
+     2. CALCULATE NEW BALANCE
+  --------------------------------------------------------------*/
+
+  let newBalance = currentBalance;
+
+  if (input.entry_type === "AUTO") {
+    newBalance += input.amount;
+  } else {
+    newBalance -= input.amount;
+  }
+
+  /* -------------------------------------------------------------
+     3. INSERT LEDGER ENTRY
+  --------------------------------------------------------------*/
+
+  const { data, error } = await supabase
+    .from("salary_ledger")
+    .insert({
+      employee_id: input.employee_id,
+      entry_type: input.entry_type,
+      amount: input.amount,
+      running_balance: newBalance,
+      payment_mode: input.payment_mode ?? null,
+      sender_account_id: input.sender_account_id ?? null,
+      receiver_account: input.receiver_account ?? null,
+      notes: input.notes ?? null,
+      ...(input.created_at ? { created_at: input.created_at } : {}),
+    })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+
+  return data as SalaryLedger;
 }
