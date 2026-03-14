@@ -6,6 +6,7 @@ import {
   getVendorProcurements,
   getVendorPayments,
   getVendorFinancials,
+  deleteVendorPayment,
 } from '../../services/middleware.service';
 
 export function useVendorLedger() {
@@ -123,6 +124,23 @@ export function useVendorLedger() {
     fetchFinancials();
   };
 
+  // ─── Delete a vendor payment ───
+  const [deletingPayment, setDeletingPayment] = useState(false);
+
+  const handleDeletePayment = async (paymentId: string) => {
+    try {
+      setDeletingPayment(true);
+      await deleteVendorPayment(paymentId);
+      // Refresh everything after deletion
+      refresh();
+    } catch (err) {
+      console.error('Failed to delete payment:', err);
+      throw err;
+    } finally {
+      setDeletingPayment(false);
+    }
+  };
+
   return {
     vendor,
     vendorId,
@@ -135,6 +153,8 @@ export function useVendorLedger() {
     loadMorePayments,
     financials,
     refresh,
+    deletingPayment,
+    handleDeletePayment,
     goBack,
     goTo,
   };
