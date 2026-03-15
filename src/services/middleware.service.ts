@@ -2672,6 +2672,18 @@ export async function createVendorPayment(input: {
 
   return payment
 }
+
+/* ------------------------------------------------------------------
+  Delete Vendor Payment (Reverse FIFO + Account)
+------------------------------------------------------------------ */
+export async function deleteVendorPayment(paymentId: string): Promise<void> {
+  const { error } = await supabase.rpc("reverse_vendor_payment", {
+    p_payment_id: paymentId,
+  });
+
+  if (error) throw error;
+}
+
 /* ------------------------------------------------------------------
   Get Vendor Procurements
 ---------------------------------------------------------------------*/

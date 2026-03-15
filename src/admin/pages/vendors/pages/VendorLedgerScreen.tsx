@@ -1,5 +1,5 @@
 import  { useState, useRef } from 'react';
-import { ArrowLeft, X } from 'lucide-react';
+import { ArrowLeft, Trash2, X } from 'lucide-react';
 import { Popup } from '../../../../components/Popup';
 import { useVendorLedger } from '../../../hooks/useVendorLedger';
 import { VendorLedgerExport } from './VendorLedgerExport';
@@ -18,6 +18,8 @@ export function VendorLedgerScreen() {
     payments,
     paymentsLoading,
     financials,
+    deletingPayment,
+    handleDeletePayment,
     goBack,
     goTo,
   } = useVendorLedger();
@@ -47,6 +49,10 @@ export function VendorLedgerScreen() {
   const [successMessage, setSuccessMessage] = useState('');
   const [exportProcurements, setExportProcurements] = useState<any[]>([]);
   const [exportPayments, setExportPayments] = useState<any[]>([]);
+
+  // Delete Payment Confirmation states
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
 
   // Totals from DB view
   const totalPurchase = financials?.total_purchase ?? 0;
@@ -99,6 +105,32 @@ export function VendorLedgerScreen() {
     setShowExportModal(false);
     setExportFromDateError('');
     setExportToDateError('');
+  };
+
+  const handleOpenDeleteConfirm = (paymentId: string) => {
+    setDeletingPaymentId(paymentId);
+    setShowDeleteConfirm(true);
+  };
+
+  const handleCloseDeleteConfirm = () => {
+    setShowDeleteConfirm(false);
+    setDeletingPaymentId(null);
+  };
+
+  const handleConfirmDeletePayment = async () => {
+    if (!deletingPaymentId) return;
+    try {
+      await handleDeletePayment(deletingPaymentId);
+      setShowDeleteConfirm(false);
+      setDeletingPaymentId(null);
+      setSuccessMessage('Payment deleted successfully');
+      setShowSuccessPopup(true);
+    } catch {
+      setShowDeleteConfirm(false);
+      setDeletingPaymentId(null);
+      setPopupMessage('Failed to delete payment. Please try again.');
+      setShowPopup(true);
+    }
   };
   
   const handleDownloadExport = async () => {
@@ -442,6 +474,7 @@ export function VendorLedgerScreen() {
                           <th className="px-4 py-3 text-left text-gray-700">Sender Account</th>
                           <th className="px-4 py-3 text-left text-gray-700">Receiver Info</th>
                           <th className="px-4 py-3 text-left text-gray-700">Created At</th>
+                          <th className="px-4 py-3 text-left text-gray-700">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
@@ -455,6 +488,15 @@ export function VendorLedgerScreen() {
                               <td className="px-4 py-4 text-gray-900">{account?.account_number ?? '-'}</td>
                               <td className="px-4 py-4 text-gray-900">{pay.receiver_account_info || '-'}</td>
                               <td className="px-4 py-4 text-gray-900">{formatDate(pay.created_at)}</td>
+                              <td className="px-4 py-4">
+                                <button
+                                  onClick={() => handleOpenDeleteConfirm(pay.id)}
+                                  className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
+                                  aria-label="Delete payment"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </td>
                             </tr>
                           );
                         })}
@@ -584,6 +626,49 @@ export function VendorLedgerScreen() {
           onClose={() => setShowSuccessPopup(false)}
           type="success"
         />
+      )}
+
+      {/* Delete Payment Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 relative">
+            <button
+              onClick={handleCloseDeleteConfirm}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              aria-label="Close modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h2 className="text-gray-900 mb-4">Delete Payment</h2>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete this payment? This will add back the
+              amount to the sender account and reverse the settlement on associated
+              procurements. This action cannot be undone.
+            </p>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={handleCloseDeleteConfirm}
+                disabled={deletingPayment}
+                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDeletePayment}
+                disabled={deletingPayment}
+                className={`px-6 py-2 rounded-lg transition-colors ${
+                  deletingPayment
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-red-600 text-white hover:bg-red-700'
+                }`}
+              >
+                {deletingPayment ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       
       {/* No Transactions Popup */}
