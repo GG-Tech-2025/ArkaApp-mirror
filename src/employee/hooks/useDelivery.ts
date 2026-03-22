@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { createDelivery } from "../services/delivery.service";
 import { DeliveryInput } from "../types";
-import { getLoadmen, getOrderWithLoadmen, updateOrderWithLoadmen } from "../../services/middleware.service";
+import { getLoadmen, getOrderWithLoadmen, updateOrderWithLoadmen, createSalaryLedgerEntry } from "../../services/middleware.service";
 import { EmployeeWithCategory, OrderWithLoadmen, Order } from "../../services/types";
 
 export function useDelivery(orderId: string) {
@@ -140,6 +140,23 @@ export function useDelivery(orderId: string) {
       };
 
       await updateOrderWithLoadmen(orderId, orderUpdate, deliveryInput.loadMen);
+
+      // Create auto salary ledger entries for each selected loadman
+      const salaryEntryDate = new Date().toISOString();
+      await Promise.all(
+        selectedLoadmen.map((loadman) =>
+          createSalaryLedgerEntry({
+            employee_id: loadman.id,
+            entry_type: "SALARY_AUTO_ENTRY",
+            amount: loadman.roles.salary_value,
+            payment_mode: null,
+            sender_account_id: null,
+            receiver_account: null,
+            notes: `Auto salary entry for delivery of order #${orderId}`,
+            created_at: salaryEntryDate,
+          })
+        )
+      );
 
       return { success: true };
     } catch (err) {

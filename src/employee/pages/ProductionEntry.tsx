@@ -31,11 +31,9 @@ export function ProductionEntry() {
   const [showErrorPopup, setShowErrorPopup] = useState(false);
 
   const handleSubmit = async () => {
-    if (!date) return;
-
     const payload: ProductionInput = {
-      date: date.toISOString(),
-      round: Number(round),
+      date: date ? date.toISOString() : "",
+      round: round === "" ? NaN : Number(round),
       bricks: Number(bricks),
       wetAsh: Number(wetAsh),
       marblePowder: Number(marblePowder),
@@ -109,12 +107,15 @@ export function ProductionEntry() {
                   <Calendar
                     mode="single"
                     selected={date}
-                    onSelect={setDate}
+                    onSelect={(d: Date | undefined) => { setDate(d); setErrors((prev) => ({ ...prev, date: "" })); }}
                     disabled={(date: Date) => date > new Date()}
                     initialFocus
                   />
                 </PopoverContent>
               </Popover>
+              {errors.date && (
+                <p className="text-red-600 text-sm mt-1">{errors.date}</p>
+              )}
             </div>
 
             {/* Round */}
@@ -126,7 +127,7 @@ export function ProductionEntry() {
                 id="round"
                 type="number"
                 value={round}
-                onChange={(e) => setRound(e.target.value)}
+                onChange={(e) => { setRound(e.target.value); setErrors((prev) => ({ ...prev, round: "" })); }}
                 onWheel={(e) => e.currentTarget.blur()}
                 placeholder="Enter round number (max 99)"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"

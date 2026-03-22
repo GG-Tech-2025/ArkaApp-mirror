@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { LogIn, ArrowLeft } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   getUserProfile,
   login,
@@ -10,10 +10,14 @@ import {
 
 export function LoginScreen() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isBlocked = (location.state as { blocked?: boolean } | null)?.blocked === true;
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [isValid, setIsValid] = useState(false);
+  const [error, setError] = useState(
+    isBlocked ? "Your account has been deactivated. Please contact your administrator." : ""
+  );
 
   useEffect(() => {
     async function checkSession() {
@@ -36,26 +40,18 @@ export function LoginScreen() {
     checkSession();
   }, []);
 
-  useEffect(() => {
-    // Validate email address
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (email.length > 0 && !emailRegex.test(email)) {
-      setError("Please enter a valid email address");
-      setIsValid(false);
-    } else {
-      setError("");
-      setIsValid(
-        email.length > 0 && password.length > 0 && emailRegex.test(email),
-      );
-    }
-  }, [email, password]);
-
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setEmail(e.target.value);
+    setError("");
   };
 
   const handleLogin = async () => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError("Please enter a valid email address");
+      return;
+    }
+
     try {
       const session = await login(email, password);
 
@@ -65,14 +61,12 @@ export function LoginScreen() {
       if (profile.role !== "EMPLOYEE") {
         await logout();
         setError("You are not authorized to access the Employee App.");
-        setIsValid(false);
         return;
       }
 
       navigate("/employee/home", { replace: true });
     } catch (error) {
       setError("Incorrect credentials. Please check your email and password.");
-      setIsValid(false);
     }
   };
 
@@ -121,7 +115,7 @@ export function LoginScreen() {
                 id="password"
                 type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => { setPassword(e.target.value); setError(""); }}
                 placeholder="Enter your password"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
               />
@@ -135,7 +129,7 @@ export function LoginScreen() {
 
             <button
               onClick={handleLogin}
-              disabled={!isValid}
+              disabled={email.length === 0 || password.length === 0}
               className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
             >
               Login

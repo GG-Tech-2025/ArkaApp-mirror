@@ -40,6 +40,11 @@ export function OrdersScreen() {
 
         {/* Orders List */}
         <div className="space-y-4">
+          {orders.length === 0 && (
+            <div className="bg-white rounded-lg shadow-md p-8 text-center text-gray-500">
+              No orders assigned for delivery.
+            </div>
+          )}
           {orders.map((order) => (
             <button
               key={order.id}
