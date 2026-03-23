@@ -507,38 +507,61 @@ export async function getCustomersWithFinancials(
   };
 }
 
+/* ------------------------------------------------------------------
+   17a. GET CUSTOMER SUMMARY TOTALS (all customers, not paginated)
+-------------------------------------------------------------------*/
 
+export async function getCustomerSummaryTotals(): Promise<{
+  totalCustomers: number;
+  totalSales: number;
+  totalOutstanding: number;
+}> {
+  const { data, error } = await supabase
+    .from("customer_financials")
+    .select("total_sales, outstanding_amount");
+
+  if (error) throw error;
+
+  const rows = data ?? [];
+  return {
+    totalCustomers: rows.length,
+    totalSales: rows.reduce((sum, r) => sum + Number(r.total_sales ?? 0), 0),
+    totalOutstanding: rows.reduce(
+      (sum, r) => sum + Number(r.outstanding_amount ?? 0),
+      0
+    ),
+  };
+}
 
 /* ------------------------------------------------------------------
    18. GET CUSTOMER BY ID
 -------------------------------------------------------------------*/
 
 export async function getCustomerFinancialById(customerId: string) {
-  const { data, error } = await supabase
+  // 1️⃣ Fetch customer basic info
+  const { data: customer, error: customerError } = await supabase
     .from("customers")
-    .select(`
-      id,
-      name,
-      phone,
-      address,
-      gst_number,
-      customer_financials(total_sales, outstanding_amount)
-    `)
+    .select("id, name, phone, address, gst_number")
     .eq("id", customerId)
     .single();
 
-  if (error) throw error;
+  if (customerError) throw customerError;
 
-  const financials = Array.isArray(data.customer_financials)
-    ? data.customer_financials[0]
-    : data.customer_financials;
+  // 2️⃣ Fetch financials from the view separately
+  const { data: financials, error: financialsError } = await supabase
+    .from("customer_financials")
+    .select("total_sales, outstanding_amount")
+    .eq("customer_id", customerId)
+    .maybeSingle();
+
+  if (financialsError) throw financialsError;
 
   return {
-    customer_id: data.id,
-    name: data.name,
-    phone: data.phone,
-    address: data.address,
-    gst_number: data.gst_number ?? null,
+    customer_id: customer.id,
+    name: customer.name,
+    phone: customer.phone,
+    address: customer.address,
+    gst_number: customer.gst_number ?? null,
     total_sales: financials?.total_sales ?? 0,
     outstanding_amount: financials?.outstanding_amount ?? 0,
   };
