@@ -301,7 +301,7 @@ export function CreateOrderScreen() {
               <input
                 id="brickQuantity"
                 type="number"
-                value={createOrderInput.brickQuantity}
+                value={createOrderInput.brickQuantity || ''}
                 onChange={(e) => updateCreateOrderInput('brickQuantity', parseInt(e.target.value) || 0)}
                 onWheel={(e) => e.currentTarget.blur()}
                 placeholder="Enter quantity"
@@ -358,7 +358,7 @@ export function CreateOrderScreen() {
               <input
                 id="pricePerBrick"
                 type="number"
-                value={createOrderInput.pricePerBrick}
+                value={createOrderInput.pricePerBrick || ''}
                 onChange={(e) => updateCreateOrderInput('pricePerBrick', parseFloat(e.target.value) || 0)}
                 onWheel={(e) => e.currentTarget.blur()}
                 placeholder="Enter price per brick"
@@ -411,7 +411,7 @@ export function CreateOrderScreen() {
               <input
                 id="finalPrice"
                 type="number"
-                value={createOrderInput.finalPrice}
+                value={createOrderInput.finalPrice || ''}
                 onChange={(e) => updateCreateOrderInput('finalPrice', parseFloat(e.target.value) || 0)}
                 onWheel={(e) => e.currentTarget.blur()}
                 placeholder="Enter final price"
@@ -426,44 +426,6 @@ export function CreateOrderScreen() {
               )}
               {errors.finalPrice && <p className="text-red-600 text-sm mt-1">{errors.finalPrice}</p>}
             </div>
-
-            {/* Payment Status */}
-            <div>
-              <label htmlFor="paymentStatus" className="block text-gray-700 mb-2">
-                Payment Status <span className="text-red-600">*</span>
-              </label>
-              <select
-                id="paymentStatus"
-                value={createOrderInput.paymentStatus}
-                onChange={(e) => updateCreateOrderInput('paymentStatus', e.target.value as 'NOT_PAID' | 'PARTIALLY_PAID' | 'FULLY_PAID')}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-              >
-                <option value="NOT_PAID">Not Paid</option>
-                <option value="PARTIALLY_PAID">Partially Paid</option>
-                <option value="FULLY_PAID">Fully Paid</option>
-              </select>
-            </div>
-
-            {/* Amount Paid - Conditional */}
-            {createOrderInput.paymentStatus === 'PARTIALLY_PAID' && (
-              <div>
-                <label htmlFor="amountPaid" className="block text-gray-700 mb-2">
-                  Amount Paid <span className="text-red-600">*</span>
-                </label>
-                <input
-                  id="amountPaid"
-                  type="number"
-                  value={createOrderInput.amountPaid}
-                  onChange={(e) => updateCreateOrderInput('amountPaid', parseFloat(e.target.value) || 0)}
-                  onWheel={(e) => e.currentTarget.blur()}
-                  placeholder="Enter amount paid"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  min="0.01"
-                  step="0.01"
-                />
-                {errors.amountPaid && <p className="text-red-600 text-sm mt-1">{errors.amountPaid}</p>}
-              </div>
-            )}
 
             {/* GST Number */}
             <div>

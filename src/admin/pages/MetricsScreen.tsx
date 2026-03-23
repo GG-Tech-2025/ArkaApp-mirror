@@ -97,6 +97,56 @@ export function MetricsScreen() {
 
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
 
+  // Calculate number of days in the selected range
+  const getDaysInRange = (): number => {
+    let start: Date;
+    let end: Date;
+
+    switch (filterType) {
+      case 'Current Month': {
+        const today = new Date();
+        start = new Date(today.getFullYear(), today.getMonth(), 1);
+        end = today;
+        break;
+      }
+      case 'Last month': {
+        const today = new Date();
+        start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        end = new Date(today.getFullYear(), today.getMonth(), 0);
+        break;
+      }
+      case 'Last year': {
+        const year = new Date().getFullYear() - 1;
+        start = new Date(year, 0, 1);
+        end = new Date(year, 11, 31);
+        break;
+      }
+      case 'Custom range': {
+        if (customStartDate && customEndDate) {
+          start = new Date(customStartDate);
+          end = new Date(customEndDate);
+        } else {
+          return 1;
+        }
+        break;
+      }
+      default:
+        return 1;
+    }
+
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 to include both start and end
+    return Math.max(diffDays, 1);
+  };
+
+  const DAILY_MAX_BRICKS = 15000;
+  const MAX_BRICKS = DAILY_MAX_BRICKS * getDaysInRange();
+  const CIRCLE_CIRCUMFERENCE = 440;
+  const bricksProgress = productionTotals.totalBricks > 0
+    ? Math.min(productionTotals.totalBricks, MAX_BRICKS) / MAX_BRICKS
+    : 0;
+  const strokeDashoffset = CIRCLE_CIRCUMFERENCE * (1 - bricksProgress);
+
   const handleFilterChange = (value: FilterType) => {
     if (value === 'Custom range') {
       setShowCustomRangeModal(true);
@@ -323,15 +373,16 @@ export function MetricsScreen() {
                         stroke="#10B981"
                         strokeWidth="12"
                         fill="none"
-                        strokeDasharray="440"
-                        strokeDashoffset="110"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                    {/* Center content */}
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="text-center">
-                        <p className="text-gray-900 text-2xl">{productionTotals.totalBricks.toLocaleString()}</p>
+                      strokeDasharray={CIRCLE_CIRCUMFERENCE}
+                      strokeDashoffset={strokeDashoffset}
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  {/* Center content */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <p className="text-gray-900 text-2xl">{productionTotals.totalBricks.toLocaleString()}</p>
+                      <p className="text-gray-600 text-xs">/ {MAX_BRICKS.toLocaleString()}</p>
                         <p className="text-gray-600 text-sm">Bricks</p>
                       </div>
                     </div>

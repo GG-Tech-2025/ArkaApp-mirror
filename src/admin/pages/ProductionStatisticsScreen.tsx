@@ -74,6 +74,11 @@ export function ProductionStatisticsScreen() {
   // Most recent production entry from the fetched data (if any)
   const yesterday = normalizedEntries.length > 0 ? normalizedEntries[0] : null;
 
+  const MAX_BRICKS = 15000;
+  const CIRCLE_CIRCUMFERENCE = 440;
+  const bricksProgress = yesterday ? Math.min(yesterday.bricks, MAX_BRICKS) / MAX_BRICKS : 0;
+  const strokeDashoffset = CIRCLE_CIRCUMFERENCE * (1 - bricksProgress);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -143,8 +148,8 @@ export function ProductionStatisticsScreen() {
                       stroke="#10B981"
                       strokeWidth="12"
                       fill="none"
-                      strokeDasharray="440"
-                      strokeDashoffset="110"
+                      strokeDasharray={CIRCLE_CIRCUMFERENCE}
+                      strokeDashoffset={strokeDashoffset}
                       strokeLinecap="round"
                     />
                   </svg>
@@ -152,6 +157,7 @@ export function ProductionStatisticsScreen() {
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="text-center">
                       <p className="text-gray-900 text-2xl">{yesterday ? yesterday.bricks.toLocaleString() : '-'}</p>
+                      <p className="text-gray-600 text-xs">/ {MAX_BRICKS.toLocaleString()}</p>
                       <p className="text-gray-600 text-sm">Bricks</p>
                     </div>
                   </div>
