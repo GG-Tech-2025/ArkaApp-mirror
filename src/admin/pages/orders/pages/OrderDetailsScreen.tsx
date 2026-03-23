@@ -190,6 +190,8 @@ export function OrderDetailsScreen() {
     ? (orderDetailsInput.brickQuantity * orderDetailsInput.pricePerBrick).toFixed(2)
     : '';
 
+  const isDelivered = order?.delivered === true;
+
   if (!orderId) {
     return <div className="text-center py-12">Order not found</div>;
   }
@@ -214,7 +216,7 @@ export function OrderDetailsScreen() {
             Back 
           </button>
           <h1 className="text-gray-900">Order Details</h1>
-          <p className="text-gray-600 mt-1">Edit order information - {order?.id}</p>
+          <p className="text-gray-600 mt-1">{isDelivered ? 'View order information' : 'Edit order information'} - {order?.id}</p>
         </div>
 
         {/* Form */}
@@ -236,6 +238,13 @@ export function OrderDetailsScreen() {
               </div>
             )}
 
+            {/* Read-only notice for delivered orders */}
+            {isDelivered && (
+              <div className="bg-yellow-50 border border-yellow-300 text-yellow-800 px-4 py-3 rounded-lg text-sm">
+                This order has been delivered and cannot be edited.
+              </div>
+            )}
+
             {/* Brick Quantity */}
             <div>
               <label htmlFor="brickQuantity" className="block text-gray-700 mb-2">
@@ -244,10 +253,13 @@ export function OrderDetailsScreen() {
               <input
                 id="brickQuantity"
                 type="number"
-                value={orderDetailsInput.brickQuantity}
+                value={orderDetailsInput.brickQuantity || ''}
                 onChange={(e) => updateOrderDetailsInput('brickQuantity', parseInt(e.target.value) || 0)}
                 onWheel={(e) => e.currentTarget.blur()}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                disabled={isDelivered}
+                className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
+                  isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''
+                }`}
                 min="1"
               />
               {errors.brickQuantity && <p className="text-red-600 text-sm mt-1">{errors.brickQuantity}</p>}
@@ -262,9 +274,11 @@ export function OrderDetailsScreen() {
                 <PopoverTrigger asChild>
                   <button
                     type="button"
+                    disabled={isDelivered}
                     className={cn(
                       "w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-left",
-                      !orderDetailsInput.deliveryDate && "text-gray-400"
+                      !orderDetailsInput.deliveryDate && "text-gray-400",
+                      isDelivered && "bg-gray-100 cursor-not-allowed"
                     )}
                   >
                     <div className="flex items-center justify-between">
@@ -300,10 +314,13 @@ export function OrderDetailsScreen() {
               <input
                 id="pricePerBrick"
                 type="number"
-                value={orderDetailsInput.pricePerBrick}
+                value={orderDetailsInput.pricePerBrick || ''}
                 onChange={(e) => updateOrderDetailsInput('pricePerBrick', parseFloat(e.target.value) || 0)}
                 onWheel={(e) => e.currentTarget.blur()}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                disabled={isDelivered}
+                className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
+                  isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''
+                }`}
                 step="0.01"
                 min="0.01"
               />
@@ -338,7 +355,10 @@ export function OrderDetailsScreen() {
                 type="text"
                 value={orderDetailsInput.location}
                 onChange={(e) => updateOrderDetailsInput('location', e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                disabled={isDelivered}
+                className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
+                  isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''
+                }`}
               />
               {errors.location && <p className="text-red-600 text-sm mt-1">{errors.location}</p>}
             </div>
@@ -351,10 +371,13 @@ export function OrderDetailsScreen() {
               <input
                 id="finalPrice"
                 type="number"
-                value={orderDetailsInput.finalPrice}
+                value={orderDetailsInput.finalPrice || ''}
                 onChange={(e) => updateOrderDetailsInput('finalPrice', parseFloat(e.target.value) || 0)}
                 onWheel={(e) => e.currentTarget.blur()}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                disabled={isDelivered}
+                className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
+                  isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''
+                }`}
                 min="0.01"
                 step="0.01"
               />
@@ -366,40 +389,38 @@ export function OrderDetailsScreen() {
               {errors.finalPrice && <p className="text-red-600 text-sm mt-1">{errors.finalPrice}</p>}
             </div>
 
-            {/* Payment Status */}
-            <div>
-              <label htmlFor="paymentStatus" className="block text-gray-700 mb-2">
-                Payment Status <span className="text-red-600">*</span>
-              </label>
-              <select
-                id="paymentStatus"
-                value={orderDetailsInput.paymentStatus}
-                onChange={(e) => updateOrderDetailsInput('paymentStatus', e.target.value as PaymentStatus)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-              >
-                <option value="NOT_PAID">Not Paid</option>
-                <option value="PARTIALLY_PAID">Partially Paid</option>
-                <option value="FULLY_PAID">Fully Paid</option>
-              </select>
-            </div>
+            {/* Payment Status - view only mode */}
+            {isDelivered && (
+              <div>
+                <label htmlFor="paymentStatus" className="block text-gray-700 mb-2">
+                  Payment Status
+                </label>
+                <select
+                  id="paymentStatus"
+                  value={orderDetailsInput.paymentStatus}
+                  disabled
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none bg-gray-100 cursor-not-allowed"
+                >
+                  <option value="NOT_PAID">Not Paid</option>
+                  <option value="PARTIALLY_PAID">Partially Paid</option>
+                  <option value="FULLY_PAID">Fully Paid</option>
+                </select>
+              </div>
+            )}
 
-            {/* Amount Paid - Conditional */}
-            {orderDetailsInput.paymentStatus === 'PARTIALLY_PAID' && (
+            {/* Amount Paid - view only mode, shown only if PARTIALLY_PAID */}
+            {isDelivered && orderDetailsInput.paymentStatus === 'PARTIALLY_PAID' && (
               <div>
                 <label htmlFor="amountPaid" className="block text-gray-700 mb-2">
-                  Amount Paid <span className="text-red-600">*</span>
+                  Amount Paid
                 </label>
                 <input
                   id="amountPaid"
                   type="number"
-                  value={orderDetailsInput.amountPaid}
-                  onChange={(e) => updateOrderDetailsInput('amountPaid', parseFloat(e.target.value) || 0)}
-                  onWheel={(e) => e.currentTarget.blur()}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  min="0.01"
-                  step="0.01"
+                  value={orderDetailsInput.amountPaid || ''}
+                  disabled
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none bg-gray-100 cursor-not-allowed"
                 />
-                {errors.amountPaid && <p className="text-red-600 text-sm mt-1">{errors.amountPaid}</p>}
               </div>
             )}
 
@@ -420,8 +441,11 @@ export function OrderDetailsScreen() {
                 }}
                 placeholder="Enter GST Number (15 characters)"
                 maxLength={15}
+                disabled={isDelivered}
                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
                   errors.gstNumber ? 'border-red-600' : 'border-gray-300'
+                } ${
+                  isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''
                 }`}
               />
               {errors.gstNumber && <p className="text-red-600 text-sm mt-1">{errors.gstNumber}</p>}
@@ -438,8 +462,11 @@ export function OrderDetailsScreen() {
                 value={orderDetailsInput.deliveryChallanNumber}
                 onChange={(e) => updateOrderDetailsInput('deliveryChallanNumber', e.target.value)}
                 placeholder="Enter Delivery Challan Number"
+                disabled={isDelivered}
                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
                   errors.deliveryChallanNumber ? 'border-red-600' : 'border-gray-300'
+                } ${
+                  isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''
                 }`}
               />
               {errors.deliveryChallanNumber && <p className="text-red-600 text-sm mt-1">{errors.deliveryChallanNumber}</p>}
@@ -455,12 +482,15 @@ export function OrderDetailsScreen() {
                   {loadmen.map((loadman) => (
                     <label
                       key={loadman.id}
-                      className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded"
+                      className={`flex items-center gap-3 p-2 rounded ${
+                        isDelivered ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-50'
+                      }`}
                     >
                       <input
                         type="checkbox"
                         checked={selectedLoadmen.some(l => l.id === loadman.id)}
-                        onChange={() => handleLoadManToggle(loadman)}
+                        onChange={() => !isDelivered && handleLoadManToggle(loadman)}
+                        disabled={isDelivered}
                         className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                       />
                       <span className="text-gray-900">{loadman.name}</span>
@@ -476,14 +506,16 @@ export function OrderDetailsScreen() {
               {errors.loadMen && <p className="text-red-600 text-sm mt-1">{errors.loadMen}</p>}
             </div>
 
-            {/* Confirm Button */}
-            <button
-              onClick={handleConfirm}
-              disabled={loading}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Updating...' : 'Confirm'}
-            </button>
+            {/* Confirm Button - hidden for delivered orders */}
+            {!isDelivered && (
+              <button
+                onClick={handleConfirm}
+                disabled={loading}
+                className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Updating...' : 'Confirm'}
+              </button>
+            )}
           </div>
         </div>
       </div>

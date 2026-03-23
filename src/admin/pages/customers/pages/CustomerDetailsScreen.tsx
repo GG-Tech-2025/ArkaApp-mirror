@@ -205,6 +205,7 @@ export function CustomerDetailsScreen() {
           address: customerData.address,
           totalSales: customerData.total_sales,
           unpaidAmount: customerData.outstanding_amount,
+          gstNumber: customerData.gst_number ?? undefined,
         });
 
         const mappedOrders = ordersRes.data.map((o: any) => ({
@@ -1373,8 +1374,9 @@ export function CustomerDetailsScreen() {
                   id="editCustomerGst"
                   type="text"
                   value={editCustomerGst}
-                  onChange={(e) => setEditCustomerGst(e.target.value)}
+                  onChange={(e) => setEditCustomerGst(e.target.value.toUpperCase())}
                   placeholder="Enter GST Number"
+                  maxLength={15}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 />
                 {customerGstError && (

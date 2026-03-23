@@ -510,13 +510,33 @@ export async function getCustomersWithFinancials(
 
 export async function getCustomerFinancialById(customerId: string) {
   const { data, error } = await supabase
-    .from("customer_financials")
-    .select("*")
-    .eq("customer_id", customerId)
+    .from("customers")
+    .select(`
+      id,
+      name,
+      phone,
+      address,
+      gst_number,
+      customer_financials(total_sales, outstanding_amount)
+    `)
+    .eq("id", customerId)
     .single();
 
   if (error) throw error;
-  return data;
+
+  const financials = Array.isArray(data.customer_financials)
+    ? data.customer_financials[0]
+    : data.customer_financials;
+
+  return {
+    customer_id: data.id,
+    name: data.name,
+    phone: data.phone,
+    address: data.address,
+    gst_number: data.gst_number ?? null,
+    total_sales: financials?.total_sales ?? 0,
+    outstanding_amount: financials?.outstanding_amount ?? 0,
+  };
 }
 
 

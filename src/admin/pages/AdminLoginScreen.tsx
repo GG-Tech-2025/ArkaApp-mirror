@@ -14,7 +14,6 @@ export function AdminLoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [isValid, setIsValid] = useState(false);
 
   /* ------------------------------------------------------------------
      1. AUTO SESSION CHECK (same as Employee, role = ADMIN)
@@ -41,26 +40,15 @@ export function AdminLoginScreen() {
   }, []);
 
   /* ------------------------------------------------------------------
-     2. VALIDATION
-  -------------------------------------------------------------------*/
-  useEffect(() => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (email.length > 0 && !emailRegex.test(email)) {
-      setError("Please enter a valid email address");
-      setIsValid(false);
-    } else {
-      setError("");
-      setIsValid(
-        email.length > 0 && password.length > 0 && emailRegex.test(email)
-      );
-    }
-  }, [email, password]);
-
-  /* ------------------------------------------------------------------
      3. LOGIN HANDLER (role = ADMIN)
   -------------------------------------------------------------------*/
   const handleLogin = async () => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError("Please enter a valid email address");
+      return;
+    }
+
     try {
       const session = await login(email, password);
 
@@ -70,14 +58,12 @@ export function AdminLoginScreen() {
       if (profile.role !== "ADMIN") {
         await logout();
         setError("You are not authorized to access the Admin App.");
-        setIsValid(false);
         return;
       }
 
       navigate("/admin/home", { replace: true });
     } catch {
       setError("Incorrect credentials. Please check your email and password.");
-      setIsValid(false);
     }
   };
 
@@ -114,7 +100,7 @@ export function AdminLoginScreen() {
               <input
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => { setEmail(e.target.value); setError(""); }}
                 placeholder="Enter admin email"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               />
@@ -127,7 +113,7 @@ export function AdminLoginScreen() {
               <input
                 type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => { setPassword(e.target.value); setError(""); }}
                 placeholder="Enter your password"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               />
@@ -141,7 +127,7 @@ export function AdminLoginScreen() {
 
             <button
               onClick={handleLogin}
-              disabled={!isValid}
+              disabled={email.length === 0 || password.length === 0}
               className="w-full bg-gradient-to-r from-blue-600 to-indigo-700 text-white py-3 rounded-lg disabled:bg-gray-300 disabled:cursor-not-allowed transition-all"
             >
               Login
