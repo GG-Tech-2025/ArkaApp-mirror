@@ -310,6 +310,11 @@ export async function updateOrderWithLoadmen(
 
   if (orderError) throw orderError;
 
+  /* Deduct bricks from product inventory when order is marked as delivered */
+  if (orderUpdate.delivered === true && orderUpdate.brick_quantity) {
+    await deductProductInventory(orderUpdate.brick_quantity);
+  }
+
   /* Get existing loadmen */
   const { data: existing } = await supabase
     .from("order_loadmen")
@@ -2368,6 +2373,42 @@ export async function updateProductInventory(quantity: number): Promise<void> {
     }
   } catch (error) {
     console.error("Error updating product inventory:", error);
+    throw error;
+  }
+}
+
+/**------------------------------------------------------------------------------
+ * 48.1.1 Deduct product inventory (Bricks) on Delivery
+ * When an order is delivered, reduce the bricks quantity in product_inventory
+ * Used in delivery entry submission (updateOrderWithLoadmen)
+ ------------------------------------------------------------------------------*/
+export async function deductProductInventory(quantity: number): Promise<void> {
+  try {
+    const { data: existingData, error: fetchError } = await supabase
+      .from("product_inventory")
+      .select("id, quantity")
+      .eq("product_type", "BRICKS")
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    if (!existingData) {
+      throw new Error("No bricks inventory record found");
+    }
+
+    const newQuantity = Math.max(0, existingData.quantity - quantity);
+
+    const { error: updateError } = await supabase
+      .from("product_inventory")
+      .update({
+        quantity: newQuantity,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", existingData.id);
+
+    if (updateError) throw updateError;
+  } catch (error) {
+    console.error("Error deducting product inventory:", error);
     throw error;
   }
 }
