@@ -212,51 +212,6 @@ export function DeliveryEntry() {
               />
             </div>
 
-            {/* Payment */}
-            <div>
-              <label htmlFor="payment" className="block text-gray-700 mb-2">
-                Payment <span className="text-red-600">*</span>
-              </label>
-              <select
-                id="payment"
-                value={deliveryInput?.paymentStatus || "NOT_PAID"}
-                onChange={(e) => updateDeliveryInput("paymentStatus", e.target.value as PaymentStatus)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-              >
-                <option value="NOT_PAID">Pending</option>
-                <option value="PARTIALLY_PAID">Partially paid</option>
-                <option value="FULLY_PAID">Fully paid</option>
-              </select>
-            </div>
-
-            {/* Paid Amount - Conditional */}
-            {order && (deliveryInput?.paymentStatus === "PARTIALLY_PAID") && (
-              <div>
-                <label
-                  htmlFor="paidAmount"
-                  className="block text-gray-700 mb-2"
-                >
-                  Paid Amount <span className="text-red-600">*</span>
-                </label>
-                <input
-                  id="paidAmount"
-                  type="number"
-                  value={deliveryInput?.paidAmount || ""}
-                  onChange={(e) => updateDeliveryInput("paidAmount", parseFloat(e.target.value) || 0)}
-                  onWheel={(e) => e.currentTarget.blur()}
-                  placeholder="Enter paid amount"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  min="0.01"
-                  step="0.01"
-                />
-                {errors.paidAmount && (
-                  <p className="text-red-600 text-sm mt-1">
-                    {errors.paidAmount}
-                  </p>
-                )}
-              </div>
-            )}
-
             {/* GST Number */}
             <div>
               <label htmlFor="gstNumber" className="block text-gray-700 mb-2">
@@ -266,16 +221,8 @@ export function DeliveryEntry() {
                 id="gstNumber"
                 type="text"
                 value={deliveryInput?.gstNumber || ""}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  // Only allow alphanumeric characters (GST format)
-                  if (/^[A-Za-z0-9]*$/.test(value)) {
-                    updateDeliveryInput("gstNumber", value.toUpperCase());
-                  }
-                }}
-                placeholder="Enter GST number (optional)"
-                maxLength={15}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                disabled
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
               />
             </div>
 

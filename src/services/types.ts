@@ -110,6 +110,7 @@ export interface EmployeeWithCategory extends Employee {
     id: string;
     name: string;
     category: EmployeeCategory;
+    salary_value: number;
   };
 }
 

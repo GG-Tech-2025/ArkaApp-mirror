@@ -251,7 +251,7 @@ export async function getLoadmen(): Promise<EmployeeWithCategory[]> {
       name,
       phone,
       role_id,
-      roles!inner ( category )
+      roles!inner ( id, name, category, salary_value )
     `)
     .eq("roles.category", "LOADMEN" satisfies EmployeeCategory);
 
@@ -3097,7 +3097,7 @@ export async function createSalaryLedgerEntry(
 
   let newBalance = currentBalance;
 
-  if (input.entry_type === "AUTO") {
+  if (input.entry_type === "AUTO" || input.entry_type === "SALARY_AUTO_ENTRY") {
     newBalance += input.amount;
   } else {
     newBalance -= input.amount;
@@ -3126,4 +3126,21 @@ export async function createSalaryLedgerEntry(
   if (error) throw error;
 
   return data as SalaryLedger;
+}
+
+/* ------------------------------------------------------------------
+  Check Employee Is Active
+  - Looks up the employees table by phone number
+  - Returns true if the employee record exists and active = true
+  - Used by EmployeeGuard to block deactivated employees
+---------------------------------------------------------------------*/
+export async function checkEmployeeIsActive(phone: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("employees")
+    .select("active")
+    .eq("phone", phone)
+    .maybeSingle();
+
+  if (error || !data) return false;
+  return data.active === true;
 }

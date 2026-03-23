@@ -11,6 +11,7 @@ import { InventoryRoutes } from "./pages/Inventory/routes";
 import { AccountsRoutes } from "./pages/accounts/routes";
 import { VendorsRoutes } from "./pages/vendors/routes";
 import { EmployeesRoutes } from "./pages/employees/routes";
+import { AdminGuard } from "./components/AdminGuard";
 
 export function AdminRoutes() {
   return (
@@ -21,21 +22,21 @@ export function AdminRoutes() {
       {/* Login */}
       <Route path="login" element={<AdminLoginScreen />} />
 
-      {/* Home */}
-      <Route path="home" element={<AdminHomeScreen />} />
-
-      {/* Other Admin Routes */}
-      <Route path="orders/*" element={<OrdersRoutes />} />
-      <Route path="production" element={<ProductionStatisticsScreen />} />
-      <Route path="inventory/*" element={<InventoryRoutes />} />
-      <Route path="customers/*" element={<CustomersRoutes />} />
-      <Route path="accounts/*" element={<AccountsRoutes />} />
-      <Route path="metrics" element={<MetricsScreen />} />
-      <Route path="employees/*" element={<EmployeesRoutes />} />
-      <Route path="salarys" element={<Navigate to="/admin/employees/salary-ledger" replace />} />
-      <Route path="vendors/*" element={<VendorsRoutes />} />
-      <Route path="cash/*" element={<CashRoutes />} />
-      <Route path="loans/*" element={<LoansRoutes />} />
+      {/* Protected routes — require valid ADMIN session */}
+      <Route element={<AdminGuard />}>
+        <Route path="home" element={<AdminHomeScreen />} />
+        <Route path="orders/*" element={<OrdersRoutes />} />
+        <Route path="production" element={<ProductionStatisticsScreen />} />
+        <Route path="inventory/*" element={<InventoryRoutes />} />
+        <Route path="customers/*" element={<CustomersRoutes />} />
+        <Route path="accounts/*" element={<AccountsRoutes />} />
+        <Route path="metrics" element={<MetricsScreen />} />
+        <Route path="employees/*" element={<EmployeesRoutes />} />
+        <Route path="salarys" element={<Navigate to="/admin/employees/salary-ledger" replace />} />
+        <Route path="vendors/*" element={<VendorsRoutes />} />
+        <Route path="cash/*" element={<CashRoutes />} />
+        <Route path="loans/*" element={<LoansRoutes />} />
+      </Route>
 
       {/* Safety fallback */}
       <Route path="*" element={<Navigate to="/admin/login" replace />} />

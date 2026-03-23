@@ -36,13 +36,11 @@ export function MaterialPurchaseEntry() {
   const selectedMaterialUnit = materials.find(m => m.id === material)?.unit;
 
   const handleSubmit = async () => {
-    if (!date || !material || !vendor || !quantity) return;
-
     const payload: MaterialPurchaseInput = {
       material_id: material,
       vendor_id: vendor,
       quantity: Number(quantity),
-      date: date.toISOString(),
+      date: date ? date.toISOString() : "",
     };
 
     const validationErrors = validateMaterialPurchase(payload);
@@ -92,7 +90,7 @@ export function MaterialPurchaseEntry() {
               <select
                 id="material"
                 value={material}
-                onChange={(e) => setMaterial(e.target.value)}
+                onChange={(e) => { setMaterial(e.target.value); setErrors((prev) => ({ ...prev, material: "" })); }}
                 disabled={materialsLoading}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
               >
@@ -115,7 +113,7 @@ export function MaterialPurchaseEntry() {
               </label>
               <select
                 value={vendor}
-                onChange={(e) => setVendor(e.target.value)}
+                onChange={(e) => { setVendor(e.target.value); setErrors((prev) => ({ ...prev, vendor: "" })); }}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg"
                 disabled={vendorsLoading}
               >
@@ -141,7 +139,7 @@ export function MaterialPurchaseEntry() {
                 id="quantity"
                 type="number"
                 value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
+                onChange={(e) => { setQuantity(e.target.value); setErrors((prev) => ({ ...prev, quantity: "" })); }}
                 onWheel={(e) => e.currentTarget.blur()}
                 placeholder={`Enter quantity${
                   material ? ` in ${selectedMaterialUnit}` : ""
@@ -181,7 +179,7 @@ export function MaterialPurchaseEntry() {
                   <Calendar
                     mode="single"
                     selected={date}
-                    onSelect={setDate}
+                    onSelect={(d: Date | undefined) => { setDate(d); setErrors((prev) => ({ ...prev, date: "" })); }}
                     disabled={(date: Date) => date > new Date()}
                     initialFocus
                   />
