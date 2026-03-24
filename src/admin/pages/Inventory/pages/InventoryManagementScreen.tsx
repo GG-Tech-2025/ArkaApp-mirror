@@ -501,10 +501,10 @@ export function InventoryManagementScreen() {
                     <p className="text-gray-700 font-semibold text-lg">{PRODUCTION_CAPACITY.totalBricks.toLocaleString()}</p>
                     <p className="text-gray-500 text-xs">Bricks ({PRODUCTION_CAPACITY.maxRounds} rounds)</p>
                   </div>
-                  <div className="pt-2 border-t border-gray-200">
+                  {/* <div className="pt-2 border-t border-gray-200">
                     <p className="text-gray-700 font-semibold text-sm">₹{PRODUCTION_CAPACITY.totalProductionCost.toLocaleString('en-IN', {maximumFractionDigits: 0})}</p>
                     <p className="text-gray-500 text-xs">Production Cost</p>
-                  </div>
+                  </div> */}
                   <div className="pt-2 border-t border-gray-200">
                     <p className="text-amber-600 text-xs font-medium">Limited by: {PRODUCTION_CAPACITY.limitingMaterial}</p>
                   </div>

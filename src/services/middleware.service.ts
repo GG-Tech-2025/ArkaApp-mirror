@@ -310,6 +310,11 @@ export async function updateOrderWithLoadmen(
 
   if (orderError) throw orderError;
 
+  /* Deduct bricks from product inventory when order is marked as delivered */
+  if (orderUpdate.delivered === true && orderUpdate.brick_quantity) {
+    await deductProductInventory(orderUpdate.brick_quantity);
+  }
+
   /* Get existing loadmen */
   const { data: existing } = await supabase
     .from("order_loadmen")
@@ -502,38 +507,61 @@ export async function getCustomersWithFinancials(
   };
 }
 
+/* ------------------------------------------------------------------
+   17a. GET CUSTOMER SUMMARY TOTALS (all customers, not paginated)
+-------------------------------------------------------------------*/
 
+export async function getCustomerSummaryTotals(): Promise<{
+  totalCustomers: number;
+  totalSales: number;
+  totalOutstanding: number;
+}> {
+  const { data, error } = await supabase
+    .from("customer_financials")
+    .select("total_sales, outstanding_amount");
+
+  if (error) throw error;
+
+  const rows = data ?? [];
+  return {
+    totalCustomers: rows.length,
+    totalSales: rows.reduce((sum, r) => sum + Number(r.total_sales ?? 0), 0),
+    totalOutstanding: rows.reduce(
+      (sum, r) => sum + Number(r.outstanding_amount ?? 0),
+      0
+    ),
+  };
+}
 
 /* ------------------------------------------------------------------
    18. GET CUSTOMER BY ID
 -------------------------------------------------------------------*/
 
 export async function getCustomerFinancialById(customerId: string) {
-  const { data, error } = await supabase
+  // 1️⃣ Fetch customer basic info
+  const { data: customer, error: customerError } = await supabase
     .from("customers")
-    .select(`
-      id,
-      name,
-      phone,
-      address,
-      gst_number,
-      customer_financials(total_sales, outstanding_amount)
-    `)
+    .select("id, name, phone, address, gst_number")
     .eq("id", customerId)
     .single();
 
-  if (error) throw error;
+  if (customerError) throw customerError;
 
-  const financials = Array.isArray(data.customer_financials)
-    ? data.customer_financials[0]
-    : data.customer_financials;
+  // 2️⃣ Fetch financials from the view separately
+  const { data: financials, error: financialsError } = await supabase
+    .from("customer_financials")
+    .select("total_sales, outstanding_amount")
+    .eq("customer_id", customerId)
+    .maybeSingle();
+
+  if (financialsError) throw financialsError;
 
   return {
-    customer_id: data.id,
-    name: data.name,
-    phone: data.phone,
-    address: data.address,
-    gst_number: data.gst_number ?? null,
+    customer_id: customer.id,
+    name: customer.name,
+    phone: customer.phone,
+    address: customer.address,
+    gst_number: customer.gst_number ?? null,
     total_sales: financials?.total_sales ?? 0,
     outstanding_amount: financials?.outstanding_amount ?? 0,
   };
@@ -2368,6 +2396,42 @@ export async function updateProductInventory(quantity: number): Promise<void> {
     }
   } catch (error) {
     console.error("Error updating product inventory:", error);
+    throw error;
+  }
+}
+
+/**------------------------------------------------------------------------------
+ * 48.1.1 Deduct product inventory (Bricks) on Delivery
+ * When an order is delivered, reduce the bricks quantity in product_inventory
+ * Used in delivery entry submission (updateOrderWithLoadmen)
+ ------------------------------------------------------------------------------*/
+export async function deductProductInventory(quantity: number): Promise<void> {
+  try {
+    const { data: existingData, error: fetchError } = await supabase
+      .from("product_inventory")
+      .select("id, quantity")
+      .eq("product_type", "BRICKS")
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    if (!existingData) {
+      throw new Error("No bricks inventory record found");
+    }
+
+    const newQuantity = Math.max(0, existingData.quantity - quantity);
+
+    const { error: updateError } = await supabase
+      .from("product_inventory")
+      .update({
+        quantity: newQuantity,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", existingData.id);
+
+    if (updateError) throw updateError;
+  } catch (error) {
+    console.error("Error deducting product inventory:", error);
     throw error;
   }
 }

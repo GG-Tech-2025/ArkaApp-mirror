@@ -11,6 +11,7 @@ import {
 import { Popup } from "../../../../components/Popup";
 import {
   getCustomersWithFinancials,
+  getCustomerSummaryTotals,
   createCustomer,
 } from "../../../../services/middleware.service";
 import { validateCustomer } from "../../../validators/customer.validator";
@@ -37,6 +38,12 @@ export function CustomerManagementScreen() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [activeTab, setActiveTab] = useState<"All" | "Unpaid">("All");
 
+  const [summaryTotals, setSummaryTotals] = useState({
+    totalCustomers: 0,
+    totalSales: 0,
+    totalOutstanding: 0,
+  });
+
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
 
@@ -55,6 +62,7 @@ export function CustomerManagementScreen() {
 
   useEffect(() => {
     loadCustomers(1, true);
+    loadSummaryTotals();
   }, []);
 
   useEffect(() => {
@@ -71,6 +79,15 @@ export function CustomerManagementScreen() {
   }, [debouncedSearch]);
 
   /* ------------------ FUNCTIONS ------------------ */
+
+  const loadSummaryTotals = async (): Promise<void> => {
+    try {
+      const totals = await getCustomerSummaryTotals();
+      setSummaryTotals(totals);
+    } catch (err) {
+      console.error("Failed to load customer summary totals", err);
+    }
+  };
 
   const loadCustomers = async (
     pageNumber: number,
@@ -130,26 +147,18 @@ export function CustomerManagementScreen() {
 
       // reload list from page 1
       await loadCustomers(1, true);
+      await loadSummaryTotals();
     } catch (err: any) {
       console.error("Failed to create customer", err);
       alert(err?.message || "Failed to create customer");
     }
   };
 
-  // const filteredCustomers = customers.filter((customer) => {
-  //   const matchesSearch =
-  //     customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-  //     customer.phoneNumber.includes(searchQuery) ||
-  //     customer.id.toLowerCase().includes(searchQuery.toLowerCase());
+  const displayedCustomers =
+    activeTab === "Unpaid"
+      ? customers.filter((c) => c.outstanding_amount > 0)
+      : customers;
 
-  //   const matchesTab =
-  //     activeTab === "All" ||
-  //     (activeTab === "Unpaid" && customer.unpaidAmount > 0);
-
-  //   return matchesSearch && matchesTab;
-  // });
-
-  const displayedCustomers = customers;
   const handleOpenAddCustomerModal = () => {
     setCustomerName("");
     setCustomerPhone("");
@@ -210,7 +219,7 @@ export function CustomerManagementScreen() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
-              placeholder="Search by name, phone, or customer ID..."
+              placeholder="Search by name, phone..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -224,7 +233,7 @@ export function CustomerManagementScreen() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-gray-600 text-sm">Total Customers</p>
-                <p className="text-gray-900 mt-1">{customers.length}</p>
+                <p className="text-gray-900 mt-1">{summaryTotals.totalCustomers}</p>
               </div>
               <div className="bg-blue-100 p-3 rounded-lg">
                 <Phone className="w-6 h-6 text-blue-600" />
@@ -237,9 +246,7 @@ export function CustomerManagementScreen() {
                 <p className="text-gray-600 text-sm">Total Sales</p>
                 <p className="text-gray-900 mt-1">
                   ₹
-                  {customers
-                    .reduce((sum, c) => sum + c.totalSales, 0)
-                    .toLocaleString()}
+                  {summaryTotals.totalSales.toLocaleString()}
                 </p>
               </div>
               <div className="bg-green-100 p-3 rounded-lg">
@@ -253,9 +260,7 @@ export function CustomerManagementScreen() {
                 <p className="text-gray-600 text-sm">Outstanding Amount</p>
                 <p className="text-gray-900 mt-1">
                   ₹
-                  {customers
-                    .reduce((sum, c) => sum + c.outstanding_amount, 0)
-                    .toLocaleString()}
+                  {summaryTotals.totalOutstanding.toLocaleString()}
                 </p>
               </div>
               <div className="bg-red-100 p-3 rounded-lg">
@@ -456,7 +461,7 @@ export function CustomerManagementScreen() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-gray-700 text-sm font-bold mb-2">
-                    Name
+                    Name <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -472,12 +477,18 @@ export function CustomerManagementScreen() {
                 </div>
                 <div>
                   <label className="block text-gray-700 text-sm font-bold mb-2">
-                    Phone Number
+                    Phone Number <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, "").slice(0, 10);
+                      setCustomerPhone(val);
+                    }}
+                    maxLength={10}
+                    inputMode="numeric"
+                    placeholder="10-digit phone number"
                     className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                       phoneError ? "border-red-500" : ""
                     }`}
@@ -488,7 +499,7 @@ export function CustomerManagementScreen() {
                 </div>
                 <div>
                   <label className="block text-gray-700 text-sm font-bold mb-2">
-                    Address
+                    Address <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
