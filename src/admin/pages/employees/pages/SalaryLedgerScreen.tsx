@@ -10,15 +10,23 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export function SalaryLedgerScreen() {
   const {
-    employees,
+    activeTab,
+    activeEmployees,
+    inactiveEmployees,
     loading,
-    hasMore,
+    hasMoreActive,
+    hasMoreInactive,
     searchQuery,
     handleSearchChange,
-    handleLoadMore,
+    handleTabChange,
+    handleLoadMoreActive,
+    handleLoadMoreInactive,
     handleOpenLedger,
     goBack,
   } = useSalaryLedger();
+
+  const displayedEmployees = activeTab === 'Active' ? activeEmployees : inactiveEmployees;
+  const hasMore = activeTab === 'Active' ? hasMoreActive : hasMoreInactive;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -50,79 +58,111 @@ export function SalaryLedgerScreen() {
           </div>
         </div>
 
-        {/* Employee Cards */}
-        <div className="space-y-4">
-          {loading && employees.length === 0 ? (
-            <div className="bg-white rounded-lg shadow-md p-12 text-center">
-              <p className="text-gray-600">Loading employees...</p>
-            </div>
-          ) : employees.length === 0 ? (
-            <div className="bg-white rounded-lg shadow-md p-12 text-center">
-              <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">No employees found</p>
-            </div>
-          ) : (
-            employees.map((employee) => (
-              <div key={employee.id} className="bg-white rounded-lg shadow-md p-6">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  {/* Employee Info */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 flex-1">
-                    <div>
-                      <p className="text-gray-600 text-sm">Name</p>
-                      <p className="text-gray-900">{employee.name}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600 text-sm">ID</p>
-                      <p className="text-gray-900">{employee.id}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600 text-sm">Role</p>
-                      <p className="text-gray-900">{employee.role_name}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600 text-sm">Category</p>
-                      <span className={`inline-block px-2 py-1 rounded-full text-sm ${
-                        employee.category === 'DAILY' ? 'bg-purple-100 text-purple-800' :
-                        employee.category === 'FIXED' ? 'bg-orange-100 text-orange-800' :
-                        'bg-blue-100 text-blue-800'
-                      }`}>
-                        {CATEGORY_LABELS[employee.category] ?? employee.category}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Running Balance & Action */}
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <p className="text-gray-600 text-sm">Running Balance</p>
-                      <p className={`text-lg ${employee.running_balance > 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                        ₹{employee.running_balance.toLocaleString()}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleOpenLedger(employee.id)}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
-                    >
-                      <BookOpen className="w-4 h-4" />
-                      Open Ledger
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-
-          {/* Load More */}
-          {hasMore && (
-            <div className="flex justify-center pt-4">
+        {/* Tabs + Content */}
+        <div className="bg-white rounded-lg shadow-lg">
+          {/* Tab Buttons */}
+          <div className="border-b border-gray-200">
+            <div className="flex">
               <button
-                onClick={handleLoadMore}
-                className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                onClick={() => handleTabChange('Active')}
+                className={`px-6 py-4 whitespace-nowrap transition-colors ${
+                  activeTab === 'Active'
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
               >
-                Load More
+                Active
+              </button>
+              <button
+                onClick={() => handleTabChange('Inactive')}
+                className={`px-6 py-4 whitespace-nowrap transition-colors ${
+                  activeTab === 'Inactive'
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Inactive
               </button>
             </div>
-          )}
+          </div>
+
+          {/* Tab Content */}
+          <div className="p-6">
+            <div className="space-y-4">
+              {loading && displayedEmployees.length === 0 ? (
+                <div className="p-12 text-center">
+                  <p className="text-gray-600">Loading employees...</p>
+                </div>
+              ) : displayedEmployees.length === 0 ? (
+                <div className="p-12 text-center">
+                  <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600">No {activeTab.toLowerCase()} employees found</p>
+                </div>
+              ) : (
+                displayedEmployees.map((employee) => (
+                  <div key={employee.id} className="bg-white border border-gray-200 rounded-lg p-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      {/* Employee Info */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 flex-1">
+                        <div>
+                          <p className="text-gray-600 text-sm">Name</p>
+                          <p className="text-gray-900">{employee.name}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600 text-sm">ID</p>
+                          <p className="text-gray-900">{employee.id}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600 text-sm">Role</p>
+                          <p className="text-gray-900">{employee.role_name}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600 text-sm">Category</p>
+                          <span className={`inline-block px-2 py-1 rounded-full text-sm ${
+                            employee.category === 'DAILY' ? 'bg-purple-100 text-purple-800' :
+                            employee.category === 'FIXED' ? 'bg-orange-100 text-orange-800' :
+                            'bg-blue-100 text-blue-800'
+                          }`}>
+                            {CATEGORY_LABELS[employee.category] ?? employee.category}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Running Balance & Action */}
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <p className="text-gray-600 text-sm">Running Balance</p>
+                          <p className={`text-lg ${employee.running_balance > 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                            ₹{employee.running_balance.toLocaleString()}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleOpenLedger(employee.id)}
+                          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
+                        >
+                          <BookOpen className="w-4 h-4" />
+                          Open Ledger
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+
+              {/* Load More */}
+              {hasMore && (
+                <div className="flex justify-center pt-4">
+                  <button
+                    onClick={activeTab === 'Active' ? handleLoadMoreActive : handleLoadMoreInactive}
+                    disabled={loading}
+                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    {loading ? 'Loading...' : 'Load More'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>

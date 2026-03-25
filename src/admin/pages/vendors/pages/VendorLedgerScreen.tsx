@@ -1,38 +1,49 @@
 import  { useState, useRef } from 'react';
-import { ArrowLeft, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Trash2, X, Filter } from 'lucide-react';
 import { Popup } from '../../../../components/Popup';
 import { useVendorLedger } from '../../../hooks/useVendorLedger';
 import { VendorLedgerExport } from './VendorLedgerExport';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
-type TabType = 'procurements' | 'payments';
-
 export function VendorLedgerScreen() {
   const {
     vendor,
     vendorId,
     loading,
+    // Tab
+    activeTab,
+    handleTabChange,
+    // Procurements
     procurements,
     procurementsLoading,
+    procurementsLoadingMore,
+    procurementsHasMore,
+    // Payments
     payments,
     paymentsLoading,
+    paymentsLoadingMore,
+    paymentsHasMore,
+    // Financials
     financials,
+    // Staged filters
+    stagedSortOrder,
+    stagedFromDate,
+    stagedToDate,
+    setStagedSortOrder,
+    setStagedFromDate,
+    setStagedToDate,
+    // Actions
+    handleApplyFilter,
+    handleClearFilter,
+    handleLoadMore,
     deletingPayment,
     handleDeletePayment,
     goBack,
     goTo,
   } = useVendorLedger();
   const exportRef = useRef<HTMLDivElement>(null);
-  const [activeTab, setActiveTab] = useState<TabType>('procurements');
-  const [displayCount, setDisplayCount] = useState(20);
-  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
-  const [fromDate, setFromDate] = useState(() => {
-    const date = new Date();
-    date.setDate(date.getDate() - 30);
-    return date.toISOString().split('T')[0];
-  });
-  const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]);
+
   const [showPopup, setShowPopup] = useState(false);
   const [popupMessage, setPopupMessage] = useState('');
   
@@ -59,30 +70,10 @@ export function VendorLedgerScreen() {
   const totalPayment = financials?.total_paid ?? 0;
   const outstandingBalance = financials?.outstanding_balance ?? 0;
 
-  // Filter and sort data
-  const filterAndSortData = (data: any[], dateField = 'date') => {
-    const filtered = data.filter(item => {
-      const itemDate = new Date(item[dateField]);
-      const from = new Date(fromDate);
-      const to = new Date(toDate);
-      return itemDate >= from && itemDate <= to;
-    });
-
-    const sorted = [...filtered].sort((a, b) => {
-      const dateA = new Date(a[dateField]).getTime();
-      const dateB = new Date(b[dateField]).getTime();
-      return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
-    });
-
-    return sorted;
-  };
-
-  const currentData = activeTab === 'procurements' 
-    ? filterAndSortData(procurements, 'date') 
-    : filterAndSortData(payments, 'payment_date');
-
-  const displayedData = currentData.slice(0, displayCount);
-  const hasMore = displayCount < currentData.length;
+  // Determine active tab's loading and data
+  const isTabLoading = activeTab === 'procurements' ? procurementsLoading : paymentsLoading;
+  const isLoadingMore = activeTab === 'procurements' ? procurementsLoadingMore : paymentsLoadingMore;
+  const hasMore = activeTab === 'procurements' ? procurementsHasMore : paymentsHasMore;
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -328,10 +319,7 @@ export function VendorLedgerScreen() {
           <div className="border-b border-gray-200">
             <div className="flex">
               <button
-                onClick={() => {
-                  setActiveTab('procurements');
-                  setDisplayCount(20);
-                }}
+                onClick={() => handleTabChange('procurements')}
                 className={`flex-1 px-6 py-4 text-center transition-colors ${
                   activeTab === 'procurements'
                     ? 'border-b-2 border-blue-600 text-blue-600'
@@ -341,10 +329,7 @@ export function VendorLedgerScreen() {
                 Procurements
               </button>
               <button
-                onClick={() => {
-                  setActiveTab('payments');
-                  setDisplayCount(20);
-                }}
+                onClick={() => handleTabChange('payments')}
                 className={`flex-1 px-6 py-4 text-center transition-colors ${
                   activeTab === 'payments'
                     ? 'border-b-2 border-blue-600 text-blue-600'
@@ -358,55 +343,64 @@ export function VendorLedgerScreen() {
 
           {/* Filters */}
           <div className="p-6 border-b border-gray-200 bg-gray-50">
-            <div className="flex flex-col lg:flex-row gap-4">
-              <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-gray-700 text-sm mb-2">From Date</label>
-                  <input
-                    type="date"
-                    value={fromDate}
-                    onChange={(e) => {
-                      setFromDate(e.target.value);
-                      setDisplayCount(20);
-                    }}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 text-sm mb-2">To Date</label>
-                  <input
-                    type="date"
-                    value={toDate}
-                    onChange={(e) => {
-                      setToDate(e.target.value);
-                      setDisplayCount(20);
-                    }}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1">
+                <label className="block text-gray-700 text-sm mb-2">Sort Order</label>
+                <select
+                  value={stagedSortOrder}
+                  onChange={(e) => setStagedSortOrder(e.target.value as 'newest' | 'oldest')}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="newest">Newest First</option>
+                  <option value="oldest">Oldest First</option>
+                </select>
               </div>
-              <div className="flex items-end">
-                <div>
-                  <label className="block text-gray-700 text-sm mb-2">Sort Order</label>
-                  <select
-                    value={sortOrder}
-                    onChange={(e) => setSortOrder(e.target.value as 'newest' | 'oldest')}
-                    className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="newest">Newest First</option>
-                    <option value="oldest">Oldest First</option>
-                  </select>
-                </div>
+              <div className="flex-1">
+                <label className="block text-gray-700 text-sm mb-2">From Date</label>
+                <input
+                  type="date"
+                  value={stagedFromDate}
+                  onChange={(e) => setStagedFromDate(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
               </div>
+              <div className="flex-1">
+                <label className="block text-gray-700 text-sm mb-2">To Date</label>
+                <input
+                  type="date"
+                  value={stagedToDate}
+                  onChange={(e) => setStagedToDate(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end items-center gap-4">
+              <button
+                onClick={handleClearFilter}
+                className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+              >
+                Clear Filter
+              </button>
+              <button
+                onClick={handleApplyFilter}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
+              >
+                <Filter className="w-4 h-4" />
+                Apply Filter
+              </button>
             </div>
           </div>
 
           {/* Table Content */}
           <div className="p-6">
-            {currentData.length === 0 ? (
+            {isTabLoading ? (
+              <div className="py-12 text-center">
+                <p className="text-gray-600">Loading...</p>
+              </div>
+            ) : (activeTab === 'procurements' ? procurements : payments).length === 0 ? (
               <div className="py-12 text-center">
                 <p className="text-gray-600">
-                  {displayedData.length === 0 && fromDate && toDate 
+                  {stagedFromDate || stagedToDate 
                     ? 'No transactions found for the selected date range.' 
                     : 'No transactions recorded for this vendor.'}
                 </p>
@@ -428,7 +422,7 @@ export function VendorLedgerScreen() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
-                        {displayedData.map((proc: any) => {
+                        {procurements.map((proc: any) => {
                           const material = Array.isArray(proc.materials) ? proc.materials[0] : proc.materials;
                           const materialName = material?.name ?? '-';
                           const materialUnit = material?.unit ?? '';
@@ -478,7 +472,7 @@ export function VendorLedgerScreen() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
-                        {displayedData.map((pay: any) => {
+                        {payments.map((pay: any) => {
                           const account = Array.isArray(pay.accounts) ? pay.accounts[0] : pay.accounts;
                           return (
                             <tr key={pay.id} className="hover:bg-gray-50">
@@ -509,10 +503,15 @@ export function VendorLedgerScreen() {
                 {hasMore && (
                   <div className="flex justify-center mt-6">
                     <button
-                      onClick={() => setDisplayCount(displayCount + 20)}
-                      className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                      onClick={handleLoadMore}
+                      disabled={isLoadingMore}
+                      className={`px-6 py-2 rounded-lg transition-colors ${
+                        isLoadingMore
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
                     >
-                      Load More
+                      {isLoadingMore ? 'Loading...' : 'Load More'}
                     </button>
                   </div>
                 )}

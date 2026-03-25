@@ -1,5 +1,5 @@
 import {DbPaymentMode} from "../services/types";
-export const PAGE_SIZE = 20;
+export const PAGE_SIZE = 2;
 const PRODUCTION_STATISTICS_FIRST_PAGE_SIZE = 30;
 
 export function getRange(page: number) {

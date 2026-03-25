@@ -229,7 +229,9 @@ export function EditEmployeeScreen() {
                   </select>
                   <button
                     type="button"
-                    onClick={() => navigate('/admin/employees/role-setup')}
+                    onClick={() => navigate('/admin/employees/role-setup/create', {
+                      state: { from: `/admin/employees/${employeeId}/edit` },
+                    })}
                     className="text-blue-600 hover:text-blue-700 text-sm whitespace-nowrap underline"
                   >
                     Create New Role

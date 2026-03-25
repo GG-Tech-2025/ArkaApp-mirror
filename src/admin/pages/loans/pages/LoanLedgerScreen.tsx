@@ -67,7 +67,7 @@ export function LoanLedgerScreen() {
           {loanLoading ? (
             <p className="text-gray-600">Loading loan details...</p>
           ) : loan ? (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
               <div>
                 <p className="text-gray-600 text-sm">Loan Type</p>
                 <p className="text-gray-900">{formattedLoanType}</p>
@@ -75,6 +75,12 @@ export function LoanLedgerScreen() {
               <div>
                 <p className="text-gray-600 text-sm">Principal Amount</p>
                 <p className="text-gray-900">₹{loan.principal_amount.toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-gray-600 text-sm">Interest Rate</p>
+                <p className="text-gray-900">
+                  {loan.interest_rate != null ? `${loan.interest_rate}%` : '-'}
+                </p>
               </div>
               <div>
                 <p className="text-gray-600 text-sm">Outstanding Balance</p>
