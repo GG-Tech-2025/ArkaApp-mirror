@@ -50,6 +50,7 @@ export function SalaryLedgerDetailScreen() {
     setStagedFromDate,
     setStagedToDate,
     handleApplyFilter,
+    handleClearFilter,
     handleLoadMore,
     handleAddPayment,
     goBack,
@@ -167,7 +168,13 @@ export function SalaryLedgerDetailScreen() {
               />
             </div>
           </div>
-          <div className="mt-4 flex justify-end">
+          <div className="mt-4 flex justify-end items-center gap-4">
+            <button
+              onClick={handleClearFilter}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+            >
+              Clear Filter
+            </button>
             <button
               onClick={handleApplyFilter}
               className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"

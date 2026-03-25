@@ -80,20 +80,40 @@ export function useSalaryLedgerDetail() {
     }
   }, [employeeId]);
 
+  // Make end date inclusive by adding one day
+  const getInclusiveToDate = (toDate: string): string => {
+    if (!toDate) return '';
+    const date = new Date(toDate);
+    date.setDate(date.getDate() + 1);
+    return date.toISOString().split('T')[0];
+  };
+
   const handleApplyFilter = () => {
     if (!employeeId) return;
     setAppliedSortOrder(stagedSortOrder);
     setAppliedFromDate(stagedFromDate);
     setAppliedToDate(stagedToDate);
     setPage(0);
-    fetchLedger(employeeId, 0, stagedSortOrder, stagedFromDate, stagedToDate, false);
+    fetchLedger(employeeId, 0, stagedSortOrder, stagedFromDate, getInclusiveToDate(stagedToDate), false);
+  };
+
+  const handleClearFilter = () => {
+    if (!employeeId) return;
+    setStagedSortOrder('newest');
+    setStagedFromDate('');
+    setStagedToDate('');
+    setAppliedSortOrder('newest');
+    setAppliedFromDate('');
+    setAppliedToDate('');
+    setPage(0);
+    fetchLedger(employeeId, 0, 'newest', '', '', false);
   };
 
   const handleLoadMore = () => {
     if (!employeeId || loadingMore || !hasMore) return;
     const nextPage = page + 1;
     setPage(nextPage);
-    fetchLedger(employeeId, nextPage, appliedSortOrder, appliedFromDate, appliedToDate, true);
+    fetchLedger(employeeId, nextPage, appliedSortOrder, appliedFromDate, getInclusiveToDate(appliedToDate), true);
   };
 
   const handleAddPayment = () => {
@@ -117,6 +137,7 @@ export function useSalaryLedgerDetail() {
     setStagedToDate,
     // Actions
     handleApplyFilter,
+    handleClearFilter,
     handleLoadMore,
     handleAddPayment,
     goBack,

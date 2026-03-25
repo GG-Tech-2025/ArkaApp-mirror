@@ -1910,6 +1910,7 @@ export async function getRoles(): Promise<RoleWithCategory[]> {
   const { data, error } = await supabase
     .from("roles")
     .select("id, name, category")
+    .eq("active", true)
     .order("name");
 
   if (error) throw error;
@@ -2769,12 +2770,18 @@ export async function deleteVendorPayment(paymentId: string): Promise<void> {
 }
 
 /* ------------------------------------------------------------------
-  Get Vendor Procurements
+  Get Vendor Procurements (Paginated with optional date range and sort)
 ---------------------------------------------------------------------*/
 export async function getVendorProcurements(
-  vendorId: string
+  vendorId: string,
+  page = 0,
+  isAscending = false,
+  fromDate?: string,
+  toDate?: string
 ) {
-  const { data, error } = await supabase
+  const { from, to } = getRange(page);
+
+  let query = supabase
     .from("procurements")
     .select(`
       id,
@@ -2789,27 +2796,45 @@ export async function getVendorProcurements(
       approved,
       created_at,
       materials!material_id(id, name, unit)
-    `)
+    `, { count: "exact" })
     .eq("vendor_id", vendorId)
-    .eq("approved", true)
-    .order("date", { ascending: false })
+    .eq("approved", true);
 
-  if (error) throw error
-  return data ?? []
+  if (fromDate) {
+    query = query.gte("date", fromDate);
+  }
+  if (toDate) {
+    query = query.lte("date", toDate);
+  }
+
+  query = query
+    .order("date", { ascending: isAscending })
+    .range(from, to);
+
+  const { data, count, error } = await query;
+
+  if (error) throw error;
+
+  return {
+    data: data ?? [],
+    total: count ?? 0,
+    hasMore: from + PAGE_SIZE < (count ?? 0),
+  };
 }
 /* ------------------------------------------------------------------
-  Get Vendor Payments
+  Get Vendor Payments (Paginated with optional date range and sort)
 ---------------------------------------------------------------------*/
 
 export async function getVendorPayments(
   vendorId: string,
-  page = 1
+  page = 0,
+  isAscending = false,
+  fromDate?: string,
+  toDate?: string
 ) {
-  const PAGE_SIZE = 20;
-  const from = (page - 1) * PAGE_SIZE;
-  const to = from + PAGE_SIZE - 1;
+  const { from, to } = getRange(page);
 
-  const { data, count, error } = await supabase
+  let query = supabase
     .from("vendor_payments")
     .select(`
       id,
@@ -2824,15 +2849,27 @@ export async function getVendorPayments(
         account_number
       )
     `, { count: "exact" })
-    .eq("vendor_id", vendorId)
-    .order("payment_date", { ascending: false })
+    .eq("vendor_id", vendorId);
+
+  if (fromDate) {
+    query = query.gte("payment_date", fromDate);
+  }
+  if (toDate) {
+    query = query.lte("payment_date", toDate);
+  }
+
+  query = query
+    .order("payment_date", { ascending: isAscending })
     .range(from, to);
+
+  const { data, count, error } = await query;
 
   if (error) throw error;
 
   return {
     data: data ?? [],
-    hasMore: count ? to < count - 1 : false,
+    total: count ?? 0,
+    hasMore: from + PAGE_SIZE < (count ?? 0),
   };
 }
 /* ------------------------------------------------------------------
@@ -3086,7 +3123,8 @@ export async function saveAttendance(
 
 export async function searchEmployees(
   searchTerm: string,
-  page: number
+  page: number,
+  isActive?: boolean
 ): Promise<PaginatedResult<EmployeeSearchResult>> {
 
   const { from, to } = getRange(page);
@@ -3096,6 +3134,10 @@ export async function searchEmployees(
     .from("employee_with_balance")
     .select("*", { count: "exact" })
     .order("name", { ascending: true });
+
+  if (isActive !== undefined) {
+    query = query.eq("active", isActive);
+  }
 
   if (trimmed.length > 0) {
     query = query.or(
