@@ -25,13 +25,25 @@ export function useVendorManagement() {
       }
       
       setHasMore(result.hasMore);
-      setTotalVendors(result.total);
     } catch (err) {
       console.error('Failed to fetch vendors:', err);
     } finally {
       setLoading(false);
     }
   };
+
+  // Fetch total vendor count once on mount (unfiltered)
+  useEffect(() => {
+    const fetchTotalCount = async () => {
+      try {
+        const result = await searchVendors('', 0);
+        setTotalVendors(result.total);
+      } catch (err) {
+        console.error('Failed to fetch total vendor count:', err);
+      }
+    };
+    fetchTotalCount();
+  }, []);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {

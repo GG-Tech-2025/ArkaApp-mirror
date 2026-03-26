@@ -3285,7 +3285,38 @@ export async function createSalaryLedgerEntry(
   }
 
   /* -------------------------------------------------------------
-     3. INSERT LEDGER ENTRY
+     3. DEDUCT FROM ACCOUNT / CASH BALANCE (payments only)
+  --------------------------------------------------------------*/
+
+  const isPayment = input.entry_type !== "AUTO" && input.entry_type !== "SALARY_AUTO_ENTRY";
+
+  if (isPayment) {
+    let accountIdToDeduct: string | undefined;
+
+    if (input.payment_mode === "CASH") {
+      const cashAccount = await getCashAccount();
+      accountIdToDeduct = cashAccount.id;
+    } else {
+      accountIdToDeduct = input.sender_account_id ?? undefined;
+    }
+
+    if (!accountIdToDeduct) {
+      throw new Error("Account not found for deduction");
+    }
+
+    const { error: rpcError } = await supabase.rpc(
+      "decrement_account_balance",
+      {
+        p_account_id: accountIdToDeduct,
+        p_amount: input.amount,
+      }
+    );
+
+    if (rpcError) throw rpcError;
+  }
+
+  /* -------------------------------------------------------------
+     4. INSERT LEDGER ENTRY
   --------------------------------------------------------------*/
 
   const { data, error } = await supabase

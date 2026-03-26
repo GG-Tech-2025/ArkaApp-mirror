@@ -5,6 +5,7 @@ import {
   getAccounts,
   getEmployeeLedger,
   createSalaryLedgerEntry,
+  CASH_ACCOUNT_ID,
 } from '../../services/middleware.service';
 import {
   validateAddPayment,
@@ -109,11 +110,37 @@ export function useAddPayment() {
     });
   }
 
+  /**
+   * Get balance of the account that will be deducted:
+   * - Cash mode → cash account balance
+   * - Other modes → selected sender account balance
+   */
+  function getSelectedAccountBalance(): number | null {
+    if (formInput.modeOfPayment === 'Cash') {
+      const cashAccount = accounts.find((a) => a.id === CASH_ACCOUNT_ID);
+      return cashAccount?.balance ?? null;
+    }
+    if (formInput.senderAccountId) {
+      const account = accounts.find((a) => a.id === formInput.senderAccountId);
+      return account?.balance ?? null;
+    }
+    return null;
+  }
+
+  const selectedAccountBalance = getSelectedAccountBalance();
+
   const handleCreate = async () => {
     if (!employeeId) return;
 
     const runningBalance = employee?.running_balance ?? 0;
     const newErrors = validateAddPayment(formInput, runningBalance);
+
+    // Validate amount against account balance
+    const amount = Number(formInput.amount);
+    if (amount > 0 && selectedAccountBalance !== null && amount > selectedAccountBalance) {
+      newErrors.amount = `Amount exceeds available account balance (₹${selectedAccountBalance.toLocaleString()})`;
+    }
+
     setErrors(newErrors);
     if (Object.keys(newErrors).length > 0) return;
     if (!formInput.entryType) return;
@@ -172,6 +199,7 @@ export function useAddPayment() {
     handleSuccessClose,
     handleFailureClose,
     isAmountDisabled,
+    selectedAccountBalance,
     goBack,
     employeeId,
   };
