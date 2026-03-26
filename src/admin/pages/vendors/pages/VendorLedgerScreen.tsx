@@ -630,7 +630,7 @@ export function VendorLedgerScreen() {
       {/* Delete Payment Confirmation Modal */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 relative">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
             <button
               onClick={handleCloseDeleteConfirm}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
@@ -676,6 +676,7 @@ export function VendorLedgerScreen() {
           title="No Transactions Found"
           message="No transactions found for the selected date range."
           onClose={() => setShowNoTransactionsPopup(false)}
+          type="warning"
         />
       )}
       

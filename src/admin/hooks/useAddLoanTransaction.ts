@@ -98,7 +98,28 @@ export function useAddLoanTransaction() {
         receiver_account_info: '',
       }));
     }
+
+    // Clear account balance error when account changes
+    if (key === 'sender_account_id' || key === 'amount') {
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.amount_exceeds_balance;
+        return next;
+      });
+    }
   };
+
+  // Get selected account's balance for validation
+  const getSelectedAccountBalance = (): number | undefined => {
+    const accountId = transactionInput.payment_mode === 'CASH'
+      ? CASH_ACCOUNT_ID
+      : transactionInput.sender_account_id;
+    if (!accountId) return undefined;
+    const account = accounts.find((a) => a.id === accountId);
+    return account?.balance;
+  };
+
+  const selectedAccountBalance = getSelectedAccountBalance();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,6 +139,18 @@ export function useAddLoanTransaction() {
 
     // Validate
     const validationErrors = validateAddLoanTransaction(input, loan?.outstanding_balance);
+
+    // Validate amount against selected account balance
+    const accountId = transactionInput.payment_mode === 'CASH'
+      ? CASH_ACCOUNT_ID
+      : transactionInput.sender_account_id;
+    if (accountId && input.amount > 0) {
+      const account = accounts.find((a) => a.id === accountId);
+      if (account && input.amount > account.balance) {
+        validationErrors.amount = `Amount (₹${input.amount.toLocaleString()}) exceeds the selected account balance of ₹${account.balance.toLocaleString()}`;
+      }
+    }
+
     setErrors(validationErrors);
 
     if (Object.keys(validationErrors).length > 0) {
@@ -195,6 +228,7 @@ export function useAddLoanTransaction() {
     errorMessage,
     submitting,
     today,
+    selectedAccountBalance,
     handleSubmit,
     handleSuccessClose,
     handleFailureClose,

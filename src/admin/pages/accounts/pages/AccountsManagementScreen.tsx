@@ -4,7 +4,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recha
 import { useAdminNavigation } from '../../../hooks/useAdminNavigation';
 import { useAccountsIncome } from '../../../hooks/useAccountsIncome';
 import { useAccountsExpenses } from '../../../hooks/useAccountsExpenses';
-import { useAccountsLoanIncome } from '../../../hooks/useAccountsLoanIncome';
+import { useAccountsLoanInterest } from '../../../hooks/useAccountsLoanInterest';
 
 type FilterType = 'Current Month' | 'Last month' | 'Last year' | 'Custom range';
 
@@ -30,7 +30,21 @@ export function AccountsManagementScreen() {
     filterType === 'Custom range' ? customEndDate : undefined
   );
 
-  // Fetch expenses data based on filter and selected type
+  // Fetch loan interest expenses based on filter
+  const {
+    loanInterestEntries,
+    loading: loanInterestLoading,
+    error: loanInterestError,
+    totalLoanInterest,
+    showError: showLoanInterestError,
+    closeError: closeLoanInterestError,
+  } = useAccountsLoanInterest(
+    filterType,
+    filterType === 'Custom range' ? customStartDate : undefined,
+    filterType === 'Custom range' ? customEndDate : undefined
+  );
+
+  // Fetch expenses data based on filter and selected type (pass loanInterestTotal for pie chart)
   const {
     expenses,
     procurements,
@@ -46,25 +60,12 @@ export function AccountsManagementScreen() {
     filterType,
     filterType === 'Custom range' ? customStartDate : undefined,
     filterType === 'Custom range' ? customEndDate : undefined,
-    selectedExpenseTypeId
+    selectedExpenseTypeId,
+    totalLoanInterest
   );
 
-  // Fetch loan disbursement income based on filter
-  const {
-    loanDisbursements,
-    loading: loanIncomeLoading,
-    error: loanIncomeError,
-    totalLoanIncome,
-    showError: showLoanIncomeError,
-    closeError: closeLoanIncomeError,
-  } = useAccountsLoanIncome(
-    filterType,
-    filterType === 'Custom range' ? customStartDate : undefined,
-    filterType === 'Custom range' ? customEndDate : undefined
-  );
-
-  // Calculate profit (includes procurements and loan income)
-  const profit = totalIncome + totalLoanIncome - totalExpenses - totalProcurements;
+  // Calculate profit (includes procurements and loan interest)
+  const profit = totalIncome - totalExpenses - totalProcurements - totalLoanInterest;
 
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
 
@@ -161,21 +162,21 @@ export function AccountsManagementScreen() {
                   <Wallet className="w-10 h-10 text-green-600" />
                 </div>
                 <p className="text-gray-700 mb-2">Total Income</p>
-                {incomeLoading || loanIncomeLoading ? (
+                {incomeLoading ? (
                   <p className="text-green-600 text-lg">Loading...</p>
                 ) : (
-                  <p className="text-green-600 text-lg">₹{(totalIncome + totalLoanIncome).toLocaleString()}</p>
+                  <p className="text-green-600 text-lg">₹{totalIncome.toLocaleString()}</p>
                 )}
               </div>
             </div>
 
-            {/* Income Bottom Half - Orders & Loan Disbursements List */}
+            {/* Income Bottom Half - Orders List */}
             <div className="p-6 flex flex-col flex-grow overflow-hidden">
-              {incomeLoading && loanIncomeLoading ? (
+              {incomeLoading ? (
                 <div className="flex justify-center items-center flex-grow">
                   <p className="text-gray-500">Loading income...</p>
                 </div>
-              ) : orders.length === 0 && loanDisbursements.length === 0 ? (
+              ) : orders.length === 0 ? (
                 <div className="flex justify-center items-center flex-grow">
                   <p className="text-gray-500">No income found for this period</p>
                 </div>
@@ -223,51 +224,6 @@ export function AccountsManagementScreen() {
                       ))}
                     </>
                   )}
-
-                  {/* Loan Disbursements Section */}
-                  {loanDisbursements.length > 0 && (
-                    <>
-                      <div className="border-b border-gray-200 pb-2 mt-4">
-                        <h4 className="text-sm font-semibold text-gray-700">🏦 Loan Disbursements (₹{totalLoanIncome.toLocaleString()})</h4>
-                      </div>
-                      {loanDisbursements.map((disbursement) => (
-                        <div
-                          key={disbursement.id}
-                          className="border border-purple-200 bg-purple-50 rounded-lg p-4 hover:bg-purple-100 transition-colors flex-shrink-0"
-                        >
-                          <div className="grid grid-cols-4 gap-4 text-sm">
-                            <div>
-                              <p className="text-gray-500 mb-1">Lender</p>
-                              <p className="text-gray-900">{disbursement.loans?.lender_name || 'N/A'}</p>
-                            </div>
-                            <div>
-                              <p className="text-gray-500 mb-1">Loan Type</p>
-                              <span className={`inline-block px-2 py-1 rounded-full text-xs ${
-                                disbursement.loans?.loan_type === 'GIVEN'
-                                  ? 'bg-blue-100 text-blue-800'
-                                  : 'bg-orange-100 text-orange-800'
-                              }`}>
-                                {disbursement.loans?.loan_type === 'GIVEN' ? 'Given' : 'Taken'}
-                              </span>
-                            </div>
-                            <div>
-                              <p className="text-gray-500 mb-1">Amount</p>
-                              <p className="text-purple-700 font-semibold">₹{(disbursement.amount || 0).toLocaleString()}</p>
-                            </div>
-                            <div>
-                              <p className="text-gray-500 mb-1">Date</p>
-                              <p className="text-gray-900">{new Date(disbursement.transaction_date).toLocaleDateString()}</p>
-                            </div>
-                          </div>
-                          {disbursement.notes && (
-                            <div className="mt-2 pt-2 border-t border-purple-200">
-                              <p className="text-gray-500 text-xs">Notes: {disbursement.notes}</p>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </>
-                  )}
                 </div>
               )}
             </div>
@@ -291,6 +247,7 @@ export function AccountsManagementScreen() {
               >
                 <option value="Overall">Overall</option>
                 <option value="Procurement">📦 Procurement</option>
+                <option value="LoanInterest">💰 Loan Interest</option>
                 {expenseTypes.map((type) => (
                   <option key={type.id} value={type.id}>
                     {type.name}
@@ -302,7 +259,7 @@ export function AccountsManagementScreen() {
             {/* Expenses Top Half - Pie Chart */}
             <div className="p-6 border-b border-gray-200 bg-red-50 flex-shrink-0">
               <div className="flex flex-col items-center">
-                {expensesLoading ? (
+                {expensesLoading || loanInterestLoading ? (
                   <div className="h-48 flex items-center justify-center">
                     <p className="text-gray-500">Loading chart...</p>
                   </div>
@@ -332,7 +289,7 @@ export function AccountsManagementScreen() {
                       </PieChart>
                     </ResponsiveContainer>
                     <p className="text-gray-700 mt-4 mb-2">Total Expenses</p>
-                    <p className="text-red-600 text-lg">₹{totalExpenses.toLocaleString()}</p>
+                    <p className="text-red-600 text-lg">₹{(totalExpenses + totalProcurements + totalLoanInterest).toLocaleString()}</p>
                   </>
                 )}
               </div>
@@ -340,11 +297,11 @@ export function AccountsManagementScreen() {
 
             {/* Expenses Bottom Half - Expenses List */}
             <div className="p-6 flex flex-col flex-grow overflow-hidden">
-              {expensesLoading ? (
+              {expensesLoading || loanInterestLoading ? (
                 <div className="flex justify-center items-center flex-grow">
                   <p className="text-gray-500">Loading expenses...</p>
                 </div>
-              ) : expenses.length === 0 && procurements.length === 0 ? (
+              ) : expenses.length === 0 && procurements.length === 0 && loanInterestEntries.length === 0 ? (
                 <div className="flex justify-center items-center flex-grow">
                   <p className="text-gray-500">No expenses found for this period</p>
                 </div>
@@ -438,6 +395,51 @@ export function AccountsManagementScreen() {
                       ))}
                     </>
                   )}
+
+                  {/* Loan Interest Section */}
+                  {loanInterestEntries.length > 0 && (
+                    <>
+                      <div className="border-b border-gray-200 pb-2 mt-4">
+                        <h4 className="text-sm font-semibold text-gray-700">💰 Loan Interest (₹{totalLoanInterest.toLocaleString()})</h4>
+                      </div>
+                      {loanInterestEntries.map((entry) => (
+                        <div
+                          key={entry.id}
+                          className="border border-amber-200 bg-amber-50 rounded-lg p-4 hover:bg-amber-100 transition-colors flex-shrink-0"
+                        >
+                          <div className="grid grid-cols-4 gap-4 text-sm">
+                            <div>
+                              <p className="text-gray-500 mb-1">Lender</p>
+                              <p className="text-gray-900">{entry.loans?.lender_name || 'N/A'}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500 mb-1">Loan Type</p>
+                              <span className={`inline-block px-2 py-1 rounded-full text-xs ${
+                                entry.loans?.loan_type === 'GIVEN'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : 'bg-orange-100 text-orange-800'
+                              }`}>
+                                {entry.loans?.loan_type === 'GIVEN' ? 'Given' : 'Taken'}
+                              </span>
+                            </div>
+                            <div>
+                              <p className="text-gray-500 mb-1">Amount</p>
+                              <p className="text-amber-700 font-semibold">₹{(entry.amount || 0).toLocaleString()}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500 mb-1">Date</p>
+                              <p className="text-gray-900">{new Date(entry.transaction_date).toLocaleDateString()}</p>
+                            </div>
+                          </div>
+                          {entry.notes && (
+                            <div className="mt-2 pt-2 border-t border-amber-200">
+                              <p className="text-gray-500 text-xs">Notes: {entry.notes}</p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -511,12 +513,12 @@ export function AccountsManagementScreen() {
         </div>
       )}
 
-      {/* Error Popup - Loan Income */}
-      {showLoanIncomeError && loanIncomeError && (
+      {/* Error Popup - Loan Interest */}
+      {showLoanInterestError && loanInterestError && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
             <button
-              onClick={closeLoanIncomeError}
+              onClick={closeLoanInterestError}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
               aria-label="Close error"
             >
@@ -530,10 +532,10 @@ export function AccountsManagementScreen() {
                 </div>
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Loan Income Data</h3>
-                <p className="text-gray-600 text-sm mb-4">{loanIncomeError}</p>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Loan Interest Data</h3>
+                <p className="text-gray-600 text-sm mb-4">{loanInterestError}</p>
                 <button
-                  onClick={closeLoanIncomeError}
+                  onClick={closeLoanInterestError}
                   className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
                 >
                   Close

@@ -619,11 +619,13 @@ export async function getCustomerOrdersWithSettlement(
         dc_number,
         total_paid,
         remaining_balance,
-        payment_status
+        payment_status,
+        delivered
       `,
       { count: "exact" }
     )
     .eq("customer_id", customerId)
+    .eq("delivered", true)
     .order("order_date", { ascending: true })
     .range(from, to);
 
@@ -819,6 +821,38 @@ export async function getLoanDisbursementsByDateRange(
       )
     `)
     .eq("transaction_type", "DISBURSEMENT")
+    .gte("transaction_date", startDate)
+    .lte("transaction_date", endDate)
+    .order("transaction_date", { ascending: false });
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
+ * Fetch loan interest entries from loan_ledger within a date range.
+ * Used in AccountsManagementScreen — Expenses section (Loan Interest).
+ */
+export async function getLoanInterestByDateRange(
+  startDate: string,
+  endDate: string
+): Promise<any[]> {
+  const { data, error } = await supabase
+    .from("loan_ledger")
+    .select(`
+      id,
+      loan_id,
+      amount,
+      payment_mode,
+      transaction_date,
+      notes,
+      sender_account_id,
+      loans (
+        lender_name,
+        loan_type
+      )
+    `)
+    .eq("transaction_type", "INTEREST")
     .gte("transaction_date", startDate)
     .lte("transaction_date", endDate)
     .order("transaction_date", { ascending: false });
@@ -1239,7 +1273,28 @@ export async function createLoanLedgerTransaction(
   if (updateError) throw updateError;
 
   /* -------------------------------------------------------------
-     5. RETURN RESULT
+     5. DEDUCT FROM SENDER ACCOUNT (REPAYMENT + INTEREST)
+     Money flows OUT from the sender account for both repayments
+     and interest payments.
+  --------------------------------------------------------------*/
+  if (input.transaction_type === "REPAYMENT" || input.transaction_type === "INTEREST") {
+    const accountToDeduct = input.sender_account_id;
+
+    if (accountToDeduct) {
+      const { error: deductError } = await supabase.rpc(
+        "decrement_account_balance",
+        {
+          p_account_id: accountToDeduct,
+          p_amount: input.amount,
+        }
+      );
+
+      if (deductError) throw deductError;
+    }
+  }
+
+  /* -------------------------------------------------------------
+     6. RETURN RESULT
   --------------------------------------------------------------*/
   return {
     newBalance,

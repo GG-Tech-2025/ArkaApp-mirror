@@ -1,4 +1,3 @@
-import React from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { Popup } from '../../../../components/Popup';
 import { useAddLoanTransaction } from '../../../hooks/useAddLoanTransaction';
@@ -18,6 +17,7 @@ export function AddLoanTransactionScreen() {
     errorMessage,
     submitting,
     today,
+    selectedAccountBalance,
     handleSubmit,
     handleSuccessClose,
     handleFailureClose,
@@ -108,6 +108,11 @@ export function AddLoanTransactionScreen() {
               {errors.amount && (
                 <p className="text-red-600 text-sm mt-1">{errors.amount}</p>
               )}
+              {selectedAccountBalance !== undefined && transactionInput.amount > 0 && !errors.amount && (
+                <p className={`text-sm mt-1 ${transactionInput.amount > selectedAccountBalance ? 'text-red-600' : 'text-gray-500'}`}>
+                  Available account balance: ₹{selectedAccountBalance.toLocaleString()}
+                </p>
+              )}
             </div>
 
             {/* Date */}
@@ -164,7 +169,7 @@ export function AddLoanTransactionScreen() {
                 <option value="">{accountsLoading ? 'Loading accounts...' : 'Select account'}</option>
                 {accounts.map((account) => (
                   <option key={account.id} value={account.id}>
-                    #{account.account_number}
+                    #{account.account_number} (Balance: ₹{account.balance.toLocaleString()})
                   </option>
                 ))}
               </select>
