@@ -128,7 +128,8 @@ export function useAccountsExpenses(
   filterType: FilterType,
   customStartDate?: string,
   customEndDate?: string,
-  selectedExpenseTypeId?: string
+  selectedExpenseTypeId?: string,
+  loanInterestTotal?: number
 ) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [procurements, setProcurements] = useState<Procurement[]>([]);
@@ -179,7 +180,7 @@ export function useAccountsExpenses(
     return procurements.reduce((sum, proc) => sum + (proc.total_price || 0), 0);
   }, [procurements]);
 
-  // Prepare pie chart data - by type (expenses + procurements)
+  // Prepare pie chart data - by type (expenses + procurements + loan interest)
   const pieChartData = useMemo(() => {
     if (!selectedExpenseTypeId || selectedExpenseTypeId === 'Overall') {
       // Group by type (both expenses and procurements)
@@ -197,10 +198,21 @@ export function useAccountsExpenses(
         dataByType['Procurement'] = (dataByType['Procurement'] || 0) + procurementTotal;
       }
 
+      // Add loan interest as "Loan Interest" type
+      if (loanInterestTotal && loanInterestTotal > 0) {
+        dataByType['Loan Interest'] = (dataByType['Loan Interest'] || 0) + loanInterestTotal;
+      }
+
       return Object.entries(dataByType).map(([name, value]) => ({
         name,
         value,
       }));
+    } else if (selectedExpenseTypeId === 'LoanInterest') {
+      // When Loan Interest filter is selected, show as single entry
+      if (loanInterestTotal && loanInterestTotal > 0) {
+        return [{ name: 'Loan Interest', value: loanInterestTotal }];
+      }
+      return [];
     } else {
       // Filter expenses by selected type and group by subtype
       const filteredByType = expenses.filter(
@@ -232,7 +244,7 @@ export function useAccountsExpenses(
         value,
       }));
     }
-  }, [expenses, procurements, selectedExpenseTypeId]);
+  }, [expenses, procurements, selectedExpenseTypeId, loanInterestTotal]);
 
   // Get filtered expenses based on selected type
   const filteredExpenses = useMemo(() => {

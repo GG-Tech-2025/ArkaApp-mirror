@@ -93,6 +93,7 @@ export function CustomerDetailsScreen() {
   const [paymentsPage, setPaymentsPage] = useState(1);
   const [hasMorePayments, setHasMorePayments] = useState(true);
   const [savingPayment, setSavingPayment] = useState(false);
+  const [paymentAmountError, setPaymentAmountError] = useState("");
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
@@ -255,6 +256,7 @@ export function CustomerDetailsScreen() {
     setSenderAccount("");
     setReceiverAccount("");
     setEditingPayment(null);
+    setPaymentAmountError("");
     setShowPaymentModal(true);
   };
 
@@ -276,10 +278,27 @@ export function CustomerDetailsScreen() {
     setPaymentMode("Cash");
     setSenderAccount("");
     setReceiverAccount("");
+    setPaymentAmountError("");
   };
 
   const handleConfirmPayment = async () => {
     if (!customer) return;
+
+    // Validate amount against delivered orders outstanding balance
+    const amount = parseFloat(paymentAmount);
+    const outstanding = deliveredOutstanding;
+
+    if (!paymentAmount || isNaN(amount) || amount <= 0) {
+      setPaymentAmountError("Please enter a valid amount.");
+      return;
+    } else if (amount > outstanding) {
+      setPaymentAmountError(
+        `Amount cannot exceed outstanding balance of delivered orders (₹${outstanding.toLocaleString()}).`
+      );
+      return;
+    } else {
+      setPaymentAmountError("");
+    }
 
     try {
       setSavingPayment(true);
@@ -528,9 +547,9 @@ export function CustomerDetailsScreen() {
       return;
     }
 
-    // 🔎 Filter orders
+    // 🔎 Filter orders by delivery date
     const ordersInRange = orders.filter((order) => {
-      const d = new Date(order.date);
+      const d = new Date(order.deliveryDate);
       return d >= fromDate && d <= toDate;
     });
 
@@ -639,6 +658,16 @@ export function CustomerDetailsScreen() {
     (a) => !a.label.toUpperCase().includes("CASH"),
   );
 
+  // Compute delivered orders outstanding for payment validation
+  const deliveredTotalSales = orders.reduce(
+    (sum, o) => sum + (o.finalPrice ?? 0),
+    0
+  );
+  const deliveredOutstanding = orders.reduce(
+    (sum, o) => sum + (o.unpaidAmount ?? 0),
+    0
+  );
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
@@ -721,7 +750,12 @@ export function CustomerDetailsScreen() {
               {activeTab === "Payments" && (
                 <button
                   onClick={handleAddPayment}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  disabled={deliveredOutstanding <= 0}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                    deliveredOutstanding <= 0
+                      ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                      : "bg-blue-600 text-white hover:bg-blue-700"
+                  }`}
                 >
                   <Plus className="w-5 h-5" />
                   Add payment
@@ -765,22 +799,22 @@ export function CustomerDetailsScreen() {
 
         {/* Top Quarter - Financial Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          {/* Total Sales Card */}
+          {/* Total Sales Card (Delivered Orders Only) */}
           <div className="bg-white rounded-lg shadow-lg p-6">
-            <h3 className="text-gray-700 mb-2">Total Sales</h3>
+            <h3 className="text-gray-700 mb-2">Total Sales (Delivered)</h3>
             <p className="text-gray-900">
-              ₹{customer.totalSales.toLocaleString()}
+              ₹{deliveredTotalSales.toLocaleString()}
             </p>
           </div>
 
-          {/* Unpaid Amount Card */}
+          {/* Unpaid Amount Card (Delivered Orders Only) */}
           <div className="bg-white rounded-lg shadow-lg p-6">
-            <h3 className="text-gray-700 mb-2">Unpaid Amount</h3>
+            <h3 className="text-gray-700 mb-2">Outstanding Amount (Delivered)</h3>
             <p
-              className={`${customer.unpaidAmount > 0 ? "text-red-600" : "text-green-600"}`}
+              className={`${deliveredOutstanding > 0 ? "text-red-600" : "text-green-600"}`}
             >
-              {customer.unpaidAmount > 0
-                ? `₹${customer.unpaidAmount.toLocaleString()}`
+              {deliveredOutstanding > 0
+                ? `₹${deliveredOutstanding.toLocaleString()}`
                 : "₹0"}
             </p>
           </div>
@@ -1040,14 +1074,14 @@ export function CustomerDetailsScreen() {
                           </td>
                           <td className="px-4 py-4">
                             <div className="flex gap-2">
-                              <button
+                              {/* <button
                                 disabled
                                 // onClick={() => handleEditPayment(payment)}
                                 className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
                                 aria-label="Edit payment"
                               >
                                 <Edit2 className="w-4 h-4" />
-                              </button>
+                              </button> */}
                               <button
                                 onClick={() => handleDeletePayment(payment.id)}
                                 className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
@@ -1173,16 +1207,34 @@ export function CustomerDetailsScreen() {
                   htmlFor="paymentAmount"
                   className="block text-gray-700 mb-2"
                 >
-                  Amount <span className="text-red-600">*</span>
+                  Amount (₹) <span className="text-red-600">*</span>
                 </label>
                 <input
                   id="paymentAmount"
                   type="number"
                   value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setPaymentAmount(val);
+                    const amt = parseFloat(val);
+                    const outstanding = deliveredOutstanding;
+                    if (val && !isNaN(amt) && amt > outstanding) {
+                      setPaymentAmountError(
+                        `Amount cannot exceed outstanding balance of delivered orders (₹${outstanding.toLocaleString()}).`
+                      );
+                    } else {
+                      setPaymentAmountError("");
+                    }
+                  }}
+                  onWheel={(e) => e.currentTarget.blur()}
                   placeholder="Enter amount"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
+                    paymentAmountError ? "border-red-500" : "border-gray-300"
+                  }`}
                 />
+                {paymentAmountError && (
+                  <p className="text-red-600 text-sm mt-1">{paymentAmountError}</p>
+                )}
               </div>
 
               {/* Mode of Payment */}
@@ -1280,12 +1332,14 @@ export function CustomerDetailsScreen() {
                     savingPayment ||
                     !paymentDate ||
                     !paymentAmount ||
+                    !!paymentAmountError ||
                     (paymentMode !== "Cash" &&
                       (nonCashAccounts.length === 0 || !senderAccount || !receiverAccount))
                   }
                   className={`px-6 py-2 rounded-lg transition-colors ${
                     paymentDate &&
                     paymentAmount &&
+                    !paymentAmountError &&
                     (paymentMode === "Cash" ||
                       (nonCashAccounts.length > 0 && senderAccount && receiverAccount))
                       ? "bg-blue-600 text-white hover:bg-blue-700"
@@ -1445,7 +1499,7 @@ export function CustomerDetailsScreen() {
       {/* Delete Payment Confirmation Modal */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 relative">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
             <button
               onClick={() => {
                 setShowDeleteConfirm(false);
@@ -1504,7 +1558,8 @@ export function CustomerDetailsScreen() {
               <X className="w-5 h-5" />
             </button>
 
-            <h2 className="text-gray-900 mb-6">Export Customer Ledger</h2>
+            <h2 className="text-gray-900 mb-2">Export Customer Ledger</h2>
+            <p className="text-gray-500 text-sm mb-6">Orders are filtered by their delivered date</p>
 
             <div className="space-y-4">
               {/* From Date */}
@@ -1598,6 +1653,7 @@ export function CustomerDetailsScreen() {
           title="No Transactions Found"
           message="No transactions found for the selected date range."
           onClose={() => setShowNoTransactionsPopup(false)}
+          type="warning"
         />
       )}
 

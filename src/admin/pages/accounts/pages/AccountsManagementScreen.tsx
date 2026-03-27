@@ -5,6 +5,7 @@ import { useAdminNavigation } from '../../../hooks/useAdminNavigation';
 import { useAccountsIncome } from '../../../hooks/useAccountsIncome';
 import { useAccountsExpenses } from '../../../hooks/useAccountsExpenses';
 import { useAccountsLoanIncome } from '../../../hooks/useAccountsLoanIncome';
+import { useAccountsLoanInterest } from '../../../hooks/useAccountsLoanInterest';
 
 type FilterType = 'Current Month' | 'Last month' | 'Last year' | 'Custom range';
 
@@ -30,23 +31,18 @@ export function AccountsManagementScreen() {
     filterType === 'Custom range' ? customEndDate : undefined
   );
 
-  // Fetch expenses data based on filter and selected type
+  // Fetch loan interest expenses based on filter
   const {
-    expenses,
-    procurements,
-    expenseTypes,
-    loading: expensesLoading,
-    error: expensesError,
-    totalExpenses,
-    totalProcurements,
-    pieChartData,
-    showError: showExpensesError,
-    closeError: closeExpensesError,
-  } = useAccountsExpenses(
+    loanInterestEntries,
+    loading: loanInterestLoading,
+    error: loanInterestError,
+    totalLoanInterest,
+    showError: showLoanInterestError,
+    closeError: closeLoanInterestError,
+  } = useAccountsLoanInterest(
     filterType,
     filterType === 'Custom range' ? customStartDate : undefined,
-    filterType === 'Custom range' ? customEndDate : undefined,
-    selectedExpenseTypeId
+    filterType === 'Custom range' ? customEndDate : undefined
   );
 
   // Fetch loan disbursement income based on filter
@@ -63,8 +59,28 @@ export function AccountsManagementScreen() {
     filterType === 'Custom range' ? customEndDate : undefined
   );
 
-  // Calculate profit (includes procurements and loan income)
-  const profit = totalIncome + totalLoanIncome - totalExpenses - totalProcurements;
+  // Fetch expenses data based on filter and selected type (pass loanInterestTotal for pie chart)
+  const {
+    expenses,
+    procurements,
+    expenseTypes,
+    loading: expensesLoading,
+    error: expensesError,
+    totalExpenses,
+    totalProcurements,
+    pieChartData,
+    showError: showExpensesError,
+    closeError: closeExpensesError,
+  } = useAccountsExpenses(
+    filterType,
+    filterType === 'Custom range' ? customStartDate : undefined,
+    filterType === 'Custom range' ? customEndDate : undefined,
+    selectedExpenseTypeId,
+    totalLoanInterest
+  );
+
+  // Calculate profit (includes procurements, loan income, and loan interest)
+  const profit = totalIncome + totalLoanIncome - totalExpenses - totalProcurements - totalLoanInterest;
 
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
 
@@ -291,6 +307,7 @@ export function AccountsManagementScreen() {
               >
                 <option value="Overall">Overall</option>
                 <option value="Procurement">📦 Procurement</option>
+                <option value="LoanInterest">💰 Loan Interest</option>
                 {expenseTypes.map((type) => (
                   <option key={type.id} value={type.id}>
                     {type.name}
@@ -302,7 +319,7 @@ export function AccountsManagementScreen() {
             {/* Expenses Top Half - Pie Chart */}
             <div className="p-6 border-b border-gray-200 bg-red-50 flex-shrink-0">
               <div className="flex flex-col items-center">
-                {expensesLoading ? (
+                {expensesLoading || loanInterestLoading ? (
                   <div className="h-48 flex items-center justify-center">
                     <p className="text-gray-500">Loading chart...</p>
                   </div>
@@ -332,7 +349,7 @@ export function AccountsManagementScreen() {
                       </PieChart>
                     </ResponsiveContainer>
                     <p className="text-gray-700 mt-4 mb-2">Total Expenses</p>
-                    <p className="text-red-600 text-lg">₹{totalExpenses.toLocaleString()}</p>
+                    <p className="text-red-600 text-lg">₹{(totalExpenses + totalProcurements + totalLoanInterest).toLocaleString()}</p>
                   </>
                 )}
               </div>
@@ -340,11 +357,11 @@ export function AccountsManagementScreen() {
 
             {/* Expenses Bottom Half - Expenses List */}
             <div className="p-6 flex flex-col flex-grow overflow-hidden">
-              {expensesLoading ? (
+              {expensesLoading || loanInterestLoading ? (
                 <div className="flex justify-center items-center flex-grow">
                   <p className="text-gray-500">Loading expenses...</p>
                 </div>
-              ) : expenses.length === 0 && procurements.length === 0 ? (
+              ) : expenses.length === 0 && procurements.length === 0 && loanInterestEntries.length === 0 ? (
                 <div className="flex justify-center items-center flex-grow">
                   <p className="text-gray-500">No expenses found for this period</p>
                 </div>
@@ -434,6 +451,51 @@ export function AccountsManagementScreen() {
                               </span>
                             </div>
                           </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+
+                  {/* Loan Interest Section */}
+                  {loanInterestEntries.length > 0 && (
+                    <>
+                      <div className="border-b border-gray-200 pb-2 mt-4">
+                        <h4 className="text-sm font-semibold text-gray-700">💰 Loan Interest (₹{totalLoanInterest.toLocaleString()})</h4>
+                      </div>
+                      {loanInterestEntries.map((entry) => (
+                        <div
+                          key={entry.id}
+                          className="border border-amber-200 bg-amber-50 rounded-lg p-4 hover:bg-amber-100 transition-colors flex-shrink-0"
+                        >
+                          <div className="grid grid-cols-4 gap-4 text-sm">
+                            <div>
+                              <p className="text-gray-500 mb-1">Lender</p>
+                              <p className="text-gray-900">{entry.loans?.lender_name || 'N/A'}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500 mb-1">Loan Type</p>
+                              <span className={`inline-block px-2 py-1 rounded-full text-xs ${
+                                entry.loans?.loan_type === 'GIVEN'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : 'bg-orange-100 text-orange-800'
+                              }`}>
+                                {entry.loans?.loan_type === 'GIVEN' ? 'Given' : 'Taken'}
+                              </span>
+                            </div>
+                            <div>
+                              <p className="text-gray-500 mb-1">Amount</p>
+                              <p className="text-amber-700 font-semibold">₹{(entry.amount || 0).toLocaleString()}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500 mb-1">Date</p>
+                              <p className="text-gray-900">{new Date(entry.transaction_date).toLocaleDateString()}</p>
+                            </div>
+                          </div>
+                          {entry.notes && (
+                            <div className="mt-2 pt-2 border-t border-amber-200">
+                              <p className="text-gray-500 text-xs">Notes: {entry.notes}</p>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </>
@@ -534,6 +596,39 @@ export function AccountsManagementScreen() {
                 <p className="text-gray-600 text-sm mb-4">{loanIncomeError}</p>
                 <button
                   onClick={closeLoanIncomeError}
+                  className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Popup - Loan Interest */}
+      {showLoanInterestError && loanInterestError && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+            <button
+              onClick={closeLoanInterestError}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              aria-label="Close error"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0">
+                <div className="flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                  <X className="h-6 w-6 text-red-600" />
+                </div>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Loan Interest Data</h3>
+                <p className="text-gray-600 text-sm mb-4">{loanInterestError}</p>
+                <button
+                  onClick={closeLoanInterestError}
                   className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
                 >
                   Close

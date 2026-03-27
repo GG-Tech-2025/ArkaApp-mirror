@@ -27,6 +27,7 @@ export function AddPaymentScreen() {
     handleSuccessClose,
     handleFailureClose,
     isAmountDisabled,
+    selectedAccountBalance,
     goBack,
     employeeId,
   } = useAddPayment();
@@ -111,7 +112,7 @@ export function AddPaymentScreen() {
                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
                   errors.entryType ? 'border-red-500' : 'border-gray-300'
                 }`}
-                disabled={runningBalance === 0}
+                // disabled={runningBalance === 0}
               >
                 <option value="">Select entry type</option>
                 <option value="Advance Payment">Advance Payment</option>
@@ -122,9 +123,9 @@ export function AddPaymentScreen() {
                 <option value="Full Settlement">Full Settlement</option>
               </select>
               {errors.entryType && <p className="text-red-600 text-sm mt-1">{errors.entryType}</p>}
-              {runningBalance === 0 && (
+              {/* {runningBalance === 0 && (
                 <p className="text-orange-600 text-sm mt-1">No pending balance available for settlement</p>
-              )}
+              )} */}
             </div>
 
             {/* Amount */}
@@ -149,6 +150,11 @@ export function AddPaymentScreen() {
               {errors.amount && <p className="text-red-600 text-sm mt-1">{errors.amount}</p>}
               {formInput.entryType === 'Full Settlement' && (
                 <p className="text-gray-600 text-sm mt-1">Amount auto-filled to match current running balance</p>
+              )}
+              {selectedAccountBalance !== null && (
+                <p className="text-blue-600 text-sm mt-1">
+                  Available account balance: ₹{selectedAccountBalance.toLocaleString()}
+                </p>
               )}
             </div>
 
@@ -226,7 +232,7 @@ export function AddPaymentScreen() {
                   <option value="">Select Account</option>
                   {accounts.map((account) => (
                     <option key={account.id} value={account.id}>
-                      {account.account_number}
+                      {account.account_number} (₹{account.balance.toLocaleString()})
                     </option>
                   ))}
                 </select>

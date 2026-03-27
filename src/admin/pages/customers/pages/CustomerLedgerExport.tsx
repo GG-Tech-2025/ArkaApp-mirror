@@ -9,6 +9,7 @@ interface ExportCustomer {
 interface ExportOrder {
   id: string;
   date: string;
+  deliveryDate: string;
   quantity: number;
   finalPrice: number;
 }
@@ -96,7 +97,8 @@ const totalPayments = (payments ?? []).reduce(
             <table width="100%" style={{ borderCollapse: "collapse", marginBottom: 16, fontSize: 15 }}>
               <thead>
                 <tr style={{ background: '#9b9c9c' }}>
-                  <th style={{ border: '1px solid #a6110b', padding: 8, color: '#fff' }}>Date</th>
+                  <th style={{ border: '1px solid #a6110b', padding: 8, color: '#fff' }}>Order Date</th>
+                  <th style={{ border: '1px solid #a6110b', padding: 8, color: '#fff' }}>Delivered Date</th>
                   <th style={{ border: '1px solid #a6110b', padding: 8, color: '#fff' }}>ID</th>
                   <th style={{ border: '1px solid #a6110b', padding: 8, textAlign: 'right', color: '#fff' }}>Qty</th>
                   <th style={{ border: '1px solid #a6110b', padding: 8, textAlign: 'right', color: '#fff' }}>Amount</th>
@@ -106,13 +108,14 @@ const totalPayments = (payments ?? []).reduce(
                 {orders.map((o) => (
                   <tr key={o.id}>
                     <td style={{ border: '1px solid #9b9c9c', padding: 8 }}>{new Date(o.date).toLocaleDateString()}</td>
+                    <td style={{ border: '1px solid #9b9c9c', padding: 8 }}>{new Date(o.deliveryDate).toLocaleDateString()}</td>
                     <td style={{ border: '1px solid #9b9c9c', padding: 8 }}>{o.id.slice(0, 8)}</td>
                     <td style={{ border: '1px solid #9b9c9c', padding: 8, textAlign: 'right' }}>{o.quantity}</td>
                     <td style={{ border: '1px solid #9b9c9c', padding: 8, textAlign: 'right' }}>₹{o.finalPrice.toLocaleString()}</td>
                   </tr>
                 ))}
                 <tr style={{ background: '#f5f5f5' }}>
-                  <td colSpan={3} style={{ border: '1px solid #a6110b', padding: 8, textAlign: 'right', color: '#a6110b' }}><strong>Total</strong></td>
+                  <td colSpan={4} style={{ border: '1px solid #a6110b', padding: 8, textAlign: 'right', color: '#a6110b' }}><strong>Total</strong></td>
                   <td style={{ border: '1px solid #a6110b', padding: 8, textAlign: 'right', color: '#a6110b' }}><strong>₹{totalOrders.toLocaleString()}</strong></td>
                 </tr>
               </tbody>
