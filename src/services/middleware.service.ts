@@ -861,6 +861,38 @@ export async function getLoanInterestByDateRange(
   return data ?? [];
 }
 
+/* ------------------------------------------------------------------
+   23b. GET SALARY AUTO ENTRIES BY DATE RANGE
+   Fetches SALARY_AUTO_ENTRY entries from salary_ledger within a date range,
+   joining employees to get employee name.
+   Used by AccountsManagementScreen — Salary Expense section.
+-------------------------------------------------------------------*/
+export async function getSalaryAutoEntriesByDateRange(
+  startDate: string,
+  endDate: string
+): Promise<any[]> {
+  const { data, error } = await supabase
+    .from("salary_ledger")
+    .select(`
+      id,
+      employee_id,
+      entry_type,
+      amount,
+      notes,
+      created_at,
+      employees (
+        name
+      )
+    `)
+    .eq("entry_type", "SALARY_AUTO_ENTRY")
+    .gte("created_at", `${startDate}T00:00:00`)
+    .lte("created_at", `${endDate}T23:59:59`)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return data ?? [];
+}
+
 
 /* ------------------------------------------------------------------
    24. GET ACCOUNTS
@@ -1628,6 +1660,7 @@ export async function createExpense(payload: {
 
 /* ------------------------------------------------------------------
    41. GET ORDERS BY DATE RANGE (for Accounts/Income reporting)
+   Only fetches delivered orders, filtered by delivery_date.
 -------------------------------------------------------------------*/
 export async function getOrdersByDateRange(
   startDate: string,
@@ -1642,9 +1675,10 @@ export async function getOrdersByDateRange(
         phone
       )
     `)
-    .gte("order_date", startDate)
-    .lte("order_date", endDate)
-    .order("order_date", { ascending: false });
+    .eq("delivered", true)
+    .gte("delivery_date", startDate)
+    .lte("delivery_date", endDate)
+    .order("delivery_date", { ascending: false });
 
   if (error) throw error;
   return data ?? [];
