@@ -136,6 +136,7 @@ export function AdminLoginScreen() {
         </div>
       </div>
       <p className="text-center text-gray-400 text-sm py-6">Powered by <span className="font-bold text-gray-500">GG-Tech</span></p>
+      
     </div>
   );
 }
