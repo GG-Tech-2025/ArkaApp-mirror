@@ -6,7 +6,7 @@ export function CashRoutes() {
   return (
     <Routes>
       <Route index element={<CashFlowScreen />} />
-      <Route path="ledger/:ledgerId" element={<CashLedgerScreen />} />
+      <Route path="ledger/:date" element={<CashLedgerScreen />} />
       <Route path="*" element={<Navigate to="." replace />} />
     </Routes>
   );

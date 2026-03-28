@@ -330,6 +330,7 @@ export interface EmployeeForAttendance {
     id: string;
     name: string;
     category: EmployeeCategory;
+    salary_value: number;
   };
 }
 
@@ -417,4 +418,62 @@ export interface CreateSalaryLedgerInput {
   receiver_account?: string | null;
   notes?: string | null;
   created_at?: string | null; // ISO string for backdating
+}
+
+export interface FinancialSummary {
+  total_receivables: number;
+  total_vendor_payables: number;
+  total_loan_outstanding: number;
+  total_salary_payable: number;
+}
+
+export interface DailyCashSummary {
+  date: string;
+  cash_in: number;
+  cash_out: number;
+}
+
+export interface DailyCashSummaryResponse {
+  data: DailyCashSummary[];
+  total_days: number;
+  has_more: boolean;
+}
+
+export interface CashInEntry {
+  id: string;
+  source_type: string;
+  description: string;
+  amount: number;
+  receiver_account_id: string | null;
+  receiver_account_number: string;
+  payment_mode: string;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface CashOutEntry {
+  id: string;
+  payment_type: string;
+  description: string;
+  amount: number;
+  sender_account_id: string | null;
+  sender_account_number: string;
+  payment_mode: string;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface AccountAggregate {
+  account_id: string | null;
+  account_number: string;
+  total: number;
+}
+
+export interface CashLedgerForDate {
+  cash_in_entries: CashInEntry[];
+  cash_out_entries: CashOutEntry[];
+  cash_in_by_account: AccountAggregate[];
+  cash_out_by_account: AccountAggregate[];
+  total_cash_in: number;
+  total_cash_out: number;
 }

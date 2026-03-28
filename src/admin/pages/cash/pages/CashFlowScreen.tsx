@@ -4,43 +4,6 @@ import { Popup } from '../../../../components/Popup';
 import { useNavigate } from 'react-router-dom';
 import { useCashFlow } from '../../../hooks/useCashFlow';
 
-interface DayLedger {
-  id: string;
-  date: string;
-  cashIn: number;
-  cashOut: number;
-  status: 'Open' | 'Frozen';
-}
-
-// Mock data — day ledgers are yet to be integrated with BE
-const MOCK_DAY_LEDGERS: DayLedger[] = [
-  { id: 'DL-001', date: '2025-12-28', cashIn: 85000, cashOut: 45000, status: 'Open' },
-  { id: 'DL-002', date: '2025-12-27', cashIn: 120000, cashOut: 75000, status: 'Frozen' },
-  { id: 'DL-003', date: '2025-12-26', cashIn: 95000, cashOut: 60000, status: 'Frozen' },
-  { id: 'DL-004', date: '2025-12-25', cashIn: 110000, cashOut: 85000, status: 'Frozen' },
-  { id: 'DL-005', date: '2025-12-24', cashIn: 78000, cashOut: 52000, status: 'Frozen' },
-  { id: 'DL-006', date: '2025-12-23', cashIn: 135000, cashOut: 68000, status: 'Frozen' },
-  { id: 'DL-007', date: '2025-12-22', cashIn: 92000, cashOut: 48000, status: 'Frozen' },
-  { id: 'DL-008', date: '2025-12-21', cashIn: 105000, cashOut: 72000, status: 'Frozen' },
-  { id: 'DL-009', date: '2025-12-20', cashIn: 88000, cashOut: 55000, status: 'Frozen' },
-  { id: 'DL-010', date: '2025-12-19', cashIn: 115000, cashOut: 63000, status: 'Frozen' },
-  { id: 'DL-011', date: '2025-12-18', cashIn: 98000, cashOut: 58000, status: 'Frozen' },
-  { id: 'DL-012', date: '2025-12-17', cashIn: 125000, cashOut: 78000, status: 'Frozen' },
-  { id: 'DL-013', date: '2025-12-16', cashIn: 82000, cashOut: 46000, status: 'Frozen' },
-  { id: 'DL-014', date: '2025-12-15', cashIn: 108000, cashOut: 65000, status: 'Frozen' },
-  { id: 'DL-015', date: '2025-12-14', cashIn: 95000, cashOut: 58000, status: 'Frozen' },
-  { id: 'DL-016', date: '2025-12-13', cashIn: 118000, cashOut: 71000, status: 'Frozen' },
-  { id: 'DL-017', date: '2025-12-12', cashIn: 87000, cashOut: 49000, status: 'Frozen' },
-  { id: 'DL-018', date: '2025-12-11', cashIn: 102000, cashOut: 62000, status: 'Frozen' },
-  { id: 'DL-019', date: '2025-12-10', cashIn: 93000, cashOut: 54000, status: 'Frozen' },
-  { id: 'DL-020', date: '2025-12-09', cashIn: 112000, cashOut: 68000, status: 'Frozen' },
-  { id: 'DL-021', date: '2025-12-08', cashIn: 99000, cashOut: 57000, status: 'Frozen' },
-  { id: 'DL-022', date: '2025-12-07', cashIn: 128000, cashOut: 74000, status: 'Frozen' },
-  { id: 'DL-023', date: '2025-12-06', cashIn: 85000, cashOut: 51000, status: 'Frozen' },
-  { id: 'DL-024', date: '2025-12-05', cashIn: 107000, cashOut: 64000, status: 'Frozen' },
-  { id: 'DL-025', date: '2025-12-04', cashIn: 96000, cashOut: 59000, status: 'Frozen' },
-];
-
 export function CashFlowScreen() {
   const navigate = useNavigate();
   const {
@@ -53,7 +16,15 @@ export function CashFlowScreen() {
     outstandingReceivables,
     outstandingVendorPayables,
     outstandingLoanAmount,
+    outstandingSalary,
     summaryLoading,
+
+    // Daily cash ledger
+    dayLedgers,
+    dayLedgersLoading,
+    dayLedgersLoadingMore,
+    hasMoreDayLedgers,
+    handleLoadMoreDayLedgers,
 
     // Create account
     createAccountInput,
@@ -75,42 +46,22 @@ export function CashFlowScreen() {
 
   const [showBypassErrorPopup, setShowBypassErrorPopup] = useState(false);
   const [bypassErrorMessage, setBypassErrorMessage] = useState('');
-  const [dayLedgers] = useState<DayLedger[]>(MOCK_DAY_LEDGERS);
-  const [displayCount, setDisplayCount] = useState(10);
+
+  const stripDate = (dateString: string) => dateString.split(' ')[0].split('T')[0];
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    const dateOnly = stripDate(dateString);
+    const date = new Date(dateOnly + 'T00:00:00');
     const day = date.getDate().toString().padStart(2, '0');
     const month = date.toLocaleString('en-US', { month: 'short' });
     const year = date.getFullYear();
     return `${day}-${month}-${year}`;
   };
 
-  const handleDayLedgerClick = (ledger: DayLedger) => {
-    const sortedLedgers = [...dayLedgers].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    const oldestOpenDay = sortedLedgers.find(l => l.status === 'Open');
-
-    if (ledger.status === 'Open') {
-      navigate(`/admin/cash/ledger/${ledger.id}`);
-      return;
-    }
-
-    if (ledger.status === 'Frozen') {
-      navigate(`/admin/cash/ledger/${ledger.id}`);
-      return;
-    }
-
-    if (oldestOpenDay && new Date(ledger.date) > new Date(oldestOpenDay.date)) {
-      setBypassErrorMessage(`Please complete and freeze the cash ledger for ${formatDate(oldestOpenDay.date)} before proceeding.`);
-      setShowBypassErrorPopup(true);
-      return;
-    }
-
-    navigate(`/admin/cash/ledger/${ledger.id}`);
+  const handleDayLedgerClick = (date: string) => {
+    navigate(`/admin/cash/ledger/${stripDate(date)}`);
   };
 
-  const displayedLedgers = dayLedgers.slice(0, displayCount);
-  const hasMore = displayCount < dayLedgers.length;
   const isLoading = accountsLoading || summaryLoading;
 
   return (
@@ -179,7 +130,7 @@ export function CashFlowScreen() {
               {/* Outstanding Salary */}
               <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-yellow-500">
                 <p className="text-gray-600 text-sm mb-2">Outstanding Salary</p>
-                <p className="text-gray-500 text-lg italic">Yet to integrate</p>
+                <p className="text-gray-900 text-2xl">₹{outstandingSalary.toLocaleString()}</p>
               </div>
 
               {/* Outstanding Loan Amount */}
@@ -196,51 +147,57 @@ export function CashFlowScreen() {
               </div>
 
               <div className="p-6">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-gray-700">Date</th>
-                        <th className="px-4 py-3 text-left text-gray-700">Cash In</th>
-                        <th className="px-4 py-3 text-left text-gray-700">Cash Out</th>
-                        <th className="px-4 py-3 text-left text-gray-700">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {displayedLedgers.map((ledger) => (
-                        <tr
-                          key={ledger.id}
-                          onClick={() => handleDayLedgerClick(ledger)}
-                          className="hover:bg-gray-50 cursor-pointer"
-                        >
-                          <td className="px-4 py-4 text-gray-900">{formatDate(ledger.date)}</td>
-                          <td className="px-4 py-4 text-green-600">₹{ledger.cashIn.toLocaleString()}</td>
-                          <td className="px-4 py-4 text-red-600">₹{ledger.cashOut.toLocaleString()}</td>
-                          <td className="px-4 py-4">
-                            <span
-                              className={`px-3 py-1 rounded-full text-sm ${
-                                ledger.status === 'Open'
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-gray-100 text-gray-800'
-                              }`}
-                            >
-                              {ledger.status}
-                            </span>
-                          </td>
+                {dayLedgersLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                  </div>
+                ) : dayLedgers.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    No cash ledger data available.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-gray-700">Date</th>
+                          <th className="px-4 py-3 text-left text-gray-700">Cash In</th>
+                          <th className="px-4 py-3 text-left text-gray-700">Cash Out</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {dayLedgers.map((ledger) => (
+                          <tr
+                            key={ledger.date}
+                            onClick={() => handleDayLedgerClick(ledger.date)}
+                            className="hover:bg-gray-50 cursor-pointer"
+                          >
+                            <td className="px-4 py-4 text-gray-900">{formatDate(ledger.date)}</td>
+                            <td className="px-4 py-4 text-green-600">₹{ledger.cash_in.toLocaleString()}</td>
+                            <td className="px-4 py-4 text-red-600">₹{ledger.cash_out.toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
 
-              {hasMore && (
+              {hasMoreDayLedgers && (
                 <div className="p-6 text-center">
                   <button
-                    onClick={() => setDisplayCount(displayCount + 10)}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    onClick={handleLoadMoreDayLedgers}
+                    disabled={dayLedgersLoadingMore}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
                   >
-                    Load More
+                    {dayLedgersLoadingMore ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Loading...
+                      </span>
+                    ) : (
+                      'Load More'
+                    )}
                   </button>
                 </div>
               )}
@@ -335,15 +292,6 @@ export function CashFlowScreen() {
           title="Error"
           message={failureMessage}
           onClose={() => setShowFailurePopup(false)}
-        />
-      )}
-
-      {/* Bypass Error Popup */}
-      {showBypassErrorPopup && (
-        <Popup
-          title="Cannot Proceed"
-          message={bypassErrorMessage}
-          onClose={() => setShowBypassErrorPopup(false)}
         />
       )}
     </div>

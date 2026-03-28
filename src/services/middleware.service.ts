@@ -39,6 +39,7 @@ import {
   EmployeeLedgerResponse,
   SalaryLedger,
   CreateSalaryLedgerInput,
+  FinancialSummary,
 } from './types'
 import { MaterialPurchaseInput, ProductionInput } from "../employee/types";
 import { getRange, getRangeForProductionStatistics, PAGE_SIZE , mapPaymentModeToDb } from "../utils/reusables";
@@ -902,56 +903,12 @@ export async function createAccount(input: CreateAccountInput): Promise<Account>
   return data;
 }
 
-/* ------------------------------------------------------------------
-   24b. GET TOTAL OUTSTANDING RECEIVABLES (customers)
--------------------------------------------------------------------*/
-
-export async function getTotalOutstandingReceivables(): Promise<number> {
-  const { data, error } = await supabase
-    .from("customer_financials")
-    .select("outstanding_amount");
+export async function getFinancialSummary(): Promise<FinancialSummary> {
+  const { data, error } = await supabase.rpc("get_financial_summary");
 
   if (error) throw error;
 
-  return (data ?? []).reduce(
-    (sum, row) => sum + Number(row.outstanding_amount ?? 0),
-    0
-  );
-}
-
-/* ------------------------------------------------------------------
-   24c. GET TOTAL OUTSTANDING VENDOR PAYABLES
--------------------------------------------------------------------*/
-
-export async function getTotalOutstandingVendorPayables(): Promise<number> {
-  const { data, error } = await supabase
-    .from("vendor_financials")
-    .select("outstanding_balance");
-
-  if (error) throw error;
-
-  return (data ?? []).reduce(
-    (sum, row) => sum + Number(row.outstanding_balance ?? 0),
-    0
-  );
-}
-
-/* ------------------------------------------------------------------
-   24d. GET TOTAL OUTSTANDING LOAN AMOUNT
--------------------------------------------------------------------*/
-
-export async function getTotalOutstandingLoanAmount(): Promise<number> {
-  const { data, error } = await supabase
-    .from("loans")
-    .select("outstanding_balance")
-    .eq("status", "ACTIVE");
-
-  if (error) throw error;
-
-  return (data ?? []).reduce(
-    (sum, row) => sum + Number(row.outstanding_balance ?? 0),
-    0
-  );
+  return data as FinancialSummary;
 }
 
 /* ------------------------------------------------------------------
@@ -3114,7 +3071,7 @@ export async function updateRoleStatus(
 /* ------------------------------------------------------------------
   Get All Active Employees (for Attendance)
 ---------------------------------------------------------------------*/
-export async function getEmployeesForAttendance(): Promise<EmployeeForAttendance[]> {
+export async function getEmployeesForAttendance(isActive = true): Promise<EmployeeForAttendance[]> {
   const { data, error } = await supabase
     .from("employees")
     .select(`
@@ -3122,9 +3079,9 @@ export async function getEmployeesForAttendance(): Promise<EmployeeForAttendance
       name,
       phone,
       role_id,
-      roles!inner ( id, name, category )
+      roles!inner ( id, name, category, salary_value )
     `)
-    .eq("active", true)
+    .eq("active", isActive)
     .neq("roles.category", "LOADMEN" satisfies EmployeeCategory)
     .order("name");
 
@@ -3355,4 +3312,38 @@ export async function checkEmployeeIsActive(phone: string): Promise<boolean> {
 
   if (error || !data) return false;
   return data.active === true;
+}
+
+/* ------------------------------------------------------------------
+   GET DAILY CASH SUMMARY (for CashFlowScreen)
+   Paginated daily cash-in / cash-out from today back to 2025-01-01
+-------------------------------------------------------------------*/
+export async function getDailyCashSummary(
+  page: number,
+  pageSize: number = 20
+): Promise<DailyCashSummaryResponse> {
+  const { data, error } = await supabase.rpc("get_daily_cash_summary", {
+    p_page: page,
+    p_page_size: pageSize,
+  });
+
+  if (error) throw error;
+
+  return data as DailyCashSummaryResponse;
+}
+
+/* ------------------------------------------------------------------
+   GET CASH LEDGER FOR DATE (for CashLedgerScreen)
+   All cash-in / cash-out entries + account aggregates for one day
+-------------------------------------------------------------------*/
+export async function getCashLedgerForDate(
+  date: string // YYYY-MM-DD
+): Promise<CashLedgerForDate> {
+  const { data, error } = await supabase.rpc("get_cash_ledger_for_date", {
+    p_date: date,
+  });
+
+  if (error) throw error;
+
+  return data as CashLedgerForDate;
 }

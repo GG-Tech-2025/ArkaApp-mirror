@@ -54,6 +54,7 @@ function getOptionActiveClass(status: AttendanceOption): string {
 export function AttendanceScreen() {
   const {
     selectedDate,
+    activeTab,
     entries,
     loading,
     saving,
@@ -62,7 +63,11 @@ export function AttendanceScreen() {
     showBulkConfirmation,
     pendingBulkAction,
     errorMessage,
+    isPastDate,
+    isEditable,
+    isAlreadySaved,
     handleDateChange,
+    handleTabChange,
     handleAttendanceChange,
     handleMarkAllClick,
     handleBulkConfirm,
@@ -105,20 +110,66 @@ export function AttendanceScreen() {
               />
             </div>
 
-            <div className="flex gap-2">
+            {isPastDate && (
+              <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3">
+                <p className="text-yellow-800 text-sm">
+                  Attendance for past dates is view-only and cannot be updated.
+                </p>
+              </div>
+            )}
+
+            {!isPastDate && isAlreadySaved && (
+              <div className="bg-blue-50 border border-blue-300 rounded-lg p-3">
+                <p className="text-blue-800 text-sm">
+                  Attendance for this date has already been recorded and cannot be modified.
+                </p>
+              </div>
+            )}
+
+            {isEditable && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleMarkAllClick('Present')}
+                  disabled={loading}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
+                >
+                  Mark All Present
+                </button>
+                <button
+                  onClick={() => handleMarkAllClick('Leave')}
+                  disabled={loading}
+                  className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
+                >
+                  Mark All Leave
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Active / Inactive Tabs */}
+        <div className="bg-white rounded-lg shadow-md mb-6">
+          <div className="border-b border-gray-200">
+            <div className="flex">
               <button
-                onClick={() => handleMarkAllClick('Present')}
-                disabled={loading}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
+                onClick={() => handleTabChange('Active')}
+                className={`flex-1 px-6 py-4 text-center transition-colors ${
+                  activeTab === 'Active'
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
               >
-                Mark All Present
+                Active Employees
               </button>
               <button
-                onClick={() => handleMarkAllClick('Leave')}
-                disabled={loading}
-                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
+                onClick={() => handleTabChange('Inactive')}
+                className={`flex-1 px-6 py-4 text-center transition-colors ${
+                  activeTab === 'Inactive'
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
               >
-                Mark All Leave
+                Inactive Employees
               </button>
             </div>
           </div>
@@ -149,7 +200,9 @@ export function AttendanceScreen() {
           ) : entries.length === 0 ? (
             <div className="p-12 text-center">
               <p className="text-gray-600">
-                No active employees found. Please add employees from Employee Management.
+                {activeTab === 'Active'
+                  ? 'No active employees found. Please add employees from Employee Management.'
+                  : 'No inactive employees found.'}
               </p>
             </div>
           ) : (
@@ -193,13 +246,14 @@ export function AttendanceScreen() {
                     {/* Attendance Selector */}
                     <div>
                       <label className="block text-gray-700 mb-2">
-                        Attendance <span className="text-red-600">*</span>
+                        Attendance {isEditable && <span className="text-red-600">*</span>}
                       </label>
                       <div className="flex flex-wrap gap-2">
                         {ATTENDANCE_OPTIONS.map((option) => (
                           <button
                             key={option}
                             type="button"
+                            disabled={!isEditable}
                             onClick={() =>
                               handleAttendanceChange(entry.employee.id, option)
                             }
@@ -207,7 +261,7 @@ export function AttendanceScreen() {
                               entry.status === option
                                 ? getOptionActiveClass(option)
                                 : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400'
-                            }`}
+                            } ${!isEditable ? 'opacity-60 cursor-not-allowed' : ''}`}
                           >
                             {option}
                           </button>
@@ -222,7 +276,7 @@ export function AttendanceScreen() {
         </div>
 
         {/* Save Button */}
-        {entries.length > 0 && !loading && (
+        {isEditable && entries.length > 0 && !loading && (
           <div className="flex justify-end">
             <button
               onClick={handleSave}

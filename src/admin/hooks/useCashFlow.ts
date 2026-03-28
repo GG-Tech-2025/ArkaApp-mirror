@@ -2,12 +2,11 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   getAccounts,
   createAccount,
-  getTotalOutstandingReceivables,
-  getTotalOutstandingVendorPayables,
-  getTotalOutstandingLoanAmount,
+  getFinancialSummary,
+  getDailyCashSummary,
   CASH_ACCOUNT_ID,
 } from '../../services/middleware.service';
-import type { Account, CreateAccountInput } from '../../services/types';
+import type { Account, CreateAccountInput, DailyCashSummary } from '../../services/types';
 import { useAdminNavigation } from './useAdminNavigation';
 import { validateCreateAccount } from '../validators/createAccount.validator';
 
@@ -22,7 +21,15 @@ export function useCashFlow() {
   const [outstandingReceivables, setOutstandingReceivables] = useState<number>(0);
   const [outstandingVendorPayables, setOutstandingVendorPayables] = useState<number>(0);
   const [outstandingLoanAmount, setOutstandingLoanAmount] = useState<number>(0);
+  const [outstandingSalary, setOutstandingSalary] = useState<number>(0);
   const [summaryLoading, setSummaryLoading] = useState(false);
+
+  // ─── Daily Cash Ledger ───
+  const [dayLedgers, setDayLedgers] = useState<DailyCashSummary[]>([]);
+  const [dayLedgersLoading, setDayLedgersLoading] = useState(false);
+  const [dayLedgersLoadingMore, setDayLedgersLoadingMore] = useState(false);
+  const [dayLedgersPage, setDayLedgersPage] = useState(0);
+  const [hasMoreDayLedgers, setHasMoreDayLedgers] = useState(false);
 
   // ─── Create account form ───
   const [createAccountInput, setCreateAccountInput] = useState({
@@ -50,9 +57,9 @@ export function useCashFlow() {
       const data = await getAccounts();
       setAccounts(data);
     } catch (err) {
-  console.error('Failed to load accounts:', err);
-  setFailureMessage((err as Error).message || 'Failed to load accounts');
-  setShowFailurePopup(true);
+      console.error('Failed to load accounts:', err);
+      setFailureMessage((err as Error).message || 'Failed to load accounts');
+      setShowFailurePopup(true);
     } finally {
       setAccountsLoading(false);
     }
@@ -62,31 +69,61 @@ export function useCashFlow() {
   const fetchSummary = useCallback(async () => {
     try {
       setSummaryLoading(true);
-      const [receivables, vendorPayables, loanAmount] = await Promise.all([
-        getTotalOutstandingReceivables(),
-        getTotalOutstandingVendorPayables(),
-        getTotalOutstandingLoanAmount(),
-      ]);
-      setOutstandingReceivables(receivables);
-      setOutstandingVendorPayables(vendorPayables);
-      setOutstandingLoanAmount(loanAmount);
-      if (receivables === 0 && vendorPayables === 0 && loanAmount === 0) {
-        console.warn('All outstanding summaries are zero — check DB/views or network responses');
-      }
+      const summary = await getFinancialSummary();
+      setOutstandingReceivables(summary.total_receivables);
+      setOutstandingVendorPayables(summary.total_vendor_payables);
+      setOutstandingLoanAmount(summary.total_loan_outstanding);
+      setOutstandingSalary(summary.total_salary_payable);
     } catch (err) {
-  console.error('Failed to load outstanding summaries:', err);
-  setFailureMessage((err as Error).message || 'Failed to load summaries');
-  setShowFailurePopup(true);
+      console.error('Failed to load outstanding summaries:', err);
+      setFailureMessage((err as Error).message || 'Failed to load summaries');
+      setShowFailurePopup(true);
     } finally {
       setSummaryLoading(false);
     }
   }, []);
 
+  // ─── Fetch daily cash summary ───
+  const fetchDayLedgers = useCallback(async (page: number, append = false) => {
+    try {
+      if (append) {
+        setDayLedgersLoadingMore(true);
+      } else {
+        setDayLedgersLoading(true);
+      }
+
+      const result = await getDailyCashSummary(page, 20);
+
+      if (append) {
+        setDayLedgers((prev) => [...prev, ...result.data]);
+      } else {
+        setDayLedgers(result.data);
+      }
+
+      setDayLedgersPage(page);
+      setHasMoreDayLedgers(result.has_more);
+    } catch (err) {
+      console.error('Failed to load daily cash summary:', err);
+      setFailureMessage((err as Error).message || 'Failed to load daily cash ledger');
+      setShowFailurePopup(true);
+    } finally {
+      setDayLedgersLoading(false);
+      setDayLedgersLoadingMore(false);
+    }
+  }, []);
+
+  const handleLoadMoreDayLedgers = useCallback(() => {
+    if (hasMoreDayLedgers && !dayLedgersLoadingMore) {
+      fetchDayLedgers(dayLedgersPage + 1, true);
+    }
+  }, [hasMoreDayLedgers, dayLedgersLoadingMore, dayLedgersPage, fetchDayLedgers]);
+
   // ─── Load on mount ───
   useEffect(() => {
     fetchAccounts();
     fetchSummary();
-  }, [fetchAccounts, fetchSummary]);
+    fetchDayLedgers(0);
+  }, [fetchAccounts, fetchSummary, fetchDayLedgers]);
 
   // ─── Create account form helpers ───
   const updateCreateAccountInput = (field: 'account_number' | 'opening_balance', value: string) => {
@@ -121,7 +158,6 @@ export function useCashFlow() {
       });
       setShowCreateAccountModal(false);
       setShowSuccessPopup(true);
-      // Refresh accounts after creation
       await fetchAccounts();
     } catch (err) {
       console.error('Failed to create account:', err);
@@ -143,7 +179,15 @@ export function useCashFlow() {
     outstandingReceivables,
     outstandingVendorPayables,
     outstandingLoanAmount,
+    outstandingSalary,
     summaryLoading,
+
+    // Daily cash ledger
+    dayLedgers,
+    dayLedgersLoading,
+    dayLedgersLoadingMore,
+    hasMoreDayLedgers,
+    handleLoadMoreDayLedgers,
 
     // Create account
     createAccountInput,
