@@ -1,6 +1,7 @@
 import { ArrowLeft } from 'lucide-react';
 import { Popup } from '../../../../components/Popup';
 import { useAddLoanTransaction } from '../../../hooks/useAddLoanTransaction';
+import { CASH_ACCOUNT_ID } from '../../../../services/middleware.service';
 
 export function AddLoanTransactionScreen() {
   const {
@@ -167,7 +168,9 @@ export function AddLoanTransactionScreen() {
                 }`}
               >
                 <option value="">{accountsLoading ? 'Loading accounts...' : 'Select account'}</option>
-                {accounts.map((account) => (
+                {accounts
+                  .filter((account) => transactionInput.payment_mode === 'CASH' || account.id !== CASH_ACCOUNT_ID)
+                  .map((account) => (
                   <option key={account.id} value={account.id}>
                     #{account.account_number} (Balance: ₹{account.balance.toLocaleString()})
                   </option>

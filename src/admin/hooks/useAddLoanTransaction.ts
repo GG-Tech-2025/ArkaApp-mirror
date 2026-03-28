@@ -99,6 +99,15 @@ export function useAddLoanTransaction() {
       }));
     }
 
+    // Clear sender_account_id when switching away from CASH mode
+    if (key === 'payment_mode' && value !== 'CASH') {
+      setTransactionInput((prev) => ({
+        ...prev,
+        [key]: value,
+        sender_account_id: '',
+      }));
+    }
+
     // Clear account balance error when account changes
     if (key === 'sender_account_id' || key === 'amount') {
       setErrors((prev) => {

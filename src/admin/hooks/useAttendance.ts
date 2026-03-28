@@ -4,6 +4,7 @@ import {
   getEmployeesForAttendance,
   getAttendanceForDate,
   saveAttendance,
+  createSalaryLedgerEntry,
 } from '../../services/middleware.service';
 import type {
   EmployeeForAttendance,
@@ -32,11 +33,37 @@ const DISPLAY_TO_DB: Record<AttendanceStatus, DbStatus> = {
   Leave: 'LEAVE',
 };
 
+export type AttendanceTab = 'Active' | 'Inactive';
+
+/**
+ * Calculate salary amount based on attendance status and role's salary_value.
+ * Present → full salary, Half Day → half, Absent/Leave → 0
+ */
+function getSalaryAmount(status: AttendanceStatus, salaryValue: number): number {
+  switch (status) {
+    case 'Present':
+      return salaryValue;
+    case 'Half Day':
+      return Math.round(salaryValue / 2);
+    case 'Absent':
+    case 'Leave':
+    default:
+      return 0;
+  }
+}
+
 export function useAttendance() {
   const { goBack } = useAdminNavigation();
 
   const [selectedDate, setSelectedDate] = useState<string>(getTodayString());
-  const [entries, setEntries] = useState<AttendanceEntry[]>([]);
+  const [activeTab, setActiveTab] = useState<AttendanceTab>('Active');
+
+  // Separate employee lists for each tab
+  const [activeEmployees, setActiveEmployees] = useState<EmployeeForAttendance[]>([]);
+  const [inactiveEmployees, setInactiveEmployees] = useState<EmployeeForAttendance[]>([]);
+  const [activeEntries, setActiveEntries] = useState<AttendanceEntry[]>([]);
+  const [inactiveEntries, setInactiveEntries] = useState<AttendanceEntry[]>([]);
+
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -46,46 +73,77 @@ export function useAttendance() {
   const [pendingBulkAction, setPendingBulkAction] = useState<'Present' | 'Leave'>('Present');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Fetch all non-loadmen active employees once on mount
-  const [employees, setEmployees] = useState<EmployeeForAttendance[]>([]);
+  // Track which tabs have had their employees fetched
+  const [activeEmployeesFetched, setActiveEmployeesFetched] = useState(false);
+  const [inactiveEmployeesFetched, setInactiveEmployeesFetched] = useState(false);
 
-  const fetchEmployees = useCallback(async () => {
+  // Whether attendance has already been saved for the selected date
+  const [isAlreadySaved, setIsAlreadySaved] = useState(false);
+
+  // Determine if selected date is in the past (before today)
+  const isPastDate = selectedDate < getTodayString();
+
+  // Current entries based on active tab
+  const entries = activeTab === 'Active' ? activeEntries : inactiveEntries;
+
+  // Editable only if active tab AND not a past date AND not already saved
+  const isEditable = activeTab === 'Active' && !isPastDate && !isAlreadySaved;
+
+  // Fetch employees for a tab
+  const fetchEmployeesForTab = useCallback(async (tab: AttendanceTab) => {
+    const isActive = tab === 'Active';
     try {
       setLoadingEmployees(true);
-      const data = await getEmployeesForAttendance();
-      setEmployees(data);
+      const data = await getEmployeesForAttendance(isActive);
+      if (isActive) {
+        setActiveEmployees(data);
+        setActiveEmployeesFetched(true);
+      } else {
+        setInactiveEmployees(data);
+        setInactiveEmployeesFetched(true);
+      }
+      return data;
     } catch (err) {
       console.error('Failed to fetch employees for attendance:', err);
       setErrorMessage('Failed to load employees. Please try again.');
+      return [];
     } finally {
       setLoadingEmployees(false);
     }
   }, []);
 
-  useEffect(() => {
-    fetchEmployees();
-  }, [fetchEmployees]);
-
-  // When employees or selected date changes, build entry list with existing attendance
-  const fetchAttendance = useCallback(
-    async (date: string, currentEmployees: EmployeeForAttendance[]) => {
-      if (currentEmployees.length === 0) return;
+  // Fetch attendance and build entries for a given employee list
+  const fetchAttendanceForEmployees = useCallback(
+    async (date: string, employeeList: EmployeeForAttendance[], tab: AttendanceTab) => {
+      if (employeeList.length === 0) {
+        if (tab === 'Active') setActiveEntries([]);
+        else setInactiveEntries([]);
+        setIsAlreadySaved(false);
+        return;
+      }
       try {
         setLoadingAttendance(true);
         const records = await getAttendanceForDate(date);
 
-        // Build a map of employee_id → status for quick lookup
         const statusMap = new Map<string, AttendanceStatus>();
         records.forEach((r) => {
           statusMap.set(r.employee_id, DB_TO_DISPLAY[r.status]);
         });
 
-        setEntries(
-          currentEmployees.map((emp) => ({
-            employee: emp,
-            status: statusMap.get(emp.id) ?? '',
-          }))
-        );
+        const newEntries: AttendanceEntry[] = employeeList.map((emp) => ({
+          employee: emp,
+          status: (statusMap.get(emp.id) ?? '') as AttendanceEntry['status'],
+        }));
+
+        if (tab === 'Active') {
+          setActiveEntries(newEntries);
+          // If any active employee already has a saved attendance record, mark as already saved
+          const hasExistingRecords = employeeList.some((emp) => statusMap.has(emp.id));
+          setIsAlreadySaved(hasExistingRecords);
+        } else {
+          setInactiveEntries(newEntries);
+        }
+
         setHasValidationError(false);
       } catch (err) {
         console.error('Failed to fetch attendance:', err);
@@ -97,23 +155,57 @@ export function useAttendance() {
     []
   );
 
+  // Initial load: fetch active employees + attendance
   useEffect(() => {
-    if (employees.length > 0) {
-      fetchAttendance(selectedDate, employees);
-    }
-  }, [selectedDate, employees, fetchAttendance]);
+    (async () => {
+      const data = await fetchEmployeesForTab('Active');
+      if (data.length > 0) {
+        await fetchAttendanceForEmployees(selectedDate, data, 'Active');
+      }
+    })();
+    // Only on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const handleDateChange = (date: string) => {
+  // When date changes, re-fetch attendance for the current tab's employees
+  const handleDateChange = async (date: string) => {
     setSelectedDate(date);
     setHasValidationError(false);
     setErrorMessage(null);
+
+    const employeeList = activeTab === 'Active' ? activeEmployees : inactiveEmployees;
+    const fetched = activeTab === 'Active' ? activeEmployeesFetched : inactiveEmployeesFetched;
+
+    if (fetched && employeeList.length > 0) {
+      await fetchAttendanceForEmployees(date, employeeList, activeTab);
+    }
+  };
+
+  // When tab changes, fetch employees if needed, then fetch attendance
+  const handleTabChange = async (tab: AttendanceTab) => {
+    setActiveTab(tab);
+    setHasValidationError(false);
+    setErrorMessage(null);
+
+    const isActive = tab === 'Active';
+    const alreadyFetched = isActive ? activeEmployeesFetched : inactiveEmployeesFetched;
+    let employeeList = isActive ? activeEmployees : inactiveEmployees;
+
+    if (!alreadyFetched) {
+      employeeList = await fetchEmployeesForTab(tab);
+    }
+
+    if (employeeList.length > 0) {
+      await fetchAttendanceForEmployees(selectedDate, employeeList, tab);
+    }
   };
 
   const handleAttendanceChange = (
     employeeId: string,
     status: AttendanceStatus
   ) => {
-    setEntries((prev) =>
+    if (!isEditable) return;
+    setActiveEntries((prev) =>
       prev.map((e) =>
         e.employee.id === employeeId ? { ...e, status } : e
       )
@@ -122,12 +214,13 @@ export function useAttendance() {
   };
 
   const handleMarkAllClick = (type: 'Present' | 'Leave') => {
+    if (!isEditable) return;
     setPendingBulkAction(type);
     setShowBulkConfirmation(true);
   };
 
   const handleBulkConfirm = () => {
-    setEntries((prev) => prev.map((e) => ({ ...e, status: pendingBulkAction })));
+    setActiveEntries((prev) => prev.map((e) => ({ ...e, status: pendingBulkAction })));
     setShowBulkConfirmation(false);
     setHasValidationError(false);
   };
@@ -137,8 +230,10 @@ export function useAttendance() {
   };
 
   const handleSave = async () => {
+    if (!isEditable) return;
+
     // Validate: every employee must have an attendance status
-    const missing = entries.some((e) => !e.status);
+    const missing = activeEntries.some((e) => !e.status);
     if (missing) {
       setHasValidationError(true);
       return;
@@ -147,12 +242,36 @@ export function useAttendance() {
     try {
       setSaving(true);
       setErrorMessage(null);
-      const payload = entries.map((e) => ({
+
+      // 1. Save attendance records
+      const payload = activeEntries.map((e) => ({
         employee_id: e.employee.id,
         date: selectedDate,
         status: DISPLAY_TO_DB[e.status as AttendanceStatus],
       }));
       await saveAttendance(payload);
+
+      // 2. Auto-increment salary ledger for active employees
+      const salaryPromises = activeEntries
+        .filter((e) => {
+          const amount = getSalaryAmount(e.status as AttendanceStatus, e.employee.roles.salary_value);
+          return amount > 0;
+        })
+        .map((e) => {
+          const amount = getSalaryAmount(e.status as AttendanceStatus, e.employee.roles.salary_value);
+          return createSalaryLedgerEntry({
+            employee_id: e.employee.id,
+            entry_type: 'SALARY_AUTO_ENTRY',
+            amount,
+            notes: `Auto-entry for ${selectedDate} — ${e.status}`,
+            created_at: new Date(selectedDate + 'T00:00:00').toISOString(),
+          });
+        });
+
+      await Promise.all(salaryPromises);
+
+      // Mark as already saved so it becomes read-only
+      setIsAlreadySaved(true);
       setShowSaveSuccess(true);
     } catch (err) {
       console.error('Failed to save attendance:', err);
@@ -170,6 +289,7 @@ export function useAttendance() {
 
   return {
     selectedDate,
+    activeTab,
     entries,
     loading,
     saving,
@@ -178,7 +298,11 @@ export function useAttendance() {
     showBulkConfirmation,
     pendingBulkAction,
     errorMessage,
+    isPastDate,
+    isEditable,
+    isAlreadySaved,
     handleDateChange,
+    handleTabChange,
     handleAttendanceChange,
     handleMarkAllClick,
     handleBulkConfirm,
