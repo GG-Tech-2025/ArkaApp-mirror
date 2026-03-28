@@ -71,7 +71,7 @@ export function AdminLoginScreen() {
      UI
   -------------------------------------------------------------------*/
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="w-full max-w-md">
         <button
           onClick={() => navigate("/")}
@@ -135,6 +135,7 @@ export function AdminLoginScreen() {
           </div>
         </div>
       </div>
+      <p className="text-center text-gray-400 text-sm py-6">Powered by <span className="font-bold text-gray-500">GG-Tech</span></p>
     </div>
   );
 }

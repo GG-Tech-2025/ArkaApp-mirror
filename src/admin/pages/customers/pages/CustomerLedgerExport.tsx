@@ -1,4 +1,5 @@
 import React from "react";
+import arkaLogo from "../../../../assets/arka_logo.png";
 
 interface ExportCustomer {
   name: string;
@@ -74,9 +75,9 @@ const totalPayments = (payments ?? []).reduce(
             letterSpacing: 2,
             flex: 1,
           }}>ARKA BRICKS</h1>
-          <img src=""
+          <img src={arkaLogo}
             alt="Company Logo"
-            style={{ height: 48, width: 120, objectFit: 'contain', marginRight: 16 }}
+            style={{ height: 48, objectFit: 'contain', marginRight: 16 }}
             onError={e => { e.currentTarget.style.display = 'none'; }} />
         </div>
         <hr style={{ border: 'none', borderTop: '2px solid #a6110b', margin: '0 0 18px 0' }} />
@@ -158,6 +159,9 @@ const totalPayments = (payments ?? []).reduce(
 
         <p style={{ marginTop: "30px", fontSize: "12px", textAlign: "center", color: '#9b9c9c' }}>
           Generated on {new Date().toLocaleString()}
+        </p>
+        <p style={{ marginTop: "8px", fontSize: "11px", textAlign: "center", color: '#9b9c9c' }}>
+          Powered by <span style={{ fontWeight: 700, color: '#6e6e6d' }}>GG-Tech</span>
         </p>
       </div>
     );

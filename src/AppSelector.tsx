@@ -1,12 +1,19 @@
 import { useNavigate } from "react-router-dom";
 import { Shield, Users } from "lucide-react";
+import arkaLogo from "./assets/arka_logo.png";
 
 export default function AppSelector() {
   const navigate = useNavigate();
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex flex-col items-center justify-center p-4">
       <div className="max-w-4xl w-full">
         <div className="text-center mb-12">
+          <div
+            className="inline-block mx-auto mb-4 rounded-2xl overflow-hidden bg-white shadow-lg p-3"
+            style={{ animation: 'fadeInScale 0.6s ease-out' }}
+          >
+            <img src={arkaLogo} alt="Arka Bricks" className="max-h-20 object-contain" />
+          </div>
           <h1 className="text-gray-900 mb-2">Arka Bricks</h1>
           <p className="text-gray-600">Select your application</p>
         </div>
@@ -69,6 +76,7 @@ export default function AppSelector() {
           </button>
         </div>
       </div>
+      <p className="text-center text-gray-400 text-sm py-6">Powered by <span className="font-bold text-gray-500">GG-Tech</span></p>
     </div>
   );
 }
