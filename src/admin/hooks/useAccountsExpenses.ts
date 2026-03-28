@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { getExpensesByDateRange, getExpenseTypes, getExpenseSubtypes, getProcurementsByDateRange } from '../../services/middleware.service';
+import { getExpensesByDateRange, getExpenseTypes, getExpenseSubtypes, getProcurementsByDateRange, getSalaryAutoEntriesByDateRange } from '../../services/middleware.service';
 
 type FilterType = 'Current Month' | 'Last month' | 'Last year' | 'Custom range';
 
@@ -40,6 +40,18 @@ interface Procurement {
 interface ExpenseType {
   id: string;
   name: string;
+}
+
+interface SalaryEntry {
+  id: string;
+  employee_id: string;
+  entry_type: string;
+  amount: number;
+  notes: string | null;
+  created_at: string;
+  employees?: {
+    name: string;
+  };
 }
 
 interface DateRange {
@@ -133,6 +145,7 @@ export function useAccountsExpenses(
 ) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [procurements, setProcurements] = useState<Procurement[]>([]);
+  const [salaryEntries, setSalaryEntries] = useState<SalaryEntry[]>([]);
   const [expenseTypes, setExpenseTypes] = useState<ExpenseType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -148,15 +161,17 @@ export function useAccountsExpenses(
         // Get date range
         const dateRange = getDateRange(filterType, customStartDate, customEndDate);
 
-        // Fetch expenses and procurements separately
-        const [expensesData, procurementsData, typesData] = await Promise.all([
+        // Fetch expenses, procurements, salary entries, and types
+        const [expensesData, procurementsData, salaryData, typesData] = await Promise.all([
           getExpensesByDateRange(dateRange.startDate, dateRange.endDate),
           getProcurementsByDateRange(dateRange.startDate, dateRange.endDate),
+          getSalaryAutoEntriesByDateRange(dateRange.startDate, dateRange.endDate),
           getExpenseTypes(),
         ]);
 
         setExpenses(expensesData);
         setProcurements(procurementsData);
+        setSalaryEntries(salaryData);
         setExpenseTypes(typesData);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to fetch expenses';
@@ -180,10 +195,15 @@ export function useAccountsExpenses(
     return procurements.reduce((sum, proc) => sum + (proc.total_price || 0), 0);
   }, [procurements]);
 
-  // Prepare pie chart data - by type (expenses + procurements + loan interest)
+  // Calculate total salary (auto entries)
+  const totalSalary = useMemo(() => {
+    return salaryEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
+  }, [salaryEntries]);
+
+  // Prepare pie chart data - by type (expenses + procurements + loan interest + salary)
   const pieChartData = useMemo(() => {
     if (!selectedExpenseTypeId || selectedExpenseTypeId === 'Overall') {
-      // Group by type (both expenses and procurements)
+      // Group by type (expenses, procurements, loan interest, salary)
       const dataByType: Record<string, number> = {};
       
       // Add manual expenses
@@ -203,6 +223,12 @@ export function useAccountsExpenses(
         dataByType['Loan Interest'] = (dataByType['Loan Interest'] || 0) + loanInterestTotal;
       }
 
+      // Add salary as "Salary" type
+      if (salaryEntries.length > 0) {
+        const salaryTotal = salaryEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
+        dataByType['Salary'] = (dataByType['Salary'] || 0) + salaryTotal;
+      }
+
       return Object.entries(dataByType).map(([name, value]) => ({
         name,
         value,
@@ -213,6 +239,17 @@ export function useAccountsExpenses(
         return [{ name: 'Loan Interest', value: loanInterestTotal }];
       }
       return [];
+    } else if (selectedExpenseTypeId === 'Salary') {
+      // When Salary filter is selected, show salary entries grouped by employee
+      const dataByEmployee: Record<string, number> = {};
+      salaryEntries.forEach((entry) => {
+        const employeeName = entry.employees?.name || 'Unknown Employee';
+        dataByEmployee[employeeName] = (dataByEmployee[employeeName] || 0) + (entry.amount || 0);
+      });
+      return Object.entries(dataByEmployee).map(([name, value]) => ({
+        name,
+        value,
+      }));
     } else {
       // Filter expenses by selected type and group by subtype
       const filteredByType = expenses.filter(
@@ -244,7 +281,7 @@ export function useAccountsExpenses(
         value,
       }));
     }
-  }, [expenses, procurements, selectedExpenseTypeId, loanInterestTotal]);
+  }, [expenses, procurements, salaryEntries, selectedExpenseTypeId, loanInterestTotal]);
 
   // Get filtered expenses based on selected type
   const filteredExpenses = useMemo(() => {
@@ -261,11 +298,13 @@ export function useAccountsExpenses(
   return {
     expenses: filteredExpenses,
     procurements,
+    salaryEntries,
     expenseTypes,
     loading,
     error,
     totalExpenses,
     totalProcurements,
+    totalSalary,
     pieChartData,
     showError,
     closeError,

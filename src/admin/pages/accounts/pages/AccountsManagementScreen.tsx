@@ -63,11 +63,13 @@ export function AccountsManagementScreen() {
   const {
     expenses,
     procurements,
+    salaryEntries,
     expenseTypes,
     loading: expensesLoading,
     error: expensesError,
     totalExpenses,
     totalProcurements,
+    totalSalary,
     pieChartData,
     showError: showExpensesError,
     closeError: closeExpensesError,
@@ -79,8 +81,8 @@ export function AccountsManagementScreen() {
     totalLoanInterest
   );
 
-  // Calculate profit (includes procurements, loan income, and loan interest)
-  const profit = totalIncome + totalLoanIncome - totalExpenses - totalProcurements - totalLoanInterest;
+  // Calculate profit (includes procurements, loan income, loan interest, and salary)
+  const profit = totalIncome + totalLoanIncome - totalExpenses - totalProcurements - totalLoanInterest - totalSalary;
 
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
 
@@ -308,6 +310,7 @@ export function AccountsManagementScreen() {
                 <option value="Overall">Overall</option>
                 <option value="Procurement">📦 Procurement</option>
                 <option value="LoanInterest">💰 Loan Interest</option>
+                <option value="Salary">👷 Salary</option>
                 {expenseTypes.map((type) => (
                   <option key={type.id} value={type.id}>
                     {type.name}
@@ -349,7 +352,7 @@ export function AccountsManagementScreen() {
                       </PieChart>
                     </ResponsiveContainer>
                     <p className="text-gray-700 mt-4 mb-2">Total Expenses</p>
-                    <p className="text-red-600 text-lg">₹{(totalExpenses + totalProcurements + totalLoanInterest).toLocaleString()}</p>
+                    <p className="text-red-600 text-lg">₹{(totalExpenses + totalProcurements + totalLoanInterest + totalSalary).toLocaleString()}</p>
                   </>
                 )}
               </div>
@@ -361,7 +364,7 @@ export function AccountsManagementScreen() {
                 <div className="flex justify-center items-center flex-grow">
                   <p className="text-gray-500">Loading expenses...</p>
                 </div>
-              ) : expenses.length === 0 && procurements.length === 0 && loanInterestEntries.length === 0 ? (
+              ) : expenses.length === 0 && procurements.length === 0 && loanInterestEntries.length === 0 && salaryEntries.length === 0 ? (
                 <div className="flex justify-center items-center flex-grow">
                   <p className="text-gray-500">No expenses found for this period</p>
                 </div>
@@ -495,6 +498,39 @@ export function AccountsManagementScreen() {
                             <div className="mt-2 pt-2 border-t border-amber-200">
                               <p className="text-gray-500 text-xs">Notes: {entry.notes}</p>
                             </div>
+                          )}
+                        </div>
+                      ))}
+                    </>
+                  )}
+
+                  {/* Salary Section */}
+                  {salaryEntries.length > 0 && (
+                    <>
+                      <div className="border-b border-gray-200 pb-2 mt-4">
+                        <h4 className="text-sm font-semibold text-gray-700">👷 Salary (₹{totalSalary.toLocaleString()})</h4>
+                      </div>
+                      {salaryEntries.map((entry: any) => (
+                        <div
+                          key={entry.id}
+                          className="border border-teal-200 bg-teal-50 rounded-lg px-4 py-2 hover:bg-teal-100 transition-colors flex-shrink-0"
+                        >
+                          <div className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-1 min-w-0">
+                              <p className="text-gray-500">Employee:</p>
+                              <p className="text-gray-900 truncate">{entry.employees?.name || 'Unknown'}</p>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <p className="text-gray-500">Amount:</p>
+                              <p className="text-teal-700 font-semibold">₹{(entry.amount || 0).toLocaleString()}</p>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <p className="text-gray-500">Date:</p>
+                              <p className="text-gray-900">{new Date(entry.created_at).toLocaleDateString()}</p>
+                            </div>
+                          </div>
+                          {entry.notes && (
+                            <p className="text-gray-400 text-xs mt-1">Notes: {entry.notes}</p>
                           )}
                         </div>
                       ))}
