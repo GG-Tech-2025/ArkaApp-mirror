@@ -85,8 +85,8 @@ export function HomeScreen() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
@@ -156,6 +156,8 @@ export function HomeScreen() {
           type="warning"
         />
       )}
+
+      <p className="text-center text-gray-400 text-sm py-6">Powered by <span className="font-bold text-gray-500">GG-Tech</span></p>
     </div>
   );
 }
