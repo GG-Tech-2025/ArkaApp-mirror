@@ -30,6 +30,8 @@ export function DeliveryEntry() {
     handleLoadManToggle
   } = useDelivery(orderId);
 
+  const isDelivered = order?.delivered === true;
+
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [showFailurePopup, setShowFailurePopup] = useState(false);
@@ -70,12 +72,32 @@ export function DeliveryEntry() {
             Back to Orders
           </button>
           <h1 className="text-gray-900">Delivery Entry</h1>
-          <p className="text-gray-600 mt-1">Enter the delivery details</p>
+          <p className="text-gray-600 mt-1">{isDelivered ? 'View delivery information' : 'Enter the delivery details'}</p>
         </div>
 
         {/* Form */}
         <div className="bg-white rounded-lg shadow-lg p-6 sm:p-8">
           <div className="space-y-6">
+            {/* Delivered badge */}
+            {isDelivered && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-gray-700 mb-1">Customer: {order?.customers?.name}</p>
+                <p className="text-gray-600 text-sm">Phone: {order?.customers?.phone}</p>
+                <p className="text-gray-600 text-sm mt-2">
+                  <span className="inline-block bg-green-100 text-green-800 px-2 py-1 rounded text-xs">
+                    Delivered
+                  </span>
+                </p>
+              </div>
+            )}
+
+            {/* Read-only notice for delivered orders */}
+            {isDelivered && (
+              <div className="bg-yellow-50 border border-yellow-300 text-yellow-800 px-4 py-3 rounded-lg text-sm">
+                This order has been delivered and cannot be edited.
+              </div>
+            )}
+
             {/* Order ID */}
             <div>
               <label htmlFor="orderId" className="block text-gray-700 mb-2">
@@ -148,7 +170,8 @@ export function DeliveryEntry() {
                 id="time"
                 value={deliveryInput?.time || ""}
                 onChange={(e) => updateDeliveryInput("time", e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                disabled={isDelivered}
+                className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''}`}
               >
                 <option value="">Select Time</option>
                 {TIME_SLOTS.map((slot) => (
@@ -173,7 +196,8 @@ export function DeliveryEntry() {
                 value={deliveryInput?.quantity || ""}
                 onChange={(e) => updateDeliveryInput("quantity", parseInt(e.target.value) || 0)}
                 onWheel={(e) => e.currentTarget.blur()}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                disabled={isDelivered}
+                className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 min="0"
               />
               {errors.quantity && (
@@ -236,16 +260,16 @@ export function DeliveryEntry() {
               </label>
               <input
                 id="deliveryChallanNumber"
-                type="number"
+                type="text"
                 value={deliveryInput?.deliveryChallanNumber || ""}
                 onChange={(e) => updateDeliveryInput("deliveryChallanNumber", e.target.value)}
-                onWheel={(e) => e.currentTarget.blur()}
                 placeholder="Enter delivery challan number"
+                disabled={isDelivered}
                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
                   errors.deliveryChallanNumber
                     ? "border-red-500"
                     : "border-gray-300"
-                }`}
+                } ${isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''}`}
               />
               {errors.deliveryChallanNumber && (
                 <p className="text-red-600 text-sm mt-1">
@@ -264,12 +288,13 @@ export function DeliveryEntry() {
                   {loadmen.map((loadMan) => (
                     <label
                       key={loadMan.id}
-                      className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded"
+                      className={`flex items-center gap-3 p-2 rounded ${isDelivered ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-50'}`}
                     >
                       <input
                         type="checkbox"
                         checked={selectedLoadmen.some(loadman => loadman.id === loadMan.id)}
-                        onChange={() => handleLoadManToggle(loadMan.id)}
+                        onChange={() => !isDelivered && handleLoadManToggle(loadMan.id)}
+                        disabled={isDelivered}
                         className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                       />
                       <span className="text-gray-900">{loadMan.name}</span>
@@ -287,16 +312,18 @@ export function DeliveryEntry() {
               )}
             </div>
 
-            {/* Submit Button */}
-            <button
-              onClick={handleSubmit}
-              disabled={loading}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg transition-colors
-             hover:bg-blue-700 disabled:bg-gray-400 disabled:hover:bg-gray-400
-             disabled:cursor-not-allowed"
-            >
-              {loading ? "Submitting..." : "Submit"}
-            </button>
+            {/* Submit Button - hidden for delivered orders */}
+            {!isDelivered && (
+              <button
+                onClick={handleSubmit}
+                disabled={loading}
+                className="w-full bg-blue-600 text-white py-3 rounded-lg transition-colors
+               hover:bg-blue-700 disabled:bg-gray-400 disabled:hover:bg-gray-400
+               disabled:cursor-not-allowed"
+              >
+                {loading ? "Submitting..." : "Submit"}
+              </button>
+            )}
           </div>
         </div>
       </div>

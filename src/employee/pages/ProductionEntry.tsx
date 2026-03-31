@@ -32,7 +32,7 @@ export function ProductionEntry() {
 
   const handleSubmit = async () => {
     const payload: ProductionInput = {
-      date: date ? date.toISOString() : "",
+      date: date ? format(date, "yyyy-MM-dd") : "",
       round: round === "" ? NaN : Number(round),
       bricks: Number(bricks),
       wetAsh: Number(wetAsh),
