@@ -4,6 +4,7 @@ import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tool
 import { useAdminNavigation } from '../hooks/useAdminNavigation';
 import { useAccountsIncome } from '../hooks/useAccountsIncome';
 import { useAccountsExpenses } from '../hooks/useAccountsExpenses';
+import { useAccountsLoanInterest } from '../hooks/useAccountsLoanInterest';
 import { useAllInventoryStock } from '../hooks/useInventoryStock';
 import { useProductInventory } from '../hooks/useProductInventory';
 import { useProductionByDateRange } from '../hooks/useProductionByDateRange';
@@ -29,22 +30,34 @@ export function MetricsScreen() {
     filterType === 'Custom range' ? customEndDate : undefined
   );
 
+  // Fetch loan interest expenses based on filter
+  const {
+    loading: loanInterestLoading,
+    totalLoanInterest,
+  } = useAccountsLoanInterest(
+    filterType,
+    filterType === 'Custom range' ? customStartDate : undefined,
+    filterType === 'Custom range' ? customEndDate : undefined
+  );
+
   // Fetch expenses data based on filter and selected expense type
   const {
     expenseTypes,
     loading: expensesLoading,
     totalExpenses,
     totalProcurements,
+    totalSalary,
     pieChartData,
   } = useAccountsExpenses(
     filterType,
     filterType === 'Custom range' ? customStartDate : undefined,
     filterType === 'Custom range' ? customEndDate : undefined,
-    selectedExpenseTypeId
+    selectedExpenseTypeId,
+    totalLoanInterest
   );
 
-  // Calculate profit (includes procurements)
-  const profit = totalIncome - totalExpenses - totalProcurements;
+  // Calculate profit (includes procurements, loan interest, and salary)
+  const profit = totalIncome - totalExpenses - totalProcurements - totalLoanInterest - totalSalary;
 
   // Fetch production data based on filter
   const {
@@ -260,6 +273,8 @@ export function MetricsScreen() {
                 >
                   <option value="Overall">Overall</option>
                   <option value="Procurement">📦 Procurement</option>
+                  <option value="LoanInterest">💰 Loan Interest</option>
+                  <option value="Salary">👷 Salary</option>
                   {expenseTypes.map((type) => (
                     <option key={type.id} value={type.id}>
                       {type.name}
@@ -271,7 +286,7 @@ export function MetricsScreen() {
               {/* Expenses - Pie Chart */}
               <div className="p-6 bg-red-50">
                 <div className="flex flex-col items-center">
-                  {expensesLoading ? (
+                  {(expensesLoading || loanInterestLoading) ? (
                     <div className="h-48 flex items-center justify-center">
                       <p className="text-gray-500">Loading chart...</p>
                     </div>
@@ -301,7 +316,7 @@ export function MetricsScreen() {
                         </PieChart>
                       </ResponsiveContainer>
                       <p className="text-gray-700 mt-4 mb-2">Total Expenses</p>
-                      <p className="text-red-600 text-lg">₹{(totalExpenses + totalProcurements).toLocaleString()}</p>
+                      <p className="text-red-600 text-lg">₹{(totalExpenses + totalProcurements + totalLoanInterest + totalSalary).toLocaleString()}</p>
                     </>
                   )}
                 </div>

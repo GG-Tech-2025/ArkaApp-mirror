@@ -65,22 +65,46 @@ export function useVendorPayment() {
     const load = async () => {
       try {
         setLoading(true);
-        const [v, fin, accs, paymentsResult] = await Promise.all([
-          getVendorByIdWithMaterials(vendorId),
-          getVendorFinancials(vendorId),
-          getAccountsForPayments(),
-          getVendorPayments(vendorId, 1),
-        ]);
-        setVendor(v);
-        setFinancials({
-          total_purchase: Number(fin.total_purchase ?? 0),
-          total_paid: Number(fin.total_paid ?? 0),
-          outstanding_balance: Number(fin.outstanding_balance ?? 0),
-        });
-        setAccounts(accs);
-        // First entry is the most recent payment (ordered by payment_date desc)
-        if (paymentsResult.data.length > 0) {
-          setLastTransactionDate(paymentsResult.data[0].payment_date);
+
+        // Fetch each resource independently so one failure doesn't block others
+        const [vendorResult, financialsResult, accountsResult, paymentsResult] =
+          await Promise.allSettled([
+            getVendorByIdWithMaterials(vendorId),
+            getVendorFinancials(vendorId),
+            getAccountsForPayments(),
+            getVendorPayments(vendorId, 1),
+          ]);
+
+        // Vendor (critical)
+        if (vendorResult.status === 'fulfilled') {
+          setVendor(vendorResult.value);
+        } else {
+          console.error('Failed to load vendor:', vendorResult.reason);
+        }
+
+        // Financials (may not exist for new vendors)
+        if (financialsResult.status === 'fulfilled') {
+          const fin = financialsResult.value;
+          setFinancials({
+            total_purchase: Number(fin.total_purchase ?? 0),
+            total_paid: Number(fin.total_paid ?? 0),
+            outstanding_balance: Number(fin.outstanding_balance ?? 0),
+          });
+        } else {
+          console.error('Failed to load financials:', financialsResult.reason);
+          setFinancials({ total_purchase: 0, total_paid: 0, outstanding_balance: 0 });
+        }
+
+        // Accounts
+        if (accountsResult.status === 'fulfilled') {
+          setAccounts(accountsResult.value);
+        } else {
+          console.error('Failed to load accounts:', accountsResult.reason);
+        }
+
+        // Payments (last transaction date)
+        if (paymentsResult.status === 'fulfilled' && paymentsResult.value.data.length > 0) {
+          setLastTransactionDate(paymentsResult.value.data[0].payment_date);
         }
       } catch (err) {
         console.error('Failed to load vendor payment data:', err);

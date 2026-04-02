@@ -1616,6 +1616,50 @@ export async function createExpense(payload: {
 }
 
 /* ------------------------------------------------------------------
+   40.1 DELETE EXPENSE (Reverse account deduction + remove row)
+-------------------------------------------------------------------*/
+export async function deleteExpense(expenseId: string): Promise<void> {
+  // 1️⃣ Fetch the expense to know amount + account info
+  const { data: expense, error: fetchError } = await supabase
+    .from("expenses")
+    .select("id, amount, payment_mode, sender_account_id")
+    .eq("id", expenseId)
+    .single();
+
+  if (fetchError) throw fetchError;
+  if (!expense) throw new Error("Expense not found");
+
+  // 2️⃣ Determine which account to restore the balance to
+  let accountIdToRestore: string;
+
+  if (expense.payment_mode === "CASH") {
+    const cashAccount = await getCashAccount();
+    accountIdToRestore = cashAccount.id;
+  } else {
+    if (!expense.sender_account_id) {
+      throw new Error("Expense has no sender account to restore balance to");
+    }
+    accountIdToRestore = expense.sender_account_id;
+  }
+
+  // 3️⃣ Restore the balance to the account
+  const { error: rpcError } = await supabase.rpc("increment_account_balance", {
+    p_account_id: accountIdToRestore,
+    p_amount: expense.amount,
+  });
+
+  if (rpcError) throw rpcError;
+
+  // 4️⃣ Delete the expense row
+  const { error: deleteError } = await supabase
+    .from("expenses")
+    .delete()
+    .eq("id", expenseId);
+
+  if (deleteError) throw deleteError;
+}
+
+/* ------------------------------------------------------------------
    41. GET ORDERS BY DATE RANGE (for Accounts/Income reporting)
    Only fetches delivered orders, filtered by delivery_date.
 -------------------------------------------------------------------*/
@@ -2918,6 +2962,131 @@ export async function getVendorPayments(
     hasMore: from + PAGE_SIZE < (count ?? 0),
   };
 }
+
+/* ------------------------------------------------------------------
+  Get Vendor Procurements For Export (ALL records in date range, no pagination)
+---------------------------------------------------------------------*/
+export async function getVendorProcurementsForExport(
+  vendorId: string,
+  fromDate: string,
+  toDate: string
+) {
+  const { data, error } = await supabase
+    .from("procurements")
+    .select(`
+      id,
+      vendor_id,
+      material_id,
+      quantity,
+      rate_per_unit,
+      total_price,
+      total_paid,
+      payment_status,
+      date,
+      approved,
+      created_at,
+      materials!material_id(id, name, unit)
+    `)
+    .eq("vendor_id", vendorId)
+    .eq("approved", true)
+    .gte("date", fromDate)
+    .lte("date", toDate)
+    .order("date", { ascending: true });
+
+  if (error) throw error;
+
+  return data ?? [];
+}
+
+/* ------------------------------------------------------------------
+  Get Vendor Payments For Export (ALL records in date range, no pagination)
+---------------------------------------------------------------------*/
+export async function getVendorPaymentsForExport(
+  vendorId: string,
+  fromDate: string,
+  toDate: string
+) {
+  const { data, error } = await supabase
+    .from("vendor_payments")
+    .select(`
+      id,
+      vendor_id,
+      payment_date,
+      amount,
+      mode,
+      sender_account_id,
+      receiver_account_info,
+      created_at,
+      accounts (
+        account_number
+      )
+    `)
+    .eq("vendor_id", vendorId)
+    .gte("payment_date", fromDate)
+    .lte("payment_date", toDate)
+    .order("payment_date", { ascending: true });
+
+  if (error) throw error;
+
+  return data ?? [];
+}
+
+/* ------------------------------------------------------------------
+  Get Customer Orders For Export (ALL delivered orders in date range, no pagination)
+---------------------------------------------------------------------*/
+export async function getCustomerOrdersForExport(
+  customerId: string,
+  fromDate: string,
+  toDate: string
+) {
+  const { data, error } = await supabase
+    .from("customer_order_settlement")
+    .select(`
+      order_id,
+      customer_id,
+      order_date,
+      delivery_date,
+      brick_quantity,
+      final_price,
+      gst_number,
+      dc_number,
+      total_paid,
+      remaining_balance,
+      payment_status,
+      delivered
+    `)
+    .eq("customer_id", customerId)
+    .eq("delivered", true)
+    .gte("delivery_date", fromDate)
+    .lte("delivery_date", toDate)
+    .order("order_date", { ascending: true });
+
+  if (error) throw error;
+
+  return data ?? [];
+}
+
+/* ------------------------------------------------------------------
+  Get Customer Payments For Export (ALL records in date range, no pagination)
+---------------------------------------------------------------------*/
+export async function getCustomerPaymentsForExport(
+  customerId: string,
+  fromDate: string,
+  toDate: string
+) {
+  const { data, error } = await supabase
+    .from("customer_payments_view")
+    .select("*")
+    .eq("customer_id", customerId)
+    .gte("payment_date", fromDate)
+    .lte("payment_date", toDate)
+    .order("payment_date", { ascending: true });
+
+  if (error) throw error;
+
+  return data ?? [];
+}
+
 /* ------------------------------------------------------------------
   Get Vendor Financials
 ---------------------------------------------------------------------*/
@@ -2926,7 +3095,7 @@ export async function getVendorFinancials(vendorId: string) {
     .from("vendor_financials")
     .select("*")
     .eq("vendor_id", vendorId)
-    .single();
+    .maybeSingle();
 
   if (error) throw error;
   return data;
@@ -3248,8 +3417,48 @@ export async function createSalaryLedgerEntry(
   input: CreateSalaryLedgerInput
 ): Promise<SalaryLedger> {
 
+  const isPayment = input.entry_type !== "AUTO" && input.entry_type !== "SALARY_AUTO_ENTRY";
+
   /* -------------------------------------------------------------
-     1. GET CURRENT RUNNING BALANCE
+     1. DEDUCT FROM ACCOUNT FIRST (payments only)
+     Validates sufficient balance and deducts atomically.
+     If this fails the ledger entry is never created.
+  --------------------------------------------------------------*/
+
+  if (isPayment) {
+    let accountIdToDeduct: string | undefined;
+
+    if (input.payment_mode === "CASH") {
+      const cashAccount = await getCashAccount();
+      accountIdToDeduct = cashAccount.id;
+    } else {
+      accountIdToDeduct = input.sender_account_id ?? undefined;
+    }
+
+    if (accountIdToDeduct) {
+      const { error: rpcError } = await supabase.rpc(
+        "decrement_account_balance",
+        {
+          p_account_id: accountIdToDeduct,
+          p_amount: input.amount,
+        }
+      );
+
+      if (rpcError) {
+        // Surface a user-friendly message for insufficient balance
+        const msg = (rpcError.message ?? "").toLowerCase();
+        if (msg.includes("insufficient balance")) {
+          throw new Error(
+            "Insufficient balance in the selected account. Please choose a different account or reduce the amount."
+          );
+        }
+        throw rpcError;
+      }
+    }
+  }
+
+  /* -------------------------------------------------------------
+     2. GET CURRENT RUNNING BALANCE
   --------------------------------------------------------------*/
   const { data: lastEntry, error: balanceError } = await supabase
     .from("salary_ledger")
@@ -3264,7 +3473,7 @@ export async function createSalaryLedgerEntry(
   const currentBalance = lastEntry?.running_balance ?? 0;
 
   /* -------------------------------------------------------------
-     2. CALCULATE NEW BALANCE
+     3. CALCULATE NEW BALANCE
   --------------------------------------------------------------*/
 
   let newBalance = currentBalance;
@@ -3273,37 +3482,6 @@ export async function createSalaryLedgerEntry(
     newBalance += input.amount;
   } else {
     newBalance -= input.amount;
-  }
-
-  /* -------------------------------------------------------------
-     3. DEDUCT FROM ACCOUNT / CASH BALANCE (payments only)
-  --------------------------------------------------------------*/
-
-  const isPayment = input.entry_type !== "AUTO" && input.entry_type !== "SALARY_AUTO_ENTRY";
-
-  if (isPayment) {
-    let accountIdToDeduct: string | undefined;
-
-    if (input.payment_mode === "CASH") {
-      const cashAccount = await getCashAccount();
-      accountIdToDeduct = cashAccount.id;
-    } else {
-      accountIdToDeduct = input.sender_account_id ?? undefined;
-    }
-
-    if (!accountIdToDeduct) {
-      throw new Error("Account not found for deduction");
-    }
-
-    const { error: rpcError } = await supabase.rpc(
-      "decrement_account_balance",
-      {
-        p_account_id: accountIdToDeduct,
-        p_amount: input.amount,
-      }
-    );
-
-    if (rpcError) throw rpcError;
   }
 
   /* -------------------------------------------------------------
@@ -3326,7 +3504,32 @@ export async function createSalaryLedgerEntry(
     .select("*")
     .single();
 
-  if (error) throw error;
+  if (error) {
+    // Ledger insert failed but account was already deducted — attempt to
+    // restore the account balance so we don't lose money silently.
+    if (isPayment) {
+      let accountIdToRestore: string | undefined;
+      if (input.payment_mode === "CASH") {
+        try {
+          const cashAccount = await getCashAccount();
+          accountIdToRestore = cashAccount.id;
+        } catch { /* best effort */ }
+      } else {
+        accountIdToRestore = input.sender_account_id ?? undefined;
+      }
+
+      if (accountIdToRestore) {
+        const { error: restoreErr } = await supabase.rpc("increment_account_balance", {
+          p_account_id: accountIdToRestore,
+          p_amount: input.amount,
+        });
+        if (restoreErr) {
+          console.error("CRITICAL: Failed to restore account balance after ledger insert failure:", restoreErr);
+        }
+      }
+    }
+    throw error;
+  }
 
   return data as SalaryLedger;
 }

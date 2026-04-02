@@ -7,7 +7,7 @@ export type PaymentEntryTypeLabel =
   | 'Full Settlement'
   | '';
 
-export type PaymentModeLabel = 'UPI' | 'Bank Transfer' | 'Cheque' | 'Cash';
+export type PaymentModeLabel = 'UPI' | 'Bank Transfer' | 'Cash';
 
 export interface AddPaymentFormInput {
   entryType: PaymentEntryTypeLabel;
@@ -21,7 +21,8 @@ export interface AddPaymentFormInput {
 
 export function validateAddPayment(
   input: AddPaymentFormInput,
-  runningBalance: number
+  runningBalance: number,
+  selectedAccountBalance?: number | null
 ): Record<string, string> {
   const errors: Record<string, string> = {};
 
@@ -59,6 +60,15 @@ export function validateAddPayment(
     if (!input.receiverAccountInfo.trim()) {
       errors.receiverAccountInfo = 'RAI is required';
     }
+  }
+
+  // Validate that the selected account has sufficient balance
+  if (
+    !errors.amount &&
+    selectedAccountBalance != null &&
+    Number(input.amount) > selectedAccountBalance
+  ) {
+    errors.amount = `Insufficient account balance (₹${selectedAccountBalance.toLocaleString()} available)`;
   }
 
   return errors;

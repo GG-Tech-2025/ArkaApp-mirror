@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { getExpensesByDateRange, getExpenseTypes, getExpenseSubtypes, getProcurementsByDateRange, getSalaryAutoEntriesByDateRange } from '../../services/middleware.service';
 
 type FilterType = 'Current Month' | 'Last month' | 'Last year' | 'Custom range';
@@ -151,39 +151,40 @@ export function useAccountsExpenses(
   const [error, setError] = useState<string | null>(null);
   const [showError, setShowError] = useState(false);
 
+  // Reusable fetch function
+  const fetchExpensesData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Get date range
+      const dateRange = getDateRange(filterType, customStartDate, customEndDate);
+
+      // Fetch expenses, procurements, salary entries, and types
+      const [expensesData, procurementsData, salaryData, typesData] = await Promise.all([
+        getExpensesByDateRange(dateRange.startDate, dateRange.endDate),
+        getProcurementsByDateRange(dateRange.startDate, dateRange.endDate),
+        getSalaryAutoEntriesByDateRange(dateRange.startDate, dateRange.endDate),
+        getExpenseTypes(),
+      ]);
+
+      setExpenses(expensesData);
+      setProcurements(procurementsData);
+      setSalaryEntries(salaryData);
+      setExpenseTypes(typesData);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch expenses';
+      setError(errorMessage);
+      setShowError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [filterType, customStartDate, customEndDate]);
+
   // Fetch expense data based on filter
   useEffect(() => {
-    const fetchExpenses = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        // Get date range
-        const dateRange = getDateRange(filterType, customStartDate, customEndDate);
-
-        // Fetch expenses, procurements, salary entries, and types
-        const [expensesData, procurementsData, salaryData, typesData] = await Promise.all([
-          getExpensesByDateRange(dateRange.startDate, dateRange.endDate),
-          getProcurementsByDateRange(dateRange.startDate, dateRange.endDate),
-          getSalaryAutoEntriesByDateRange(dateRange.startDate, dateRange.endDate),
-          getExpenseTypes(),
-        ]);
-
-        setExpenses(expensesData);
-        setProcurements(procurementsData);
-        setSalaryEntries(salaryData);
-        setExpenseTypes(typesData);
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to fetch expenses';
-        setError(errorMessage);
-        setShowError(true);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchExpenses();
-  }, [filterType, customStartDate, customEndDate]);
+    fetchExpensesData();
+  }, [fetchExpensesData]);
 
   // Calculate total expenses (manual expenses only)
   const totalExpenses = useMemo(() => {
@@ -308,5 +309,6 @@ export function useAccountsExpenses(
     pieChartData,
     showError,
     closeError,
+    refetchExpenses: fetchExpensesData,
   };
 }
