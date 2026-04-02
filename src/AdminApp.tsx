@@ -1,38 +1,4 @@
 import React, { useState } from 'react';
-import { OrderManagementScreen } from './admin/pages/OrderManagementScreen';
-import { CreateOrderScreen } from './components/admin/CreateOrderScreen';
-import { OrderDetailsScreen } from './components/admin/OrderDetailsScreen';
-import { ProductionStatisticsScreen } from './admin/pages/ProductionStatisticsScreen';
-import { InventoryManagementScreen } from './admin/pages/InventoryManagementScreen';
-import { CustomerManagementScreen } from './admin/pages/CustomerManagementScreen';
-import { CustomerDetailsScreen } from './components/admin/CustomerDetailsScreen';
-import { AccountsManagementScreen } from './admin/pages/AccountsManagementScreen';
-import { CreateExpenseScreen } from './components/admin/CreateExpenseScreen';
-import { CreateExpenseSubtypeScreen } from './admin/pages/accounts/pages/CreateExpenseSubtypeScreen';
-import { EditExpenseScreen } from './admin/pages/accounts/pages/EditExpenseScreen';
-import { MetricsScreen } from './admin/pages/MetricsScreen';
-import { EmployeeManagementScreen } from './admin/pages/EmployeeManagementScreen';
-import { CreateEmployeeScreen } from './components/admin/CreateEmployeeScreen';
-import { EditEmployeeScreen } from './components/admin/EditEmployeeScreen';
-import { CreateRoleScreen } from './admin/pages/employees/pages/CreateRoleScreen';
-import { EditRoleScreen } from './components/admin/EditRoleScreen';
-import { SalaryLedgerScreen } from './admin/pages/SalaryLedgerScreen';
-import { SalaryLedgerDetailScreen } from './components/admin/SalaryLedgerDetailScreen';
-import { AddPaymentScreen } from './components/admin/AddPaymentScreen';
-import { VendorManagementScreen } from './admin/pages/VendorManagementScreen';
-import { CreateVendorScreen } from './components/admin/CreateVendorScreen';
-import { EditVendorScreen } from './components/admin/EditVendorScreen';
-import { VendorLedgerScreen } from './components/admin/VendorLedgerScreen';
-import { CreateProcurementRequestScreen } from './components/admin/CreateProcurementRequestScreen';
-import { ProcurementRequestDetailScreen } from './components/admin/ProcurementRequestDetailScreen';
-import { VendorPaymentScreen } from './components/admin/VendorPaymentScreen';
-import { UnapprovedProcurementsScreen } from './components/admin/UnapprovedProcurementsScreen';
-import { CashFlowScreen } from './admin/pages/CashFlowScreen';
-import { CashLedgerScreen } from './components/admin/CashLedgerScreen';
-import { LoanManagementScreen } from './admin/pages/loans/pages/LoanManagementScreen';
-import { CreateLoanScreen } from './admin/pages/loans/pages/CreateLoanScreen';
-import { LoanLedgerScreen } from './admin/pages/loans/pages/LoanLedgerScreen';
-import { AddLoanTransactionScreen } from './admin/pages/loans/pages/AddLoanTransactionScreen';
 import { AdminRoutes } from './admin/routes';
 
 export type AdminScreen = 
