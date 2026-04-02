@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { ArrowLeft, Plus, Wallet, X } from 'lucide-react';
+import { ArrowLeft, Plus, Wallet, X, Trash2 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 import { useAdminNavigation } from '../../../hooks/useAdminNavigation';
 import { useAccountsIncome } from '../../../hooks/useAccountsIncome';
 import { useAccountsExpenses } from '../../../hooks/useAccountsExpenses';
 import { useAccountsLoanIncome } from '../../../hooks/useAccountsLoanIncome';
 import { useAccountsLoanInterest } from '../../../hooks/useAccountsLoanInterest';
+import { deleteExpense } from '../../../../services/middleware.service';
+import { Popup } from '../../../../components/Popup';
 
 type FilterType = 'Current Month' | 'Last month' | 'Last year' | 'Custom range';
 
@@ -16,6 +18,15 @@ export function AccountsManagementScreen() {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [selectedExpenseTypeId, setSelectedExpenseTypeId] = useState<string>('Overall');
+
+  // Delete expense state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingExpenseId, setDeletingExpenseId] = useState<string | null>(null);
+  const [deletingExpense, setDeletingExpense] = useState(false);
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [showErrorPopup, setShowErrorPopup] = useState(false);
+  const [errorPopupMessage, setErrorPopupMessage] = useState('');
 
   // Fetch income data based on filter
   const { 
@@ -73,6 +84,7 @@ export function AccountsManagementScreen() {
     pieChartData,
     showError: showExpensesError,
     closeError: closeExpensesError,
+    refetchExpenses,
   } = useAccountsExpenses(
     filterType,
     filterType === 'Custom range' ? customStartDate : undefined,
@@ -107,6 +119,43 @@ export function AccountsManagementScreen() {
     setShowCustomRangeModal(false);
     setCustomStartDate('');
     setCustomEndDate('');
+  };
+
+  // ─── Delete Expense Handlers ───
+  const handleOpenDeleteConfirm = (expenseId: string) => {
+    setDeletingExpenseId(expenseId);
+    setShowDeleteConfirm(true);
+  };
+
+  const handleCloseDeleteConfirm = () => {
+    setShowDeleteConfirm(false);
+    setDeletingExpenseId(null);
+  };
+
+  const handleConfirmDeleteExpense = async () => {
+    if (!deletingExpenseId) return;
+
+    try {
+      setDeletingExpense(true);
+      await deleteExpense(deletingExpenseId);
+
+      setShowDeleteConfirm(false);
+      setDeletingExpenseId(null);
+
+      // Refresh expenses data so totals and profit recalculate
+      await refetchExpenses();
+
+      setSuccessMessage('Expense deleted successfully');
+      setShowSuccessPopup(true);
+    } catch (err) {
+      console.error('Failed to delete expense:', err);
+      setShowDeleteConfirm(false);
+      setDeletingExpenseId(null);
+      setErrorPopupMessage('Failed to delete expense. Please try again.');
+      setShowErrorPopup(true);
+    } finally {
+      setDeletingExpense(false);
+    }
   };
 
   return (
@@ -379,40 +428,52 @@ export function AccountsManagementScreen() {
                       {expenses.map((expense: any) => (
                         <div
                           key={expense.id}
-                          onClick={() => goTo(`/admin/accounts/expense/${expense.id}`)}
-                          className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 cursor-pointer transition-colors flex-shrink-0"
+                          className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors flex-shrink-0"
                         >
-                          <div className="grid grid-cols-5 gap-3 text-sm">
-                            <div>
-                              <p className="text-gray-500 mb-1">Type</p>
-                              <p className="text-gray-900 truncate">{expense.expense_types?.name || '-'}</p>
+                          <div className="flex items-start gap-3">
+                            <div className="grid grid-cols-6 gap-3 text-sm flex-1 min-w-0">
+                              <div>
+                                <p className="text-gray-500 mb-1">Date</p>
+                                <p className="text-gray-900">{expense.expense_date ? new Date(expense.expense_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '-'}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500 mb-1">Type</p>
+                                <p className="text-gray-900 truncate">{expense.expense_types?.name || '-'}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500 mb-1">Subtype</p>
+                                <p className="text-gray-900 truncate">{expense.expense_subtypes?.name || '-'}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500 mb-1">Comments</p>
+                                <p className="text-gray-900 truncate">{expense.comments || '-'}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500 mb-1">Amount</p>
+                                <p className="text-gray-900">₹{(expense.amount || 0).toLocaleString()}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500 mb-1">Payment Mode</p>
+                                <span className={`inline-block px-2 py-1 rounded-full text-xs ${
+                                  expense.payment_mode === 'CASH'
+                                    ? 'bg-gray-100 text-gray-800'
+                                    : expense.payment_mode === 'UPI'
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : expense.payment_mode === 'BANK'
+                                    ? 'bg-green-100 text-green-800'
+                                    : 'bg-orange-100 text-orange-800'
+                                }`}>
+                                  {expense.payment_mode === 'CASH' ? 'Cash' : expense.payment_mode === 'UPI' ? 'UPI' : expense.payment_mode === 'BANK' ? 'Bank' : 'Cheque'}
+                                </span>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-gray-500 mb-1">Subtype</p>
-                              <p className="text-gray-900 truncate">{expense.expense_subtypes?.name || '-'}</p>
-                            </div>
-                            <div>
-                              <p className="text-gray-500 mb-1">Comments</p>
-                              <p className="text-gray-900 truncate">{expense.comments || '-'}</p>
-                            </div>
-                            <div>
-                              <p className="text-gray-500 mb-1">Amount</p>
-                              <p className="text-gray-900">₹{(expense.amount || 0).toLocaleString()}</p>
-                            </div>
-                            <div>
-                              <p className="text-gray-500 mb-1">Payment Mode</p>
-                              <span className={`inline-block px-2 py-1 rounded-full text-xs ${
-                                expense.payment_mode === 'CASH'
-                                  ? 'bg-gray-100 text-gray-800'
-                                  : expense.payment_mode === 'UPI'
-                                  ? 'bg-blue-100 text-blue-800'
-                                  : expense.payment_mode === 'BANK'
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-orange-100 text-orange-800'
-                              }`}>
-                                {expense.payment_mode === 'CASH' ? 'Cash' : expense.payment_mode === 'UPI' ? 'UPI' : expense.payment_mode === 'BANK' ? 'Bank' : 'Cheque'}
-                              </span>
-                            </div>
+                            <button
+                              onClick={() => handleOpenDeleteConfirm(expense.id)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors flex-shrink-0"
+                              aria-label="Delete expense"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                         </div>
                       ))}
@@ -744,6 +805,69 @@ export function AccountsManagementScreen() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Delete Expense Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+            <button
+              onClick={handleCloseDeleteConfirm}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              aria-label="Close modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h2 className="text-gray-900 mb-4">Delete Expense</h2>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete this expense? The amount will be
+              added back to the account from which it was paid. This action
+              cannot be undone.
+            </p>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={handleCloseDeleteConfirm}
+                disabled={deletingExpense}
+                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDeleteExpense}
+                disabled={deletingExpense}
+                className={`px-6 py-2 rounded-lg transition-colors ${
+                  deletingExpense
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-red-600 text-white hover:bg-red-700'
+                }`}
+              >
+                {deletingExpense ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success Popup */}
+      {showSuccessPopup && (
+        <Popup
+          title="Success"
+          message={successMessage}
+          onClose={() => setShowSuccessPopup(false)}
+          type="success"
+        />
+      )}
+
+      {/* Error Popup */}
+      {showErrorPopup && (
+        <Popup
+          title="Error"
+          message={errorPopupMessage}
+          onClose={() => setShowErrorPopup(false)}
+          type="error"
+        />
       )}
     </div>
   );

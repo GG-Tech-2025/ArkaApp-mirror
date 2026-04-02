@@ -14,6 +14,8 @@ import {
   getAccountsForPayments,
   createCustomerPayment,
   deleteCustomerPayment,
+  getCustomerOrdersForExport,
+  getCustomerPaymentsForExport,
 } from "../../../../services/middleware.service";
 import { useAdminNavigation } from "../../../hooks/useAdminNavigation";
 import { validateCustomer } from "../../../validators/customer.validator";
@@ -101,6 +103,7 @@ export function CustomerDetailsScreen() {
 
   const [exportOrders, setExportOrders] = useState<any[]>([]);
   const [exportPayments, setExportPayments] = useState<any[]>([]);
+  const [exporting, setExporting] = useState(false);
 
   const [receiverAccounts, setReceiverAccounts] = useState<
     { id: string; label: string; value: string }[]
@@ -547,67 +550,91 @@ export function CustomerDetailsScreen() {
       return;
     }
 
-    // 🔎 Filter orders by delivery date
-    const ordersInRange = orders.filter((order) => {
-      const d = new Date(order.deliveryDate);
-      return d >= fromDate && d <= toDate;
-    });
+    if (!customerId) return;
 
-    // 🔎 Filter payments
-    const paymentsInRange = payments.filter((payment) => {
-      const d = new Date(payment.date);
-      return d >= fromDate && d <= toDate;
-    });
+    // Fetch fresh data from API for the selected date range
+    setExporting(true);
+    try {
+      const [ordersData, paymentsData] = await Promise.all([
+        getCustomerOrdersForExport(customerId, exportFromDate, exportToDate),
+        getCustomerPaymentsForExport(customerId, exportFromDate, exportToDate),
+      ]);
 
-    if (ordersInRange.length === 0 && paymentsInRange.length === 0) {
-      setShowExportModal(false);
-      setShowNoTransactionsPopup(true);
-      return;
-    }
+      // Map orders to the export format
+      const ordersInRange = ordersData.map((o: any) => ({
+        id: o.order_id,
+        date: o.order_date,
+        deliveryDate: o.delivery_date,
+        quantity: o.brick_quantity,
+        finalPrice: o.final_price,
+      }));
 
-    // 🔥 Store in state
-    setExportOrders(ordersInRange);
-    setExportPayments(paymentsInRange);
+      // Map payments to the export format
+      const paymentsInRange = paymentsData.map((p: any) => ({
+        id: p.id,
+        date: p.payment_date,
+        amount: p.amount,
+        modeOfPayment: p.mode,
+      }));
 
-    // Wait for component render
-    setTimeout(async () => {
-      try {
-        const element = exportRef.current;
-        if (!element) return;
-
-        const canvas = await html2canvas(element, {
-          scale: 2,
-          useCORS: true,
-        });
-
-        const imgData = canvas.toDataURL("image/png");
-
-        if (exportFormat === "Image") {
-          const link = document.createElement("a");
-          link.href = imgData;
-          link.download = `Arka_Invoice_${customer?.name}.png`;
-          link.click();
-        } else {
-          const pdf = new jsPDF("p", "mm", "a4");
-          const imgProps = pdf.getImageProperties(imgData);
-          const pdfWidth = pdf.internal.pageSize.getWidth();
-          const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-
-          pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
-          pdf.save(`Arka_Invoice_${customer?.name}.pdf`);
-        }
-
+      if (ordersInRange.length === 0 && paymentsInRange.length === 0) {
+        setExporting(false);
         setShowExportModal(false);
-        setSuccessMessage(
-          `Customer invoice exported successfully as ${exportFormat}`,
-        );
-        setShowSuccessPopup(true);
-      } catch (err) {
-        console.error(err);
-        setShowExportModal(false);
-        setShowExportErrorPopup(true);
+        setShowNoTransactionsPopup(true);
+        return;
       }
-    }, 400);
+
+      // 🔥 Store in state
+      setExportOrders(ordersInRange);
+      setExportPayments(paymentsInRange);
+
+      // Wait for component render
+      setTimeout(async () => {
+        try {
+          const element = exportRef.current;
+          if (!element) return;
+
+          const canvas = await html2canvas(element, {
+            scale: 2,
+            useCORS: true,
+          });
+
+          const imgData = canvas.toDataURL("image/png");
+
+          if (exportFormat === "Image") {
+            const link = document.createElement("a");
+            link.href = imgData;
+            link.download = `Arka_Invoice_${customer?.name}.png`;
+            link.click();
+          } else {
+            const pdf = new jsPDF("p", "mm", "a4");
+            const imgProps = pdf.getImageProperties(imgData);
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+            pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+            pdf.save(`Arka_Invoice_${customer?.name}.pdf`);
+          }
+
+          setShowExportModal(false);
+          setSuccessMessage(
+            `Customer invoice exported successfully as ${exportFormat}`,
+          );
+          setShowSuccessPopup(true);
+        } catch (err) {
+          console.error(err);
+          setShowExportModal(false);
+          setShowExportErrorPopup(true);
+        } finally {
+          setExporting(false);
+        }
+      }, 400);
+    } catch (err) {
+      console.error("Failed to fetch export data:", err);
+      setExporting(false);
+      setShowExportModal(false);
+      setShowExportErrorPopup(true);
+    }
   };
 
   // const displayedOrders = MOCK_CUSTOMER_ORDERS.slice(0, displayCount);

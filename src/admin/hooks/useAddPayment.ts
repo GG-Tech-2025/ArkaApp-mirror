@@ -133,13 +133,7 @@ export function useAddPayment() {
     if (!employeeId) return;
 
     const runningBalance = employee?.running_balance ?? 0;
-    const newErrors = validateAddPayment(formInput, runningBalance);
-
-    // Validate amount against account balance
-    const amount = Number(formInput.amount);
-    if (amount > 0 && selectedAccountBalance !== null && amount > selectedAccountBalance) {
-      newErrors.amount = `Amount exceeds available account balance (₹${selectedAccountBalance.toLocaleString()})`;
-    }
+    const newErrors = validateAddPayment(formInput, runningBalance, selectedAccountBalance);
 
     setErrors(newErrors);
     if (Object.keys(newErrors).length > 0) return;
@@ -183,9 +177,12 @@ export function useAddPayment() {
 
   const isAmountDisabled = formInput.entryType === 'Full Settlement';
 
+  // Filter out the Cash account for the SAI dropdown (non-Cash payment modes)
+  const nonCashAccounts = accounts.filter((a) => a.id !== CASH_ACCOUNT_ID);
+
   return {
     employee,
-    accounts,
+    accounts: nonCashAccounts,
     loadingData,
     loading,
     formInput,
