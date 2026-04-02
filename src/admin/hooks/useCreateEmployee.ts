@@ -24,6 +24,7 @@ export function useCreateEmployee() {
     role_id: '',
     emergency_contact_name: null,
     emergency_contact_phone: null,
+    deduction_amount: null,
   });
 
   const [roles, setRoles] = useState<RoleWithCategory[]>([]);
@@ -66,7 +67,7 @@ export function useCreateEmployee() {
   const selectedRole = roles.find(r => r.id === createEmployeeInput.role_id);
 
   const validateForm = () => {
-    const newErrors = validateCreateEmployee(createEmployeeInput);
+    const newErrors = validateCreateEmployee(createEmployeeInput, selectedRole);
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
