@@ -42,6 +42,7 @@ import {
   FinancialSummary,
   DailyCashSummaryResponse,
   CashLedgerForDate,
+  SalaryEmployee,
 } from './types'
 import { MaterialPurchaseInput, ProductionInput } from "../employee/types";
 import { getRange, getRangeForProductionStatistics, PAGE_SIZE , mapPaymentModeToDb } from "../utils/reusables";
@@ -3601,4 +3602,37 @@ export async function getCashLedgerForDate(
   if (error) throw error;
 
   return data as CashLedgerForDate;
+}
+
+export async function getSalaryEmployees(month: string) {
+  const { data, error } = await supabase.rpc(
+    "get_fixed_salary_employees_for_month",
+    { p_month: month }
+  );
+
+  if (error) throw error;
+
+  return data as SalaryEmployee[];
+}
+
+export async function generateSalaryRPC(
+  month: string,
+  employees: {
+    employee_id: string;
+    present_days: number;
+    absent_days: number;
+    leave_days: number;
+    half_days: number;
+    base_salary: number;
+    final_salary: number;
+  }[]
+) {
+  const { data, error } = await supabase.rpc("generate_salary_batch", {
+    p_month: month,
+    p_items: employees
+  });
+
+  if (error) throw error;
+
+  return data;
 }
