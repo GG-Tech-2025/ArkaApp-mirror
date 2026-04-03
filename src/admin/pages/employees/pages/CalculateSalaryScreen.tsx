@@ -134,7 +134,7 @@ export function CalculateSalaryScreen() {
                             <td className="px-4 py-4">
                               <input
                                 type="number"
-                                value={finalSalaries[emp.employee_id] ?? emp.base_salary}
+                                value={finalSalaries[emp.employee_id] || ''}
                                 onChange={(e) =>
                                   updateFinalSalary(
                                     emp.employee_id,
@@ -202,7 +202,7 @@ export function CalculateSalaryScreen() {
                         <label className="block text-gray-700 text-sm mb-1">Salary (₹)</label>
                         <input
                           type="number"
-                          value={finalSalaries[emp.employee_id] ?? emp.base_salary}
+                          value={finalSalaries[emp.employee_id] || ''}
                           onChange={(e) =>
                             updateFinalSalary(
                               emp.employee_id,

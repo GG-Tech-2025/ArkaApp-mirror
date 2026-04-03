@@ -3401,6 +3401,17 @@ export async function getCashLedgerForDate(
   return data as CashLedgerForDate;
 }
 
+export async function checkSalaryAlreadyGenerated(month: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("salary_batches")
+    .select("id")
+    .eq("month", month)
+    .maybeSingle();
+
+  if (error) throw error;
+  return !!data;
+}
+
 export async function getSalaryEmployees(month: string) {
   const { data, error } = await supabase.rpc(
     "get_fixed_salary_employees_for_month",
