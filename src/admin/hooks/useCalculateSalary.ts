@@ -3,17 +3,32 @@ import { useAdminNavigation } from './useAdminNavigation';
 import {
   getSalaryEmployees,
   generateSalaryRPC,
+  checkSalaryAlreadyGenerated,
 } from '../../services/middleware.service';
 import type { SalaryEmployee } from '../../services/types';
 
 /**
+ * Returns the first day of the current month as YYYY-MM-DD.
+ * e.g. if today is 2026-04-03, returns "2026-04-01"
+ * The RPC internally subtracts 1 month to get last month's attendance.
+ */
+function getCurrentMonthFirstDay(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1; // 1-based
+  return `${year}-${String(month).padStart(2, '0')}-01`;
+}
+
+/**
  * Returns the first day of last month as YYYY-MM-DD.
  * e.g. if today is 2026-04-03, returns "2026-03-01"
+ * Used for salary_batches lookup and generation (stores actual salary month).
  */
 function getLastMonthFirstDay(): string {
   const now = new Date();
-  const year = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
-  const month = now.getMonth() === 0 ? 12 : now.getMonth(); // 1-based
+  const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1; // 1-based
   return `${year}-${String(month).padStart(2, '0')}-01`;
 }
 
@@ -26,7 +41,8 @@ function getLastMonthLabel(): string {
 export function useCalculateSalary() {
   const { goBack } = useAdminNavigation();
 
-  const lastMonthDate = getLastMonthFirstDay();
+  const currentMonthDate = getCurrentMonthFirstDay();
+  const salaryMonth = getLastMonthFirstDay();
   const lastMonthLabel = getLastMonthLabel();
 
   const [employees, setEmployees] = useState<SalaryEmployee[]>([]);
@@ -37,13 +53,22 @@ export function useCalculateSalary() {
   const [alreadyGenerated, setAlreadyGenerated] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
-  // Fetch fixed salary employees for last month
+  // Check if already generated, then fetch employees
   useEffect(() => {
     (async () => {
       try {
         setLoading(true);
         setErrorMessage(null);
-        const data = await getSalaryEmployees(lastMonthDate);
+
+        // 1. Check if salary batch already exists for last month
+        const exists = await checkSalaryAlreadyGenerated(salaryMonth);
+        if (exists) {
+          setAlreadyGenerated(true);
+          return;
+        }
+
+        // 2. Fetch fixed salary employees with attendance data
+        const data = await getSalaryEmployees(currentMonthDate);
 
         if (!data || data.length === 0) {
           setEmployees([]);
@@ -57,18 +82,13 @@ export function useCalculateSalary() {
           setFinalSalaries(salaries);
         }
       } catch (err: any) {
-        const msg = err?.message ?? String(err);
-        if (msg.includes('Salary already generated')) {
-          setAlreadyGenerated(true);
-        } else {
-          setErrorMessage('Failed to load employees. Please try again.');
-          console.error('Failed to fetch salary employees:', err);
-        }
+        setErrorMessage('Failed to load employees. Please try again.');
+        console.error('Failed to fetch salary employees:', err);
       } finally {
         setLoading(false);
       }
     })();
-  }, [lastMonthDate]);
+  }, [currentMonthDate, salaryMonth]);
 
   const updateFinalSalary = (employeeId: string, value: number | null) => {
     setFinalSalaries((prev) => ({
@@ -94,7 +114,7 @@ export function useCalculateSalary() {
         final_salary: finalSalaries[emp.employee_id] ?? emp.base_salary,
       }));
 
-      await generateSalaryRPC(lastMonthDate, items);
+      await generateSalaryRPC(salaryMonth, items);
       setShowSuccess(true);
       setAlreadyGenerated(true);
     } catch (err: any) {
