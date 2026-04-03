@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, BookOpen, Search } from 'lucide-react';
+import { ArrowLeft, BookOpen, Search, Calculator } from 'lucide-react';
 import { useSalaryLedger } from '../../../hooks/useSalaryLedger';
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -23,6 +23,7 @@ export function SalaryLedgerScreen() {
     handleLoadMoreInactive,
     handleOpenLedger,
     goBack,
+    goTo,
   } = useSalaryLedger();
 
   const displayedEmployees = activeTab === 'Active' ? activeEmployees : inactiveEmployees;
@@ -40,8 +41,19 @@ export function SalaryLedgerScreen() {
             <ArrowLeft className="w-5 h-5" />
             Back to Home
           </button>
-          <h1 className="text-gray-900">Employee Salary Ledger</h1>
-          <p className="text-gray-600 mt-1">View and manage employee salary records</p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-gray-900">Employee Salary Ledger</h1>
+              <p className="text-gray-600 mt-1">View and manage employee salary records</p>
+            </div>
+            <button
+              onClick={() => goTo('/admin/employees/salary-ledger/calculate')}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
+            >
+              <Calculator className="w-5 h-5" />
+              Calculate Salary
+            </button>
+          </div>
         </div>
 
         {/* Search */}

@@ -258,6 +258,7 @@ export interface CreateEmployeeInput {
   role_id: string;
   emergency_contact_name?: string | null;
   emergency_contact_phone?: string | null;
+  deduction_amount?: number | null;
 }
 
 export interface UpdateEmployeeInput {
@@ -271,6 +272,7 @@ export interface UpdateEmployeeInput {
   role_id: string;
   emergency_contact_name?: string | null;
   emergency_contact_phone?: string | null;
+  deduction_amount?: number | null;
 }
 
 export interface EmployeeDetail {
@@ -285,6 +287,7 @@ export interface EmployeeDetail {
   role_id: string;
   emergency_contact_name: string | null;
   emergency_contact_phone: string | null;
+  deduction_amount: number | null;
   active: boolean;
   created_at: string;
   roles: {
@@ -326,6 +329,7 @@ export interface EmployeeForAttendance {
   name: string;
   phone: string;
   role_id: string;
+  deduction_amount: number | null;
   roles: {
     id: string;
     name: string;
@@ -407,6 +411,7 @@ export type SalaryLedgerEntryType =
   | "PARTIAL_SETTLEMENT"
   | "FULL_SETTLEMENT"
   | "SALARY_AUTO_ENTRY"
+  | "DEDUCTION"
   | "AUTO";
 
 export interface CreateSalaryLedgerInput {
@@ -476,4 +481,15 @@ export interface CashLedgerForDate {
   cash_out_by_account: AccountAggregate[];
   total_cash_in: number;
   total_cash_out: number;
+}
+
+export interface SalaryEmployee {
+  employee_id: string;
+  name: string;
+  phone: string;
+  present_days: number;
+  absent_days: number;
+  leave_days: number;
+  half_days: number;
+  base_salary: number;
 }

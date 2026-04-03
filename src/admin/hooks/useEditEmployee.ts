@@ -21,6 +21,7 @@ export function useEditEmployee() {
     role_id: '',
     emergency_contact_name: null,
     emergency_contact_phone: null,
+    deduction_amount: null,
   });
 
   const [roles, setRoles] = useState<RoleWithCategory[]>([]);
@@ -70,6 +71,7 @@ export function useEditEmployee() {
             role_id: employee.role_id,
             emergency_contact_name: employee.emergency_contact_name,
             emergency_contact_phone: employee.emergency_contact_phone,
+            deduction_amount: employee.deduction_amount,
           });
         }
       } catch (err) {
@@ -98,7 +100,7 @@ export function useEditEmployee() {
   const selectedRole = roles.find(r => r.id === editEmployeeInput.role_id);
 
   const validateForm = () => {
-    const newErrors = validateEditEmployee(editEmployeeInput);
+    const newErrors = validateEditEmployee(editEmployeeInput, selectedRole);
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };

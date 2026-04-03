@@ -40,7 +40,7 @@ export function MaterialPurchaseEntry() {
       material_id: material,
       vendor_id: vendor,
       quantity: Number(quantity),
-      date: date ? date.toISOString() : "",
+      date: date ? format(date, "yyyy-MM-dd") : "",
     };
 
     const validationErrors = validateMaterialPurchase(payload);

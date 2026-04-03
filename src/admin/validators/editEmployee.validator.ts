@@ -1,7 +1,8 @@
-import type { UpdateEmployeeInput } from '../../services/types';
+import type { UpdateEmployeeInput, RoleWithCategory } from '../../services/types';
 
 export function validateEditEmployee(
-  input: UpdateEmployeeInput
+  input: UpdateEmployeeInput,
+  selectedRole?: RoleWithCategory
 ): Record<string, string> {
   const errors: Record<string, string> = {};
 
@@ -50,6 +51,13 @@ export function validateEditEmployee(
     !/^[0-9]{10}$/.test(input.emergency_contact_phone)
   ) {
     errors.emergency_contact_phone = 'Emergency contact number must be 10 digits';
+  }
+
+  // Deduction amount validation (mandatory for FIXED salary employees)
+  if (selectedRole?.category === 'FIXED') {
+    if (input.deduction_amount == null || input.deduction_amount <= 0) {
+      errors.deduction_amount = 'Deduction amount is required for fixed salary employees';
+    }
   }
 
   return errors;
