@@ -482,3 +482,14 @@ export interface CashLedgerForDate {
   total_cash_in: number;
   total_cash_out: number;
 }
+
+export interface SalaryEmployee {
+  employee_id: string;
+  name: string;
+  phone: string;
+  present_days: number;
+  absent_days: number;
+  leave_days: number;
+  half_days: number;
+  base_salary: number;
+}
