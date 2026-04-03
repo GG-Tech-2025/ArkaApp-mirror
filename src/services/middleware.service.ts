@@ -2028,6 +2028,7 @@ export async function createEmployee(
       role_id: input.role_id,
       emergency_contact_name: input.emergency_contact_name || null,
       emergency_contact_phone: input.emergency_contact_phone || null,
+      deduction_amount: input.deduction_amount ?? null,
       active: true,
     })
     .select("id")
@@ -2057,6 +2058,7 @@ export async function getEmployeeById(
       role_id,
       emergency_contact_name,
       emergency_contact_phone,
+      deduction_amount,
       active,
       created_at,
       roles ( id, name, category )
@@ -2088,6 +2090,7 @@ export async function updateEmployee(
       role_id: input.role_id,
       emergency_contact_name: input.emergency_contact_name || null,
       emergency_contact_phone: input.emergency_contact_phone || null,
+      deduction_amount: input.deduction_amount ?? null,
     })
     .eq("id", employeeId);
 
@@ -2512,7 +2515,8 @@ export async function deductProductInventory(quantity: number): Promise<void> {
       throw new Error("No bricks inventory record found");
     }
 
-    const newQuantity = Math.max(0, existingData.quantity - quantity);
+    // Allow negative to tally correctly when inventory is updated later
+    const newQuantity = existingData.quantity - quantity;
 
     const { error: updateError } = await supabase
       .from("product_inventory")
@@ -2583,8 +2587,8 @@ export async function reduceInventoryStock(
       }
 
       if (currentStock) {
-        // Reduce the quantity
-        const newQuantity = Math.max(0, currentStock.quantity - reduction.quantity);
+        // Reduce the quantity (allow negative to tally when unapproved procurements are approved later)
+        const newQuantity = currentStock.quantity - reduction.quantity;
         const { error: updateError } = await supabase
           .from("inventory_stock")
           .update({
@@ -2598,8 +2602,19 @@ export async function reduceInventoryStock(
           throw updateError;
         }
       } else {
-        // If no stock exists, log warning but don't fail
-        console.warn(`No inventory stock found for ${reduction.name} (ID: ${reduction.materialId})`);
+        // If no stock exists, create a negative entry so it tallies when procurement is approved
+        const { error: insertError } = await supabase
+          .from("inventory_stock")
+          .insert({
+            material_id: reduction.materialId,
+            quantity: -reduction.quantity,
+            updated_at: new Date().toISOString(),
+          });
+
+        if (insertError) {
+          console.error(`Error inserting negative stock for ${reduction.name}:`, insertError);
+          throw insertError;
+        }
       }
     }
   } catch (error) {
@@ -3284,6 +3299,7 @@ export async function getEmployeesForAttendance(isActive = true): Promise<Employ
       name,
       phone,
       role_id,
+      deduction_amount,
       roles!inner ( id, name, category, salary_value )
     `)
     .eq("active", isActive)

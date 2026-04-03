@@ -256,6 +256,27 @@ export function EditEmployeeScreen() {
               />
             </div>
 
+            {/* Deduction Amount - Only for Fixed Salary Employees */}
+            {selectedRole?.category === 'FIXED' && (
+              <div>
+                <label htmlFor="deductionAmount" className="block text-gray-700 mb-2">
+                  Deduction Amount (for absent days) <span className="text-red-600">*</span>
+                </label>
+                <input
+                  id="deductionAmount"
+                  type="number"
+                  value={editEmployeeInput.deduction_amount ?? ''}
+                  onChange={(e) => updateEditEmployeeInput('deduction_amount', e.target.value ? Number(e.target.value) : null)}
+                  onWheel={(e) => e.currentTarget.blur()}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  min="0"
+                  step="0.01"
+                  placeholder="Enter deduction amount per absent day"
+                />
+                {errors.deduction_amount && <p className="text-red-600 text-sm mt-1">{errors.deduction_amount}</p>}
+              </div>
+            )}
+
             {/* Emergency Contact */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>

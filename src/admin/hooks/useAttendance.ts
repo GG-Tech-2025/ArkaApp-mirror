@@ -251,9 +251,10 @@ export function useAttendance() {
       }));
       await saveAttendance(payload);
 
-      // 2. Auto-increment salary ledger for active employees
+      // 2. Auto-increment salary ledger for active employees (skip FIXED — they only get deductions)
       const salaryPromises = activeEntries
         .filter((e) => {
+          if (e.employee.roles.category === 'FIXED') return false;
           const amount = getSalaryAmount(e.status as AttendanceStatus, e.employee.roles.salary_value);
           return amount > 0;
         })
@@ -269,6 +270,33 @@ export function useAttendance() {
         });
 
       await Promise.all(salaryPromises);
+
+      // 3. Create deduction entries for FIXED salary employees marked Absent or Half Day
+      const deductionPromises = activeEntries
+        .filter((e) => {
+          const status = e.status as AttendanceStatus;
+          return (
+            e.employee.roles.category === 'FIXED' &&
+            e.employee.deduction_amount != null &&
+            e.employee.deduction_amount > 0 &&
+            (status === 'Absent' || status === 'Half Day')
+          );
+        })
+        .map((e) => {
+          const status = e.status as AttendanceStatus;
+          const deductionAmt = status === 'Half Day'
+            ? Math.round(e.employee.deduction_amount! / 2)
+            : e.employee.deduction_amount!;
+          return createSalaryLedgerEntry({
+            employee_id: e.employee.id,
+            entry_type: 'DEDUCTION',
+            amount: deductionAmt,
+            notes: `Deduction for ${selectedDate} — ${status}`,
+            created_at: new Date(selectedDate + 'T00:00:00').toISOString(),
+          });
+        });
+
+      await Promise.all(deductionPromises);
 
       // Mark as already saved so it becomes read-only
       setIsAlreadySaved(true);

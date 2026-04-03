@@ -543,7 +543,13 @@ export function CreateOrderScreen() {
 
       {/* Customer Creation Modal */}
       {showCustomerModal && (
-        <CustomerCreationModal onClose={() => setShowCustomerModal(false)} />
+        <CustomerCreationModal
+          onClose={() => setShowCustomerModal(false)}
+          onCustomerCreated={(customer) => {
+            handleSelectCustomer(customer);
+            setShowCustomerModal(false);
+          }}
+        />
       )}
     </div>
   );

@@ -126,7 +126,7 @@ export function ProductionStatisticsScreen() {
 
           {/* Yesterday's Production with Progress Circle */}
           <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-gray-900 mb-6">Yesterday's Production</h2>
+            <h2 className="text-gray-900 mb-6">Last Production</h2>
             <div className="flex flex-col lg:flex-row items-center gap-6">
               {/* Animated Progress Circle */}
               <div className="flex-shrink-0">

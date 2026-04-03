@@ -1,17 +1,21 @@
 import React, { useState } from 'react';
 import { X, CheckCircle } from 'lucide-react';
+import { createCustomer } from '../../services/middleware.service';
+import { Customer } from '../../services/types';
 
 interface CustomerCreationModalProps {
   onClose: () => void;
+  onCustomerCreated?: (customer: Customer) => void;
 }
 
-export function CustomerCreationModal({ onClose }: CustomerCreationModalProps) {
+export function CustomerCreationModal({ onClose, onCustomerCreated }: CustomerCreationModalProps) {
   const [name, setName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [address, setAddress] = useState('');
   const [gstNumber, setGstNumber] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showSuccess, setShowSuccess] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -34,9 +38,24 @@ export function CustomerCreationModal({ onClose }: CustomerCreationModalProps) {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleCreate = () => {
-    if (validateForm()) {
+  const handleCreate = async () => {
+    if (!validateForm()) return;
+
+    try {
+      setLoading(true);
+      const customer = await createCustomer({
+        name: name.trim(),
+        phone: phoneNumber.trim(),
+        address: address.trim(),
+        gst_number: gstNumber || undefined,
+      });
+      onCustomerCreated?.(customer);
       setShowSuccess(true);
+    } catch (err: any) {
+      console.error('Failed to create customer:', err);
+      setErrors({ form: err?.message || 'Failed to create customer' });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -169,15 +188,19 @@ export function CustomerCreationModal({ onClose }: CustomerCreationModalProps) {
             />
             {errors.gstNumber && <p className="text-red-600 text-sm mt-1">{errors.gstNumber}</p>}
           </div>
+
+          {/* Form-level error */}
+          {errors.form && <p className="text-red-600 text-sm">{errors.form}</p>}
         </div>
 
         {/* Footer */}
         <div className="p-6 border-t border-gray-200 flex justify-end">
           <button
             onClick={handleCreate}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            disabled={loading}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
-            Create
+            {loading ? 'Creating...' : 'Create'}
           </button>
         </div>
       </div>
