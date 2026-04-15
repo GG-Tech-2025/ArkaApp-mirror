@@ -188,35 +188,36 @@ export function DeliveryEntry() {
             {/* Quantity */}
             <div>
               <label htmlFor="quantity" className="block text-gray-700 mb-2">
-                Quantity (bricks) <span className="text-red-600">*</span>
+                Quantity (bricks)
               </label>
               <input
                 id="quantity"
                 type="number"
-                value={deliveryInput?.quantity || ""}
-                onChange={(e) => updateDeliveryInput("quantity", parseInt(e.target.value) || 0)}
-                onWheel={(e) => e.currentTarget.blur()}
-                disabled={isDelivered}
-                className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                min="0"
+                value={order?.brick_quantity || ""}
+                disabled
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
               />
-              {errors.quantity && (
-                <p className="text-red-600 text-sm mt-1">{errors.quantity}</p>
-              )}
             </div>
 
             {/* Location */}
             <div>
               <label htmlFor="location" className="block text-gray-700 mb-2">
-                Location
+                Location <span className="text-red-600">*</span>
               </label>
               <input
                 id="location"
                 type="text"
-                value={order?.location}
-                disabled
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
+                value={deliveryInput?.location || ""}
+                onChange={(e) => updateDeliveryInput("location", e.target.value)}
+                placeholder="Enter location"
+                disabled={isDelivered}
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
+                  errors.location ? "border-red-500" : "border-gray-300"
+                } ${isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''}`}
               />
+              {errors.location && (
+                <p className="text-red-600 text-sm mt-1">{errors.location}</p>
+              )}
             </div>
 
             {/* Actual Amount */}

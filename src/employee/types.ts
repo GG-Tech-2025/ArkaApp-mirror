@@ -12,6 +12,7 @@ export type PaymentStatus = "FULLY_PAID" | "PARTIALLY_PAID" | "NOT_PAID";
 export interface DeliveryInput {
   time: string;
   quantity: number;
+  location: string;
   paymentStatus: PaymentStatus;
   paidAmount?: number;
   gstNumber?: string;
