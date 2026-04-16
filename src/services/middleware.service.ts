@@ -304,7 +304,8 @@ export async function getOrderWithLoadmen(
 export async function updateOrderWithLoadmen(
   orderId: string,
   orderUpdate: Partial<Order>,
-  newLoadmenIds: string[]
+  newLoadmenIds: string[],
+  skipLoadmenUpdate: boolean = false
 ): Promise<void> {
   /* Update order */
   const { error: orderError } = await supabase
@@ -318,6 +319,8 @@ export async function updateOrderWithLoadmen(
   if (orderUpdate.delivered === true && orderUpdate.brick_quantity) {
     await deductProductInventory(orderUpdate.brick_quantity);
   }
+
+  if (skipLoadmenUpdate) return;
 
   /* Get existing loadmen */
   const { data: existing } = await supabase
@@ -348,6 +351,27 @@ export async function updateOrderWithLoadmen(
       }))
     );
   }
+}
+
+/* ------------------------------------------------------------------
+   12b. DELETE ORDER (and associated loadmen)
+-------------------------------------------------------------------*/
+export async function deleteOrder(orderId: string): Promise<void> {
+  // Delete associated loadmen first
+  const { error: loadmenError } = await supabase
+    .from("order_loadmen")
+    .delete()
+    .eq("order_id", orderId);
+
+  if (loadmenError) throw loadmenError;
+
+  // Delete the order
+  const { error: orderError } = await supabase
+    .from("orders")
+    .delete()
+    .eq("id", orderId);
+
+  if (orderError) throw orderError;
 }
 
 /* ------------------------------------------------------------------

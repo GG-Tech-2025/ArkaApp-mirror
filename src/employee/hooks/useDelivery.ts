@@ -12,6 +12,7 @@ export function useDelivery(orderId: string) {
   const [deliveryInput, setDeliveryInput] = useState<DeliveryInput>({
     time: '',
     quantity: 0,
+    location: '',
     paymentStatus: 'NOT_PAID',
     paidAmount: 0,
     deliveryChallanNumber: '',
@@ -55,6 +56,7 @@ export function useDelivery(orderId: string) {
       setDeliveryInput(prev => ({
         ...prev,
         quantity: orderData.brick_quantity,
+        location: orderData.location || '',
         paymentStatus: orderData.payment_status,
         gstNumber: orderData.gst_number || undefined,
         paidAmount: orderData.amount_paid ?? 0,
@@ -132,6 +134,7 @@ export function useDelivery(orderId: string) {
       const orderUpdate: Partial<Order> = {
         time: deliveryInput.time,
         brick_quantity: deliveryInput.quantity,
+        location: deliveryInput.location,
         payment_status: deliveryInput.paymentStatus,
         amount_paid: amountPaid,
         gst_number: deliveryInput.gstNumber || null,
