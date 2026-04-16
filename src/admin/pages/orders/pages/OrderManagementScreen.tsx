@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { ArrowLeft, Plus, AlertCircle } from "lucide-react";
+import { ArrowLeft, Plus, AlertCircle, Trash2 } from "lucide-react";
 import { AdminOrder } from "../../../../AdminApp";
 import { useAdminNavigation } from "../../../hooks/useAdminNavigation";
 import {
@@ -7,6 +7,7 @@ import {
   getUndeliveredOrders,
   getDeliveredOrders,
   getUnpaidOrders,
+  deleteOrder,
 } from "../../../../services/middleware.service";
 import { updateOrderWithLoadmen } from "../../../../services/middleware.service";
 import { Popup } from "../../../../components/Popup";
@@ -88,14 +89,33 @@ export function OrderManagementScreen() {
 
       const today = new Date().toISOString().split("T")[0];
 
-      // Update delivery_date to today's date
-      await updateOrderWithLoadmen(orderId, { delivery_date: today }, []);
+      // Update delivery_date to today's date (skip loadmen update)
+      await updateOrderWithLoadmen(orderId, { delivery_date: today }, [], true);
 
       // Refetch the current page after update to ensure consistency
       await fetchOrders(currentPage, true);
     } catch (err) {
       console.error("Failed to update delivery date:", err);
       setError(err instanceof Error ? err.message : "Failed to update order");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const [deleteConfirmOrderId, setDeleteConfirmOrderId] = useState<string | null>(null);
+
+  const handleDeleteOrder = async () => {
+    if (!deleteConfirmOrderId) return;
+    try {
+      setLoading(true);
+      setError(null);
+      await deleteOrder(deleteConfirmOrderId);
+      setDeleteConfirmOrderId(null);
+      await fetchOrders(0, true);
+    } catch (err) {
+      console.error("Failed to delete order:", err);
+      setError(err instanceof Error ? err.message : "Failed to delete order");
+      setDeleteConfirmOrderId(null);
     } finally {
       setLoading(false);
     }
@@ -213,6 +233,11 @@ export function OrderManagementScreen() {
                             Delivery Today
                           </th>
                         )}
+                        {(activeTab === "Today" || activeTab === "Undelivered") && (
+                          <th className="px-4 py-3 text-left text-gray-700">
+                            Actions
+                          </th>
+                        )}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
@@ -288,6 +313,20 @@ export function OrderManagementScreen() {
                                 />
                                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                               </label>
+                            </td>
+                          )}
+                          {(activeTab === "Today" || activeTab === "Undelivered") && (
+                            <td className="px-4 py-4">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeleteConfirmOrderId(order.id);
+                                }}
+                                className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Delete order"
+                              >
+                                <Trash2 className="w-5 h-5" />
+                              </button>
                             </td>
                           )}
                         </tr>
@@ -395,6 +434,20 @@ export function OrderManagementScreen() {
                             </div>
                           )}
                       </div>
+                      {(activeTab === "Today" || activeTab === "Undelivered") && (
+                        <div className="mt-3 flex justify-end">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteConfirmOrderId(order.id);
+                            }}
+                            className="flex items-center gap-1 px-3 py-1.5 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg text-sm transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Delete
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -416,6 +469,31 @@ export function OrderManagementScreen() {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Popup */}
+      {deleteConfirmOrderId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 mx-4 max-w-sm w-full">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Order</h3>
+            <p className="text-gray-600 mb-6">Are you sure you want to delete order <span className="font-medium">{deleteConfirmOrderId}</span>? This action cannot be undone.</p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteConfirmOrderId(null)}
+                className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                No
+              </button>
+              <button
+                onClick={handleDeleteOrder}
+                disabled={loading}
+                className="px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {loading ? "Deleting..." : "Yes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
