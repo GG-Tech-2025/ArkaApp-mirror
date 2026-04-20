@@ -265,7 +265,7 @@ export function useAttendance() {
             entry_type: 'SALARY_AUTO_ENTRY',
             amount,
             notes: `Auto-entry for ${selectedDate} — ${e.status}`,
-            payment_at: new Date(selectedDate + 'T00:00:00').toISOString(),
+            created_at: new Date(selectedDate + 'T00:00:00').toISOString(),
           });
         });
 
@@ -292,7 +292,7 @@ export function useAttendance() {
             entry_type: 'DEDUCTION',
             amount: deductionAmt,
             notes: `Deduction for ${selectedDate} — ${status}`,
-            payment_at: new Date(selectedDate + 'T00:00:00').toISOString(),
+            created_at: new Date(selectedDate + 'T00:00:00').toISOString(),
           });
         });
 
