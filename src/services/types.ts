@@ -381,7 +381,7 @@ export interface SalaryLedgerTransaction {
   sender_account_id: string | null;
   receiver_account: string | null;
   notes: string | null;
-  created_at: string;
+  payment_at: string;
 }
 
 export interface EmployeeLedgerResponse {
@@ -415,6 +415,7 @@ export type SalaryLedgerEntryType =
   | "AUTO";
 
 export interface CreateSalaryLedgerInput {
+  payment_at: string;
   employee_id: string;
   entry_type: SalaryLedgerEntryType;
   amount: number;

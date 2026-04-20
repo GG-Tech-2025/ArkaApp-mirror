@@ -3542,7 +3542,7 @@ export async function createSalaryLedgerEntry(
       sender_account_id: input.sender_account_id ?? null,
       receiver_account: input.receiver_account ?? null,
       notes: input.notes ?? null,
-      ...(input.created_at ? { created_at: input.created_at } : {}),
+      payment_at: input.payment_at ?? new Date().toISOString(),
     })
     .select("*")
     .single();
