@@ -27,7 +27,6 @@ const ENTRY_TYPE_TO_DB: Record<Exclude<PaymentEntryTypeLabel, ''>, SalaryLedgerE
 const PAYMENT_MODE_TO_DB: Record<PaymentModeLabel, string> = {
   UPI: 'UPI',
   'Bank Transfer': 'BANK',
-  Cheque: 'CHEQUE',
   Cash: 'CASH',
 };
 
@@ -151,7 +150,8 @@ export function useAddPayment() {
         receiver_account:
           formInput.modeOfPayment !== 'Cash' ? formInput.receiverAccountInfo.trim() : null,
         notes: formInput.notes.trim() || null,
-        created_at: new Date(formInput.dateTime).toISOString(),
+        // created_at: new Date(formInput.dateTime).toISOString(),
+        payment_at: new Date(formInput.dateTime).toISOString(),
       });
       setShowSuccessPopup(true);
     } catch (err) {

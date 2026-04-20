@@ -218,7 +218,7 @@ export function SalaryLedgerDetailScreen() {
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                       {transactions.map((entry) => {
-                        const { date, time } = formatDateTime(entry.created_at);
+                        const { date, time } = formatDateTime(entry.payment_at);
                         return (
                           <tr key={entry.id} className="hover:bg-gray-50">
                             <td className="px-4 py-4 text-gray-900">{date}, {time}</td>
@@ -253,7 +253,7 @@ export function SalaryLedgerDetailScreen() {
                 {/* Mobile View */}
                 <div className="lg:hidden space-y-4">
                   {transactions.map((entry) => {
-                    const { date, time } = formatDateTime(entry.created_at);
+                    const { date, time } = formatDateTime(entry.payment_at);
                     return (
                       <div key={entry.id} className="border border-gray-200 rounded-lg p-4">
                         <div className="flex justify-between items-start mb-3">
@@ -333,7 +333,7 @@ export function SalaryLedgerDetailScreen() {
                 </div>
                 <div>
                   <p className="text-gray-600 text-sm">Created At</p>
-                  <p className="text-gray-900">{formatDateTime(selectedEntry.created_at).date}, {formatDateTime(selectedEntry.created_at).time}</p>
+                  <p className="text-gray-900">{formatDateTime(selectedEntry.payment_at).date}, {formatDateTime(selectedEntry.payment_at).time}</p>
                 </div>
                 <div>
                   <p className="text-gray-600 text-sm">Mode of Payment</p>

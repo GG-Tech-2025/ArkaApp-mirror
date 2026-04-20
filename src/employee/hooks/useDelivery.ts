@@ -156,7 +156,7 @@ export function useDelivery(orderId: string) {
             sender_account_id: null,
             receiver_account: null,
             notes: `Auto salary entry for delivery of order #${orderId}`,
-            created_at: salaryEntryDate,
+            payment_at: salaryEntryDate
           })
         )
       );
