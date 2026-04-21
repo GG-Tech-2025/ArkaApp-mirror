@@ -1,15 +1,29 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, CalendarIcon } from 'lucide-react';
-import { Popup } from '../../../../components/Popup';
-import { Calendar } from '../../../../components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '../../../../components/ui/popover';
-import { format } from 'date-fns';
-import { cn } from '../../../../components/ui/utils';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useAdminNavigation } from '../../../hooks/useAdminNavigation';
-import { getOrderWithLoadmen, getLoadmen, updateOrderWithLoadmen } from '../../../../services/middleware.service';
-import { OrderWithLoadmen, EmployeeWithCategory, Order, PaymentStatus } from '../../../../services/types';
-import { validateOrderDetails } from '../../../validators/orderDetails.validator';
+import React, { useState, useEffect } from "react";
+import { ArrowLeft, CalendarIcon, Info } from "lucide-react";
+import { Popup } from "../../../../components/Popup";
+import { Calendar } from "../../../../components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../../../../components/ui/popover";
+import { format } from "date-fns";
+import { cn } from "../../../../components/ui/utils";
+import { useParams, useNavigate } from "react-router-dom";
+import { useAdminNavigation } from "../../../hooks/useAdminNavigation";
+import {
+  getOrderWithLoadmen,
+  getLoadmen,
+  updateOrderWithLoadmen,
+} from "../../../../services/middleware.service";
+import {
+  OrderWithLoadmen,
+  EmployeeWithCategory,
+  Order,
+  PaymentStatus,
+  LoadingType,
+} from "../../../../services/types";
+import { validateOrderDetails } from "../../../validators/orderDetails.validator";
 
 interface OrderDetailsInput {
   brickQuantity: number;
@@ -21,12 +35,19 @@ interface OrderDetailsInput {
   amountPaid: number;
   gstNumber: string | null;
   deliveryChallanNumber: string;
+  loadingType: LoadingType;
   loadMen: string[];
 }
 
 export type { OrderDetailsInput };
 
-const LOAD_MEN = ['Raju Kumar', 'Suresh Yadav', 'Mohan Singh', 'Ramesh Patel', 'Gopal Reddy'];
+const LOAD_MEN = [
+  "Raju Kumar",
+  "Suresh Yadav",
+  "Mohan Singh",
+  "Ramesh Patel",
+  "Gopal Reddy",
+];
 
 export function OrderDetailsScreen() {
   const { goBack } = useAdminNavigation();
@@ -41,24 +62,29 @@ export function OrderDetailsScreen() {
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [showFailurePopup, setShowFailurePopup] = useState(false);
 
-  const [orderDetailsInput, setOrderDetailsInput] = useState<OrderDetailsInput>({
-    brickQuantity: 0,
-    deliveryDate: '',
-    pricePerBrick: 0,
-    location: '',
-    finalPrice: 0,
-    paymentStatus: 'NOT_PAID',
-    amountPaid: 0,
-    gstNumber: null,
-    deliveryChallanNumber: '',
-    loadMen: [],
-  });
+  const [orderDetailsInput, setOrderDetailsInput] = useState<OrderDetailsInput>(
+    {
+      brickQuantity: 0,
+      deliveryDate: "",
+      pricePerBrick: 0,
+      location: "",
+      finalPrice: 0,
+      paymentStatus: "NOT_PAID",
+      amountPaid: 0,
+      gstNumber: null,
+      deliveryChallanNumber: "",
+      loadingType: "LOADING_UNLOADING",
+      loadMen: [],
+    },
+  );
 
-  const [selectedLoadmen, setSelectedLoadmen] = useState<EmployeeWithCategory[]>([]);
+  const [selectedLoadmen, setSelectedLoadmen] = useState<
+    EmployeeWithCategory[]
+  >([]);
 
   useEffect(() => {
     if (!orderId) {
-      setError('Order ID not found');
+      setError("Order ID not found");
       return;
     }
     getOrderData();
@@ -80,11 +106,12 @@ export function OrderDetailsScreen() {
         paymentStatus: orderData.payment_status,
         amountPaid: orderData.amount_paid || 0,
         gstNumber: orderData.gst_number || null,
-        deliveryChallanNumber: orderData.dc_number || '',
-        loadMen: orderData.loadmen?.map(l => l.id) || [],
+        deliveryChallanNumber: orderData.dc_number || "",
+        loadingType: orderData.loading_type || "LOADING_UNLOADING",
+        loadMen: orderData.loadmen?.map((l) => l.id) || [],
       });
     } catch (err) {
-      setError('Failed to load order details');
+      setError("Failed to load order details");
       console.error(err);
     } finally {
       setLoading(false);
@@ -98,42 +125,46 @@ export function OrderDetailsScreen() {
 
       // Set selected loadmen after both order and loadmen are loaded
       if (order?.loadmen) {
-        const selected = loadmenData.filter(l => order.loadmen!.some(ol => ol.id === l.id));
+        const selected = loadmenData.filter((l) =>
+          order.loadmen!.some((ol) => ol.id === l.id),
+        );
         setSelectedLoadmen(selected);
       }
     } catch (err) {
-      setError('Failed to load loadmen details');
+      setError("Failed to load loadmen details");
       console.error(err);
     }
   }
 
   useEffect(() => {
     if (order && loadmen.length > 0 && order.loadmen) {
-      const selected = loadmen.filter(l => order.loadmen!.some(ol => ol.id === l.id));
+      const selected = loadmen.filter((l) =>
+        order.loadmen!.some((ol) => ol.id === l.id),
+      );
       setSelectedLoadmen(selected);
-      setOrderDetailsInput(prev => ({
+      setOrderDetailsInput((prev) => ({
         ...prev,
-        loadMen: selected.map(l => l.id)
+        loadMen: selected.map((l) => l.id),
       }));
     }
   }, [order, loadmen]);
 
   function updateOrderDetailsInput(field: keyof OrderDetailsInput, value: any) {
-    setOrderDetailsInput(prev => ({ ...prev, [field]: value }));
+    setOrderDetailsInput((prev) => ({ ...prev, [field]: value }));
   }
 
   function handleLoadManToggle(loadMan: EmployeeWithCategory) {
-    if (selectedLoadmen.some(l => l.id === loadMan.id)) {
-      setSelectedLoadmen(prev => prev.filter(l => l.id !== loadMan.id));
-      setOrderDetailsInput(prev => ({
+    if (selectedLoadmen.some((l) => l.id === loadMan.id)) {
+      setSelectedLoadmen((prev) => prev.filter((l) => l.id !== loadMan.id));
+      setOrderDetailsInput((prev) => ({
         ...prev,
-        loadMen: prev.loadMen.filter(id => id !== loadMan.id)
+        loadMen: prev.loadMen.filter((id) => id !== loadMan.id),
       }));
     } else {
-      setSelectedLoadmen(prev => [...prev, loadMan]);
-      setOrderDetailsInput(prev => ({
+      setSelectedLoadmen((prev) => [...prev, loadMan]);
+      setOrderDetailsInput((prev) => ({
         ...prev,
-        loadMen: [...prev.loadMen, loadMan.id]
+        loadMen: [...prev.loadMen, loadMan.id],
       }));
     }
   }
@@ -152,9 +183,9 @@ export function OrderDetailsScreen() {
       setError(null);
 
       let amountPaid = 0;
-      if (orderDetailsInput.paymentStatus === 'PARTIALLY_PAID') {
+      if (orderDetailsInput.paymentStatus === "PARTIALLY_PAID") {
         amountPaid = orderDetailsInput.amountPaid;
-      } else if (orderDetailsInput.paymentStatus === 'FULLY_PAID') {
+      } else if (orderDetailsInput.paymentStatus === "FULLY_PAID") {
         amountPaid = orderDetailsInput.finalPrice;
       }
 
@@ -170,12 +201,16 @@ export function OrderDetailsScreen() {
         dc_number: orderDetailsInput.deliveryChallanNumber,
       };
 
-      await updateOrderWithLoadmen(orderId!, orderUpdate, orderDetailsInput.loadMen);
+      await updateOrderWithLoadmen(
+        orderId!,
+        orderUpdate,
+        orderDetailsInput.loadMen,
+      );
       setShowSuccessPopup(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update order');
+      setError(err instanceof Error ? err.message : "Failed to update order");
       setShowFailurePopup(true);
-      console.error('Failed to update order:', err);
+      console.error("Failed to update order:", err);
     } finally {
       setLoading(false);
     }
@@ -183,12 +218,15 @@ export function OrderDetailsScreen() {
 
   const handlePopupClose = () => {
     setShowSuccessPopup(false);
-    goBack('/admin/orders');
+    goBack("/admin/orders");
   };
 
-  const paperPrice = orderDetailsInput.brickQuantity && orderDetailsInput.pricePerBrick
-    ? (orderDetailsInput.brickQuantity * orderDetailsInput.pricePerBrick).toFixed(2)
-    : '';
+  const paperPrice =
+    orderDetailsInput.brickQuantity && orderDetailsInput.pricePerBrick
+      ? (
+          orderDetailsInput.brickQuantity * orderDetailsInput.pricePerBrick
+        ).toFixed(2)
+      : "";
 
   const isDelivered = order?.delivered === true;
 
@@ -203,20 +241,28 @@ export function OrderDetailsScreen() {
   return (
     <div className="min-h-screen bg-gray-50">
       {error && (
-        <Popup title="Error" message={error} onClose={() => setError(null)} type="error" />
+        <Popup
+          title="Error"
+          message={error}
+          onClose={() => setError(null)}
+          type="error"
+        />
       )}
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Header */}
         <div className="mb-8">
           <button
-            onClick={() => goBack('/admin/orders')}
+            onClick={() => goBack("/admin/orders")}
             className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
           >
             <ArrowLeft className="w-5 h-5" />
-            Back 
+            Back
           </button>
           <h1 className="text-gray-900">Order Details</h1>
-          <p className="text-gray-600 mt-1">{isDelivered ? 'View order information' : 'Edit order information'} - {order?.id}</p>
+          <p className="text-gray-600 mt-1">
+            {isDelivered ? "View order information" : "Edit order information"}{" "}
+            - {order?.id}
+          </p>
         </div>
 
         {/* Form */}
@@ -225,9 +271,15 @@ export function OrderDetailsScreen() {
             {/* Customer Info - Read Only */}
             {order && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-gray-700 mb-1">Customer: {order.customers?.name}</p>
-                <p className="text-gray-600 text-sm">Phone: {order.customers?.phone}</p>
-                <p className="text-gray-600 text-sm">Order Date: {new Date(order.order_date).toLocaleDateString()}</p>
+                <p className="text-gray-700 mb-1">
+                  Customer: {order.customers?.name}
+                </p>
+                <p className="text-gray-600 text-sm">
+                  Phone: {order.customers?.phone}
+                </p>
+                <p className="text-gray-600 text-sm">
+                  Order Date: {new Date(order.order_date).toLocaleDateString()}
+                </p>
                 {order.delivered && (
                   <p className="text-gray-600 text-sm mt-2">
                     <span className="inline-block bg-green-100 text-green-800 px-2 py-1 rounded text-xs">
@@ -247,27 +299,42 @@ export function OrderDetailsScreen() {
 
             {/* Brick Quantity */}
             <div>
-              <label htmlFor="brickQuantity" className="block text-gray-700 mb-2">
+              <label
+                htmlFor="brickQuantity"
+                className="block text-gray-700 mb-2"
+              >
                 Brick Quantity <span className="text-red-600">*</span>
               </label>
               <input
                 id="brickQuantity"
                 type="number"
-                value={orderDetailsInput.brickQuantity || ''}
-                onChange={(e) => updateOrderDetailsInput('brickQuantity', parseInt(e.target.value) || 0)}
+                value={orderDetailsInput.brickQuantity || ""}
+                onChange={(e) =>
+                  updateOrderDetailsInput(
+                    "brickQuantity",
+                    parseInt(e.target.value) || 0,
+                  )
+                }
                 onWheel={(e) => e.currentTarget.blur()}
                 disabled={isDelivered}
                 className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
-                  isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''
+                  isDelivered ? "bg-gray-100 cursor-not-allowed" : ""
                 }`}
                 min="1"
               />
-              {errors.brickQuantity && <p className="text-red-600 text-sm mt-1">{errors.brickQuantity}</p>}
+              {errors.brickQuantity && (
+                <p className="text-red-600 text-sm mt-1">
+                  {errors.brickQuantity}
+                </p>
+              )}
             </div>
 
             {/* Delivery Date - Editable with Date Picker */}
             <div>
-              <label htmlFor="deliveryDate" className="block text-gray-700 mb-2">
+              <label
+                htmlFor="deliveryDate"
+                className="block text-gray-700 mb-2"
+              >
                 Delivery Date <span className="text-red-600">*</span>
               </label>
               <Popover>
@@ -278,12 +345,17 @@ export function OrderDetailsScreen() {
                     className={cn(
                       "w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-left",
                       !orderDetailsInput.deliveryDate && "text-gray-400",
-                      isDelivered && "bg-gray-100 cursor-not-allowed"
+                      isDelivered && "bg-gray-100 cursor-not-allowed",
                     )}
                   >
                     <div className="flex items-center justify-between">
                       <span>
-                        {orderDetailsInput.deliveryDate ? format(new Date(orderDetailsInput.deliveryDate), 'PPP') : 'Select delivery date'}
+                        {orderDetailsInput.deliveryDate
+                          ? format(
+                              new Date(orderDetailsInput.deliveryDate),
+                              "PPP",
+                            )
+                          : "Select delivery date"}
                       </span>
                       <CalendarIcon className="w-5 h-5 text-gray-400" />
                     </div>
@@ -292,39 +364,64 @@ export function OrderDetailsScreen() {
                 <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
-                    selected={orderDetailsInput.deliveryDate ? new Date(orderDetailsInput.deliveryDate) : undefined}
+                    selected={
+                      orderDetailsInput.deliveryDate
+                        ? new Date(orderDetailsInput.deliveryDate)
+                        : undefined
+                    }
                     onSelect={(date: Date | undefined) => {
                       if (date) {
-                        updateOrderDetailsInput('deliveryDate', format(date, 'yyyy-MM-dd'));
+                        updateOrderDetailsInput(
+                          "deliveryDate",
+                          format(date, "yyyy-MM-dd"),
+                        );
                       }
                     }}
-                    disabled={(date: Date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                    disabled={(date: Date) =>
+                      date < new Date(new Date().setHours(0, 0, 0, 0))
+                    }
                     initialFocus
                   />
                 </PopoverContent>
               </Popover>
-              {errors.deliveryDate && <p className="text-red-600 text-sm mt-1">{errors.deliveryDate}</p>}
+              {errors.deliveryDate && (
+                <p className="text-red-600 text-sm mt-1">
+                  {errors.deliveryDate}
+                </p>
+              )}
             </div>
 
             {/* Price Per Brick */}
             <div>
-              <label htmlFor="pricePerBrick" className="block text-gray-700 mb-2">
+              <label
+                htmlFor="pricePerBrick"
+                className="block text-gray-700 mb-2"
+              >
                 Price Per Brick <span className="text-red-600">*</span>
               </label>
               <input
                 id="pricePerBrick"
                 type="number"
-                value={orderDetailsInput.pricePerBrick || ''}
-                onChange={(e) => updateOrderDetailsInput('pricePerBrick', parseFloat(e.target.value) || 0)}
+                value={orderDetailsInput.pricePerBrick || ""}
+                onChange={(e) =>
+                  updateOrderDetailsInput(
+                    "pricePerBrick",
+                    parseFloat(e.target.value) || 0,
+                  )
+                }
                 onWheel={(e) => e.currentTarget.blur()}
                 disabled={isDelivered}
                 className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
-                  isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''
+                  isDelivered ? "bg-gray-100 cursor-not-allowed" : ""
                 }`}
                 step="0.01"
                 min="0.01"
               />
-              {errors.pricePerBrick && <p className="text-red-600 text-sm mt-1">{errors.pricePerBrick}</p>}
+              {errors.pricePerBrick && (
+                <p className="text-red-600 text-sm mt-1">
+                  {errors.pricePerBrick}
+                </p>
+              )}
             </div>
 
             {/* Paper Price - Auto-calculated and disabled */}
@@ -335,7 +432,11 @@ export function OrderDetailsScreen() {
               <input
                 id="paperPrice"
                 type="text"
-                value={paperPrice ? `₹${parseFloat(paperPrice).toLocaleString()}` : ''}
+                value={
+                  paperPrice
+                    ? `₹${parseFloat(paperPrice).toLocaleString()}`
+                    : ""
+                }
                 disabled
                 placeholder="Calculated automatically"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
@@ -354,13 +455,17 @@ export function OrderDetailsScreen() {
                 id="location"
                 type="text"
                 value={orderDetailsInput.location}
-                onChange={(e) => updateOrderDetailsInput('location', e.target.value)}
+                onChange={(e) =>
+                  updateOrderDetailsInput("location", e.target.value)
+                }
                 disabled={isDelivered}
                 className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
-                  isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''
+                  isDelivered ? "bg-gray-100 cursor-not-allowed" : ""
                 }`}
               />
-              {errors.location && <p className="text-red-600 text-sm mt-1">{errors.location}</p>}
+              {errors.location && (
+                <p className="text-red-600 text-sm mt-1">{errors.location}</p>
+              )}
             </div>
 
             {/* Final Price */}
@@ -371,28 +476,43 @@ export function OrderDetailsScreen() {
               <input
                 id="finalPrice"
                 type="number"
-                value={orderDetailsInput.finalPrice || ''}
-                onChange={(e) => updateOrderDetailsInput('finalPrice', parseFloat(e.target.value) || 0)}
+                value={orderDetailsInput.finalPrice || ""}
+                onChange={(e) =>
+                  updateOrderDetailsInput(
+                    "finalPrice",
+                    parseFloat(e.target.value) || 0,
+                  )
+                }
                 onWheel={(e) => e.currentTarget.blur()}
                 disabled={isDelivered}
                 className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
-                  isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''
+                  isDelivered ? "bg-gray-100 cursor-not-allowed" : ""
                 }`}
                 min="0.01"
                 step="0.01"
               />
-              {orderDetailsInput.finalPrice && orderDetailsInput.brickQuantity && (
-                <p className="text-gray-600 text-sm mt-1">
-                  Price per brick: ₹{(orderDetailsInput.finalPrice / orderDetailsInput.brickQuantity).toFixed(2)}
-                </p>
+              {orderDetailsInput.finalPrice &&
+                orderDetailsInput.brickQuantity && (
+                  <p className="text-gray-600 text-sm mt-1">
+                    Price per brick: ₹
+                    {(
+                      orderDetailsInput.finalPrice /
+                      orderDetailsInput.brickQuantity
+                    ).toFixed(2)}
+                  </p>
+                )}
+              {errors.finalPrice && (
+                <p className="text-red-600 text-sm mt-1">{errors.finalPrice}</p>
               )}
-              {errors.finalPrice && <p className="text-red-600 text-sm mt-1">{errors.finalPrice}</p>}
             </div>
 
             {/* Payment Status - view only mode */}
             {isDelivered && (
               <div>
-                <label htmlFor="paymentStatus" className="block text-gray-700 mb-2">
+                <label
+                  htmlFor="paymentStatus"
+                  className="block text-gray-700 mb-2"
+                >
                   Payment Status
                 </label>
                 <select
@@ -409,20 +529,24 @@ export function OrderDetailsScreen() {
             )}
 
             {/* Amount Paid - view only mode, shown only if PARTIALLY_PAID */}
-            {isDelivered && orderDetailsInput.paymentStatus === 'PARTIALLY_PAID' && (
-              <div>
-                <label htmlFor="amountPaid" className="block text-gray-700 mb-2">
-                  Amount Paid
-                </label>
-                <input
-                  id="amountPaid"
-                  type="number"
-                  value={orderDetailsInput.amountPaid || ''}
-                  disabled
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none bg-gray-100 cursor-not-allowed"
-                />
-              </div>
-            )}
+            {isDelivered &&
+              orderDetailsInput.paymentStatus === "PARTIALLY_PAID" && (
+                <div>
+                  <label
+                    htmlFor="amountPaid"
+                    className="block text-gray-700 mb-2"
+                  >
+                    Amount Paid
+                  </label>
+                  <input
+                    id="amountPaid"
+                    type="number"
+                    value={orderDetailsInput.amountPaid || ""}
+                    disabled
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none bg-gray-100 cursor-not-allowed"
+                  />
+                </div>
+              )}
 
             {/* GST Number */}
             <div>
@@ -432,79 +556,145 @@ export function OrderDetailsScreen() {
               <input
                 id="gstNumber"
                 type="text"
-                value={orderDetailsInput.gstNumber || ''}
+                value={orderDetailsInput.gstNumber || ""}
                 onChange={(e) => {
                   const value = e.target.value.toUpperCase();
                   if (value.length <= 15) {
-                    updateOrderDetailsInput('gstNumber', value || null);
+                    updateOrderDetailsInput("gstNumber", value || null);
                   }
                 }}
                 placeholder="Enter GST Number (15 characters)"
                 maxLength={15}
                 disabled={isDelivered}
                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
-                  errors.gstNumber ? 'border-red-600' : 'border-gray-300'
-                } ${
-                  isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''
-                }`}
+                  errors.gstNumber ? "border-red-600" : "border-gray-300"
+                } ${isDelivered ? "bg-gray-100 cursor-not-allowed" : ""}`}
               />
-              {errors.gstNumber && <p className="text-red-600 text-sm mt-1">{errors.gstNumber}</p>}
+              {errors.gstNumber && (
+                <p className="text-red-600 text-sm mt-1">{errors.gstNumber}</p>
+              )}
             </div>
 
             {/* Delivery Challan Number */}
             <div>
-              <label htmlFor="deliveryChallanNumber" className="block text-gray-700 mb-2">
+              <label
+                htmlFor="deliveryChallanNumber"
+                className="block text-gray-700 mb-2"
+              >
                 Delivery Challan Number
               </label>
               <input
                 id="deliveryChallanNumber"
                 type="text"
                 value={orderDetailsInput.deliveryChallanNumber}
-                onChange={(e) => updateOrderDetailsInput('deliveryChallanNumber', e.target.value)}
+                onChange={(e) =>
+                  updateOrderDetailsInput(
+                    "deliveryChallanNumber",
+                    e.target.value,
+                  )
+                }
                 placeholder="Enter Delivery Challan Number"
                 disabled={isDelivered}
                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
-                  errors.deliveryChallanNumber ? 'border-red-600' : 'border-gray-300'
-                } ${
-                  isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''
-                }`}
+                  errors.deliveryChallanNumber
+                    ? "border-red-600"
+                    : "border-gray-300"
+                } ${isDelivered ? "bg-gray-100 cursor-not-allowed" : ""}`}
               />
-              {errors.deliveryChallanNumber && <p className="text-red-600 text-sm mt-1">{errors.deliveryChallanNumber}</p>}
+              {errors.deliveryChallanNumber && (
+                <p className="text-red-600 text-sm mt-1">
+                  {errors.deliveryChallanNumber}
+                </p>
+              )}
+            </div>
+
+            {/* Loading Type */}
+            <div>
+              <label className="block text-gray-700 mb-2 font-medium">
+                Loading Type <span className="text-red-600">*</span>
+              </label>
+              <select
+                value={orderDetailsInput.loadingType}
+                onChange={(e) => {
+                  const type = e.target.value as LoadingType;
+                  setOrderDetailsInput((prev) => ({
+                    ...prev,
+                    loadingType: type,
+                    // Clear loadmen if customer self loading
+                    loadMen: type === "CUSTOMER_SELF" ? [] : prev.loadMen,
+                  }));
+                }}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="LOADING_UNLOADING">
+                  Loading & Unloading (Company)
+                </option>
+                <option value="LOADING_ONLY">Loading Only (Company)</option>
+                <option value="CUSTOMER_SELF">Customer Self Loading</option>
+              </select>
+
+              {/* Info about rates */}
+              <div className="mt-2 text-sm text-gray-600 flex items-start gap-2">
+                <Info className="w-4 h-4 mt-0.5 shrink-0" />
+                <div>
+                  {orderDetailsInput.loadingType === "LOADING_UNLOADING" && (
+                    <span>Full rate: Per-brick rate × quantity (100%)</span>
+                  )}
+                  {orderDetailsInput.loadingType === "LOADING_ONLY" && (
+                    <span>Half rate: Per-brick rate × quantity × 50%</span>
+                  )}
+                  {orderDetailsInput.loadingType === "CUSTOMER_SELF" && (
+                    <span>
+                      No loading charges - Customer handles loading/unloading
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Load Men */}
-            <div>
-              <label className="block text-gray-700 mb-2">
-                Load Men <span className="text-red-600">*</span>
-              </label>
-              <div className="border border-gray-300 rounded-lg p-4">
-                <div className="space-y-2">
-                  {loadmen.map((loadman) => (
-                    <label
-                      key={loadman.id}
-                      className={`flex items-center gap-3 p-2 rounded ${
-                        isDelivered ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-50'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedLoadmen.some(l => l.id === loadman.id)}
-                        onChange={() => !isDelivered && handleLoadManToggle(loadman)}
-                        disabled={isDelivered}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                      />
-                      <span className="text-gray-900">{loadman.name}</span>
-                    </label>
-                  ))}
+            {orderDetailsInput.loadingType !== "CUSTOMER_SELF" && (
+              <div>
+                <label className="block text-gray-700 mb-2">
+                  Load Men <span className="text-red-600">*</span>
+                </label>
+                <div className="border border-gray-300 rounded-lg p-4">
+                  <div className="space-y-2">
+                    {loadmen.map((loadman) => (
+                      <label
+                        key={loadman.id}
+                        className={`flex items-center gap-3 p-2 rounded ${
+                          isDelivered
+                            ? "cursor-not-allowed opacity-60"
+                            : "cursor-pointer hover:bg-gray-50"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedLoadmen.some(
+                            (l) => l.id === loadman.id,
+                          )}
+                          onChange={() =>
+                            !isDelivered && handleLoadManToggle(loadman)
+                          }
+                          disabled={isDelivered}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                        <span className="text-gray-900">{loadman.name}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
+                {selectedLoadmen.length > 0 && (
+                  <p className="text-gray-600 text-sm mt-2">
+                    Selected: {selectedLoadmen.map((l) => l.name).join(", ")}
+                  </p>
+                )}
+                {errors.loadMen && (
+                  <p className="text-red-600 text-sm mt-1">{errors.loadMen}</p>
+                )}
               </div>
-              {selectedLoadmen.length > 0 && (
-                <p className="text-gray-600 text-sm mt-2">
-                  Selected: {selectedLoadmen.map(l => l.name).join(', ')}
-                </p>
-              )}
-              {errors.loadMen && <p className="text-red-600 text-sm mt-1">{errors.loadMen}</p>}
-            </div>
+            )}
 
             {/* Confirm Button - hidden for delivered orders */}
             {!isDelivered && (
@@ -513,7 +703,7 @@ export function OrderDetailsScreen() {
                 disabled={loading}
                 className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
-                {loading ? 'Updating...' : 'Confirm'}
+                {loading ? "Updating..." : "Confirm"}
               </button>
             )}
           </div>
@@ -534,7 +724,7 @@ export function OrderDetailsScreen() {
       {showFailurePopup && (
         <Popup
           title="Update Failed"
-          message={error || 'Failed to update order. Please try again.'}
+          message={error || "Failed to update order. Please try again."}
           onClose={() => setShowFailurePopup(false)}
           type="error"
         />

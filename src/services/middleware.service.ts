@@ -101,7 +101,38 @@ export async function logout(): Promise<void> {
 }
 
 /* ------------------------------------------------------------------
-   5. GET MATERIALS
+   5. GET APP SETTING (LOADING PER BRICK RATE)
+-------------------------------------------------------------------*/
+
+export async function getLoadingPerBrickRate(): Promise<number> {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'loading_and_unloading_per_brick_rate')
+    .single();
+
+  if (error) {
+    console.warn('Failed to fetch per-brick rate setting:', error);
+    return 0;
+  }
+
+  return Number(data?.value || 0);
+}
+
+export async function updateLoadingPerBrickRate(rate: number): Promise<void> {
+  const { error } = await supabase
+    .from('app_settings')
+    .update({
+      value: rate.toString(),
+      updated_at: new Date().toISOString()
+    })
+    .eq('key', 'loading_and_unloading_per_brick_rate');
+
+  if (error) throw error;
+}
+
+/* ------------------------------------------------------------------
+   6. GET MATERIALS
 -------------------------------------------------------------------*/
 
 export async function getMaterials(): Promise<Material[]> {
@@ -115,7 +146,7 @@ export async function getMaterials(): Promise<Material[]> {
 }
 
 /* ------------------------------------------------------------------
-   6. GET VENDORS
+   7. GET VENDORS
 -------------------------------------------------------------------*/
 
 export async function getVendors(): Promise<Vendor[]> {
@@ -248,6 +279,8 @@ export async function getTodayDeliveryOrders(): Promise<Order[]> {
 -------------------------------------------------------------------*/
 
 export async function getLoadmen(): Promise<EmployeeWithCategory[]> {
+  // UPDATED: Return ALL active employees (not just Loadmen category)
+  // This allows any employee to be selected for loading/unloading work
   const { data, error } = await supabase
     .from("employees")
     .select(`
@@ -257,7 +290,8 @@ export async function getLoadmen(): Promise<EmployeeWithCategory[]> {
       role_id,
       roles!inner ( id, name, category, salary_value )
     `)
-    .eq("roles.category", "LOADMEN" satisfies EmployeeCategory);
+    .eq("active", "TRUE")
+    .order("name");
 
   if (error) throw error;
   return data as unknown as EmployeeWithCategory[];

@@ -43,10 +43,12 @@ export function validateCreateRole(input: CreateRoleFormInput): Record<string, s
   }
 
   if (input.category === 'Loadmen') {
-    if (!input.ratePerLoad.trim()) {
-      errors.ratePerLoad = 'Rate per load is required';
-    } else if (isNaN(Number(input.ratePerLoad)) || Number(input.ratePerLoad) <= 0) {
-      errors.ratePerLoad = 'Please enter a valid rate';
+    // UPDATED: No longer require ratePerLoad for Loadmen
+    // Salary is calculated from global per-brick rate in settings
+    // Only validate minimum requirement if provided
+    if (input.minimumLoadRequirement.trim() && 
+        (isNaN(Number(input.minimumLoadRequirement)) || Number(input.minimumLoadRequirement) < 0)) {
+      errors.minimumLoadRequirement = 'Please enter a valid number';
     }
   }
 

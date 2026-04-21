@@ -47,5 +47,12 @@ export function validateCreateOrder(input: CreateOrderInput): Record<string, str
     errors.gstNumber = 'GST Number must be exactly 15 characters';
   }
 
+  // NEW: Loadmen validation conditional on loading type
+  if (input.loadingType !== 'CUSTOMER_SELF') {
+    if (!input.loadMen || input.loadMen.length === 0) {
+      errors.loadMen = 'Please select at least one employee for loading work';
+    }
+  }
+
   return errors;
 }

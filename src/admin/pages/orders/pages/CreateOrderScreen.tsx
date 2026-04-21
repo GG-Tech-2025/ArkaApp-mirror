@@ -1,16 +1,30 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, CalendarIcon } from 'lucide-react';
-import { Popup } from '../../../../components/Popup';
-import { CustomerCreationModal } from '../../../../components/admin/CustomerCreationModal';
-import { Calendar } from '../../../../components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '../../../../components/ui/popover';
-import { format } from 'date-fns';
-import { cn } from '../../../../components/ui/utils';
-import { useAdminNavigation } from '../../../hooks/useAdminNavigation';
-import { useNavigate } from 'react-router-dom';
-import { validateCreateOrder } from '../../../validators/createOrder.validator';
-import { searchCustomers, getLoadmen, createOrder, validateSession, getUserProfile } from '../../../../services/middleware.service';
-import { Customer, EmployeeWithCategory } from '../../../../services/types';
+import React, { useState, useEffect, useRef } from "react";
+import { ArrowLeft, CalendarIcon, Info } from "lucide-react";
+import { Popup } from "../../../../components/Popup";
+import { CustomerCreationModal } from "../../../../components/admin/CustomerCreationModal";
+import { Calendar } from "../../../../components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../../../../components/ui/popover";
+import { format } from "date-fns";
+import { cn } from "../../../../components/ui/utils";
+import { useAdminNavigation } from "../../../hooks/useAdminNavigation";
+import { useNavigate } from "react-router-dom";
+import { validateCreateOrder } from "../../../validators/createOrder.validator";
+import {
+  searchCustomers,
+  getLoadmen,
+  createOrder,
+  validateSession,
+  getUserProfile,
+} from "../../../../services/middleware.service";
+import {
+  Customer,
+  EmployeeWithCategory,
+  LoadingType,
+} from "../../../../services/types";
 
 export interface CreateOrderInput {
   customerId: string;
@@ -21,16 +35,17 @@ export interface CreateOrderInput {
   pricePerBrick: number;
   location: string;
   finalPrice: number;
-  paymentStatus: 'NOT_PAID' | 'PARTIALLY_PAID' | 'FULLY_PAID';
+  paymentStatus: "NOT_PAID" | "PARTIALLY_PAID" | "FULLY_PAID";
   amountPaid: number;
   gstNumber: string | null;
   deliveryChallanNumber: string;
+  loadingType: LoadingType;
   loadMen: string[];
 }
 
 export function CreateOrderScreen() {
   const { goBack } = useAdminNavigation();
-  const [customerSearch, setCustomerSearch] = useState('');
+  const [customerSearch, setCustomerSearch] = useState("");
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
@@ -43,22 +58,25 @@ export function CreateOrderScreen() {
   const [loadmen, setLoadmen] = useState<EmployeeWithCategory[]>([]);
 
   const [createOrderInput, setCreateOrderInput] = useState<CreateOrderInput>({
-    customerId: '',
-    customerName: '',
-    customerPhone: '',
+    customerId: "",
+    customerName: "",
+    customerPhone: "",
     brickQuantity: 0,
-    deliveryDate: '',
+    deliveryDate: "",
     pricePerBrick: 0,
-    location: '',
+    location: "",
     finalPrice: 0,
-    paymentStatus: 'NOT_PAID',
+    paymentStatus: "NOT_PAID",
     amountPaid: 0,
     gstNumber: null,
-    deliveryChallanNumber: '',
+    deliveryChallanNumber: "",
+    loadingType: "LOADING_UNLOADING",
     loadMen: [],
   });
 
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
+    null,
+  );
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Debounced customer search with proper timeout clearing
@@ -76,7 +94,7 @@ export function CreateOrderScreen() {
           const customers = await searchCustomers(customerSearch);
           setFilteredCustomers(customers);
         } catch (err) {
-          console.error('Failed to search customers:', err);
+          console.error("Failed to search customers:", err);
           setFilteredCustomers([]);
         } finally {
           setSearchLoading(false);
@@ -102,21 +120,23 @@ export function CreateOrderScreen() {
         const res = await getLoadmen();
         if (mounted) setLoadmen(res);
       } catch (err) {
-        console.error('Failed to load loadmen:', err);
+        console.error("Failed to load loadmen:", err);
       }
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   function updateCreateOrderInput(field: keyof CreateOrderInput, value: any) {
-    setCreateOrderInput(prev => ({ ...prev, [field]: value }));
+    setCreateOrderInput((prev) => ({ ...prev, [field]: value }));
   }
 
   function handleSelectCustomer(customer: Customer) {
     setSelectedCustomer(customer);
-    setCustomerSearch('');
+    setCustomerSearch("");
     // Update customer info in a single state update
-    setCreateOrderInput(prev => ({
+    setCreateOrderInput((prev) => ({
       ...prev,
       customerId: customer.id,
       customerName: customer.name,
@@ -126,11 +146,11 @@ export function CreateOrderScreen() {
   }
 
   function handleLoadManToggle(loadMan: string) {
-    setCreateOrderInput(prev => ({
+    setCreateOrderInput((prev) => ({
       ...prev,
       loadMen: prev.loadMen.includes(loadMan)
-        ? prev.loadMen.filter(m => m !== loadMan)
-        : [...prev.loadMen, loadMan]
+        ? prev.loadMen.filter((m) => m !== loadMan)
+        : [...prev.loadMen, loadMan],
     }));
   }
 
@@ -148,9 +168,9 @@ export function CreateOrderScreen() {
 
       // determine amount_paid based on payment status
       let amountPaid = 0;
-      if (createOrderInput.paymentStatus === 'PARTIALLY_PAID') {
+      if (createOrderInput.paymentStatus === "PARTIALLY_PAID") {
         amountPaid = createOrderInput.amountPaid;
-      } else if (createOrderInput.paymentStatus === 'FULLY_PAID') {
+      } else if (createOrderInput.paymentStatus === "FULLY_PAID") {
         amountPaid = createOrderInput.finalPrice;
       }
 
@@ -161,13 +181,22 @@ export function CreateOrderScreen() {
         delivery_date: createOrderInput.deliveryDate,
         brick_quantity: createOrderInput.brickQuantity,
         price_per_brick: createOrderInput.pricePerBrick || undefined,
-        paper_price: createOrderInput.brickQuantity && createOrderInput.pricePerBrick ? Number((createOrderInput.brickQuantity * createOrderInput.pricePerBrick).toFixed(2)) : undefined,
+        paper_price:
+          createOrderInput.brickQuantity && createOrderInput.pricePerBrick
+            ? Number(
+                (
+                  createOrderInput.brickQuantity *
+                  createOrderInput.pricePerBrick
+                ).toFixed(2),
+              )
+            : undefined,
         final_price: createOrderInput.finalPrice,
         location: createOrderInput.location,
         payment_status: createOrderInput.paymentStatus,
         amount_paid: amountPaid,
         gst_number: createOrderInput.gstNumber || null,
         dc_number: createOrderInput.deliveryChallanNumber || null,
+        loading_type: createOrderInput.loadingType || null,
       };
 
       // validate session and role
@@ -178,7 +207,7 @@ export function CreateOrderScreen() {
       }
 
       const profile = await getUserProfile(user.id);
-      if (profile.role !== 'ADMIN') {
+      if (profile.role !== "ADMIN") {
         setShowSessionInvalidPopup(true);
         return;
       }
@@ -188,8 +217,11 @@ export function CreateOrderScreen() {
       await createOrder(payload as any, createOrderInput.loadMen, createdBy);
       setShowSuccessPopup(true);
     } catch (err) {
-      console.error('Failed to create order:', err);
-      setErrors(prev => ({ ...prev, form: (err as Error).message || 'Failed to create order' }));
+      console.error("Failed to create order:", err);
+      setErrors((prev) => ({
+        ...prev,
+        form: (err as Error).message || "Failed to create order",
+      }));
       setShowFailurePopup(true);
     } finally {
       setLoading(false);
@@ -198,17 +230,18 @@ export function CreateOrderScreen() {
 
   const handlePopupClose = () => {
     setShowSuccessPopup(false);
-    goBack('/admin/orders');
+    goBack("/admin/orders");
   };
 
   // Calculate paper price automatically
-  const paperPrice = createOrderInput.brickQuantity && createOrderInput.pricePerBrick
-    ? (createOrderInput.brickQuantity * createOrderInput.pricePerBrick).toFixed(2)
-    : '';
+  const paperPrice =
+    createOrderInput.brickQuantity && createOrderInput.pricePerBrick
+      ? (
+          createOrderInput.brickQuantity * createOrderInput.pricePerBrick
+        ).toFixed(2)
+      : "";
 
-  const orderDate = new Date().toISOString().split('T')[0];
-
-  
+  const orderDate = new Date().toISOString().split("T")[0];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -216,7 +249,7 @@ export function CreateOrderScreen() {
         {/* Header */}
         <div className="mb-8">
           <button
-            onClick={() => goBack('/admin/orders')}
+            onClick={() => goBack("/admin/orders")}
             className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -237,38 +270,48 @@ export function CreateOrderScreen() {
               <input
                 id="customer"
                 type="text"
-                value={selectedCustomer ? `${selectedCustomer.phone}, ${selectedCustomer.name}` : customerSearch}
+                value={
+                  selectedCustomer
+                    ? `${selectedCustomer.phone}, ${selectedCustomer.name}`
+                    : customerSearch
+                }
                 onChange={(e) => {
                   setCustomerSearch(e.target.value);
                   setSelectedCustomer(null);
-                  updateCreateOrderInput('customerId', '');
-                  updateCreateOrderInput('customerName', '');
-                  updateCreateOrderInput('customerPhone', '');
+                  updateCreateOrderInput("customerId", "");
+                  updateCreateOrderInput("customerName", "");
+                  updateCreateOrderInput("customerPhone", "");
                 }}
                 placeholder="Search by phone number or name"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
               />
-              {customerSearch && !selectedCustomer && (filteredCustomers.length > 0 || searchLoading) && (
-                <div className="mt-2 border border-gray-300 rounded-lg max-h-48 overflow-y-auto">
-                  {searchLoading ? (
-                    <div className="px-4 py-2 text-gray-500 text-sm">Searching customers...</div>
-                  ) : filteredCustomers.length > 0 ? (
-                    filteredCustomers.map((customer) => (
-                      <button
-                        key={customer.id}
-                        onClick={() => handleSelectCustomer(customer)}
-                        className="w-full px-4 py-2 text-left hover:bg-gray-50 border-b border-gray-100 last:border-0"
-                      >
-                        {customer.phone}, {customer.name}
-                      </button>
-                    ))
-                  ) : (
-                    <div className="px-4 py-2 text-gray-500 text-sm">No customers found</div>
-                  )}
-                </div>
-              )}
+              {customerSearch &&
+                !selectedCustomer &&
+                (filteredCustomers.length > 0 || searchLoading) && (
+                  <div className="mt-2 border border-gray-300 rounded-lg max-h-48 overflow-y-auto">
+                    {searchLoading ? (
+                      <div className="px-4 py-2 text-gray-500 text-sm">
+                        Searching customers...
+                      </div>
+                    ) : filteredCustomers.length > 0 ? (
+                      filteredCustomers.map((customer) => (
+                        <button
+                          key={customer.id}
+                          onClick={() => handleSelectCustomer(customer)}
+                          className="w-full px-4 py-2 text-left hover:bg-gray-50 border-b border-gray-100 last:border-0"
+                        >
+                          {customer.phone}, {customer.name}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-4 py-2 text-gray-500 text-sm">
+                        No customers found
+                      </div>
+                    )}
+                  </div>
+                )}
               <p className="text-gray-600 text-sm mt-2">
-                Need to add customer?{' '}
+                Need to add customer?{" "}
                 <button
                   onClick={() => setShowCustomerModal(true)}
                   className="text-blue-600 hover:underline"
@@ -276,7 +319,9 @@ export function CreateOrderScreen() {
                   Go to create customer
                 </button>
               </p>
-              {errors.customer && <p className="text-red-600 text-sm mt-1">{errors.customer}</p>}
+              {errors.customer && (
+                <p className="text-red-600 text-sm mt-1">{errors.customer}</p>
+              )}
             </div>
 
             {/* Date */}
@@ -295,25 +340,40 @@ export function CreateOrderScreen() {
 
             {/* Brick Quantity */}
             <div>
-              <label htmlFor="brickQuantity" className="block text-gray-700 mb-2">
+              <label
+                htmlFor="brickQuantity"
+                className="block text-gray-700 mb-2"
+              >
                 Brick Quantity <span className="text-red-600">*</span>
               </label>
               <input
                 id="brickQuantity"
                 type="number"
-                value={createOrderInput.brickQuantity || ''}
-                onChange={(e) => updateCreateOrderInput('brickQuantity', parseInt(e.target.value) || 0)}
+                value={createOrderInput.brickQuantity || ""}
+                onChange={(e) =>
+                  updateCreateOrderInput(
+                    "brickQuantity",
+                    parseInt(e.target.value) || 0,
+                  )
+                }
                 onWheel={(e) => e.currentTarget.blur()}
                 placeholder="Enter quantity"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 min="1"
               />
-              {errors.brickQuantity && <p className="text-red-600 text-sm mt-1">{errors.brickQuantity}</p>}
+              {errors.brickQuantity && (
+                <p className="text-red-600 text-sm mt-1">
+                  {errors.brickQuantity}
+                </p>
+              )}
             </div>
 
             {/* Delivery Date */}
             <div>
-              <label htmlFor="deliveryDate" className="block text-gray-700 mb-2">
+              <label
+                htmlFor="deliveryDate"
+                className="block text-gray-700 mb-2"
+              >
                 Delivery Date <span className="text-red-600">*</span>
               </label>
               <Popover>
@@ -322,12 +382,17 @@ export function CreateOrderScreen() {
                     type="button"
                     className={cn(
                       "w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-left",
-                      !createOrderInput.deliveryDate && "text-gray-400"
+                      !createOrderInput.deliveryDate && "text-gray-400",
                     )}
                   >
                     <div className="flex items-center justify-between">
                       <span>
-                        {createOrderInput.deliveryDate ? format(new Date(createOrderInput.deliveryDate), 'PPP') : 'Select delivery date'}
+                        {createOrderInput.deliveryDate
+                          ? format(
+                              new Date(createOrderInput.deliveryDate),
+                              "PPP",
+                            )
+                          : "Select delivery date"}
                       </span>
                       <CalendarIcon className="w-5 h-5 text-gray-400" />
                     </div>
@@ -336,37 +401,62 @@ export function CreateOrderScreen() {
                 <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
-                    selected={createOrderInput.deliveryDate ? new Date(createOrderInput.deliveryDate) : undefined}
+                    selected={
+                      createOrderInput.deliveryDate
+                        ? new Date(createOrderInput.deliveryDate)
+                        : undefined
+                    }
                     onSelect={(date: Date | undefined) => {
                       if (date) {
-                        updateCreateOrderInput('deliveryDate', format(date, 'yyyy-MM-dd'));
+                        updateCreateOrderInput(
+                          "deliveryDate",
+                          format(date, "yyyy-MM-dd"),
+                        );
                       }
                     }}
-                    disabled={(date: Date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                    disabled={(date: Date) =>
+                      date < new Date(new Date().setHours(0, 0, 0, 0))
+                    }
                     initialFocus
                   />
                 </PopoverContent>
               </Popover>
-              {errors.deliveryDate && <p className="text-red-600 text-sm mt-1">{errors.deliveryDate}</p>}
+              {errors.deliveryDate && (
+                <p className="text-red-600 text-sm mt-1">
+                  {errors.deliveryDate}
+                </p>
+              )}
             </div>
 
             {/* Price Per Brick */}
             <div>
-              <label htmlFor="pricePerBrick" className="block text-gray-700 mb-2">
+              <label
+                htmlFor="pricePerBrick"
+                className="block text-gray-700 mb-2"
+              >
                 Price Per Brick <span className="text-red-600">*</span>
               </label>
               <input
                 id="pricePerBrick"
                 type="number"
-                value={createOrderInput.pricePerBrick || ''}
-                onChange={(e) => updateCreateOrderInput('pricePerBrick', parseFloat(e.target.value) || 0)}
+                value={createOrderInput.pricePerBrick || ""}
+                onChange={(e) =>
+                  updateCreateOrderInput(
+                    "pricePerBrick",
+                    parseFloat(e.target.value) || 0,
+                  )
+                }
                 onWheel={(e) => e.currentTarget.blur()}
                 placeholder="Enter price per brick"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 step="0.01"
                 min="0.01"
               />
-              {errors.pricePerBrick && <p className="text-red-600 text-sm mt-1">{errors.pricePerBrick}</p>}
+              {errors.pricePerBrick && (
+                <p className="text-red-600 text-sm mt-1">
+                  {errors.pricePerBrick}
+                </p>
+              )}
             </div>
 
             {/* Paper Price - Auto-calculated and disabled */}
@@ -377,7 +467,11 @@ export function CreateOrderScreen() {
               <input
                 id="paperPrice"
                 type="text"
-                value={paperPrice ? `₹${parseFloat(paperPrice).toLocaleString()}` : ''}
+                value={
+                  paperPrice
+                    ? `₹${parseFloat(paperPrice).toLocaleString()}`
+                    : ""
+                }
                 disabled
                 placeholder="Calculated automatically"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
@@ -396,11 +490,15 @@ export function CreateOrderScreen() {
                 id="location"
                 type="text"
                 value={createOrderInput.location}
-                onChange={(e) => updateCreateOrderInput('location', e.target.value)}
+                onChange={(e) =>
+                  updateCreateOrderInput("location", e.target.value)
+                }
                 placeholder="Enter delivery location"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
               />
-              {errors.location && <p className="text-red-600 text-sm mt-1">{errors.location}</p>}
+              {errors.location && (
+                <p className="text-red-600 text-sm mt-1">{errors.location}</p>
+              )}
             </div>
 
             {/* Final Price */}
@@ -411,20 +509,32 @@ export function CreateOrderScreen() {
               <input
                 id="finalPrice"
                 type="number"
-                value={createOrderInput.finalPrice || ''}
-                onChange={(e) => updateCreateOrderInput('finalPrice', parseFloat(e.target.value) || 0)}
+                value={createOrderInput.finalPrice || ""}
+                onChange={(e) =>
+                  updateCreateOrderInput(
+                    "finalPrice",
+                    parseFloat(e.target.value) || 0,
+                  )
+                }
                 onWheel={(e) => e.currentTarget.blur()}
                 placeholder="Enter final price"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 min="0.01"
                 step="0.01"
               />
-              {createOrderInput.finalPrice > 0 && createOrderInput.brickQuantity > 0 && (
-                <p className="text-gray-600 text-sm mt-1">
-                  Price per brick: ₹{(createOrderInput.finalPrice / createOrderInput.brickQuantity).toFixed(2)}
-                </p>
+              {createOrderInput.finalPrice > 0 &&
+                createOrderInput.brickQuantity > 0 && (
+                  <p className="text-gray-600 text-sm mt-1">
+                    Price per brick: ₹
+                    {(
+                      createOrderInput.finalPrice /
+                      createOrderInput.brickQuantity
+                    ).toFixed(2)}
+                  </p>
+                )}
+              {errors.finalPrice && (
+                <p className="text-red-600 text-sm mt-1">{errors.finalPrice}</p>
               )}
-              {errors.finalPrice && <p className="text-red-600 text-sm mt-1">{errors.finalPrice}</p>}
             </div>
 
             {/* GST Number */}
@@ -435,69 +545,134 @@ export function CreateOrderScreen() {
               <input
                 id="gstNumber"
                 type="text"
-                value={createOrderInput.gstNumber || ''}
+                value={createOrderInput.gstNumber || ""}
                 onChange={(e) => {
                   const value = e.target.value.toUpperCase();
                   if (value.length <= 15) {
-                    updateCreateOrderInput('gstNumber', value || null);
+                    updateCreateOrderInput("gstNumber", value || null);
                   }
                 }}
                 placeholder="Enter GST Number"
                 maxLength={15}
                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
-                  errors.gstNumber ? 'border-red-600' : 'border-gray-300'
+                  errors.gstNumber ? "border-red-600" : "border-gray-300"
                 }`}
               />
-              {errors.gstNumber && <p className="text-red-600 text-sm mt-1">{errors.gstNumber}</p>}
+              {errors.gstNumber && (
+                <p className="text-red-600 text-sm mt-1">{errors.gstNumber}</p>
+              )}
             </div>
 
             {/* Delivery Challan Number */}
             <div>
-              <label htmlFor="deliveryChallanNumber" className="block text-gray-700 mb-2">
+              <label
+                htmlFor="deliveryChallanNumber"
+                className="block text-gray-700 mb-2"
+              >
                 Delivery Challan Number
               </label>
               <input
                 id="deliveryChallanNumber"
                 type="text"
                 value={createOrderInput.deliveryChallanNumber}
-                onChange={(e) => updateCreateOrderInput('deliveryChallanNumber', e.target.value)}
+                onChange={(e) =>
+                  updateCreateOrderInput(
+                    "deliveryChallanNumber",
+                    e.target.value,
+                  )
+                }
                 placeholder="Enter Delivery Challan Number"
                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
-                  errors.deliveryChallanNumber ? 'border-red-600' : 'border-gray-300'
+                  errors.deliveryChallanNumber
+                    ? "border-red-600"
+                    : "border-gray-300"
                 }`}
               />
-              {errors.deliveryChallanNumber && <p className="text-red-600 text-sm mt-1">{errors.deliveryChallanNumber}</p>}
+              {errors.deliveryChallanNumber && (
+                <p className="text-red-600 text-sm mt-1">
+                  {errors.deliveryChallanNumber}
+                </p>
+              )}
             </div>
-
-            {/* Load Men - Multi-select */}
+            {/* Loading Type */}
             <div>
-              <label className="block text-gray-700 mb-2">Load Men (Optional)</label>
-              <div className="border border-gray-300 rounded-lg p-4">
+              <label className="block text-gray-700 mb-2 font-medium">
+                Loading Type <span className="text-red-600">*</span>
+              </label>
+              <select
+                value={createOrderInput.loadingType}
+                onChange={(e) => {
+                  const type = e.target.value as LoadingType;
+                  setCreateOrderInput((prev) => ({
+                    ...prev,
+                    loadingType: type,
+                    // Clear loadmen if customer self loading
+                    loadMen: type === "CUSTOMER_SELF" ? [] : prev.loadMen,
+                  }));
+                }}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="LOADING_UNLOADING">
+                  Loading & Unloading (Company)
+                </option>
+                <option value="LOADING_ONLY">Loading Only (Company)</option>
+                <option value="CUSTOMER_SELF">Customer Self Loading</option>
+              </select>
+
+              {/* Info about rates */}
+              <div className="mt-2 text-sm text-gray-600 flex items-start gap-2">
+                <Info className="w-4 h-4 mt-0.5 shrink-0" />
+                <div>
+                  {createOrderInput.loadingType === "LOADING_UNLOADING" && (
+                    <span>Full rate: Per-brick rate × quantity (100%)</span>
+                  )}
+                  {createOrderInput.loadingType === "LOADING_ONLY" && (
+                    <span>Half rate: Per-brick rate × quantity × 50%</span>
+                  )}
+                  {createOrderInput.loadingType === "CUSTOMER_SELF" && (
+                    <span>
+                      No loading charges - Customer handles loading/unloading
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+            {/* Load Men - Multi-select */}
+            {createOrderInput.loadingType !== 'CUSTOMER_SELF' && (
+              <div>
+                <label className="block text-gray-700 mb-2">
+                  Load Men (Optional)
+                </label>
+                <div className="border border-gray-300 rounded-lg p-4">
                 <div className="space-y-2">
-                  {loadmen.length > 0 ? loadmen.map((lm) => (
-                    <label
-                      key={lm.id}
-                      className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={createOrderInput.loadMen.includes(lm.id)}
-                        onChange={() => handleLoadManToggle(lm.id)}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                      />
-                      <span className="text-gray-900">{lm.name}</span>
-                    </label>
-                  )) : (
-                    <div className="text-gray-500 text-sm">No loadmen available</div>
+                  {loadmen.length > 0 ? (
+                    loadmen.map((lm) => (
+                      <label
+                        key={lm.id}
+                        className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={createOrderInput.loadMen.includes(lm.id)}
+                          onChange={() => handleLoadManToggle(lm.id)}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                        <span className="text-gray-900">{lm.name}</span>
+                      </label>
+                    ))
+                  ) : (
+                    <div className="text-gray-500 text-sm">
+                      No loadmen available
+                    </div>
                   )}
                 </div>
               </div>
               {createOrderInput.loadMen.length > 0 && (
                 <p className="text-gray-600 text-sm mt-2">
-                  Selected: {createOrderInput.loadMen.join(', ')}
+                  Selected: {createOrderInput.loadMen.join(", ")}
                 </p>
               )}
-            </div>
+            </div>)}
 
             {/* Create Button */}
             <button
@@ -505,7 +680,7 @@ export function CreateOrderScreen() {
               disabled={loading}
               className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-              {loading ? 'Creating...' : 'Create'}
+              {loading ? "Creating..." : "Create"}
             </button>
           </div>
         </div>
@@ -522,10 +697,10 @@ export function CreateOrderScreen() {
       )}
 
       {/* Failure Popup */}
-      {showFailurePopup && Object.keys(errors).every(k => k === 'form') && (
+      {showFailurePopup && Object.keys(errors).every((k) => k === "form") && (
         <Popup
           title="Creation Failed"
-          message={errors.form || 'Failed to create order. Please try again.'}
+          message={errors.form || "Failed to create order. Please try again."}
           onClose={() => setShowFailurePopup(false)}
           type="error"
         />
@@ -536,7 +711,10 @@ export function CreateOrderScreen() {
         <Popup
           title="Session Invalid"
           message="Your session is invalid or you do not have permission. Please log in as an admin."
-          onClose={() => { setShowSessionInvalidPopup(false); navigate('/admin/login'); }}
+          onClose={() => {
+            setShowSessionInvalidPopup(false);
+            navigate("/admin/login");
+          }}
           type="error"
         />
       )}

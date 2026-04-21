@@ -68,6 +68,23 @@ export type PaymentStatus =
   | "PARTIALLY_PAID"
   | "FULLY_PAID";
 
+// Loading/Unloading types
+export type LoadingType = 'LOADING_ONLY' | 'LOADING_UNLOADING' | 'CUSTOMER_SELF';
+
+// App settings types
+export interface AppSetting {
+  id: string;
+  key: string;
+  value: string;
+  description: string | null;
+  updated_at: string;
+  created_at: string;
+}
+
+export const SETTING_KEYS = {
+  LOADING_PER_BRICK_RATE: 'loading_per_brick_rate'
+} as const;
+
 export interface OrderCustomer {
   name: string;
   phone: string;
@@ -92,6 +109,7 @@ export interface Order {
   created_at: string;
   customers?: OrderCustomer;
   time: string | null;
+  loading_type?: LoadingType; // NEW: Type of loading service
 }
 
 export interface Employee {

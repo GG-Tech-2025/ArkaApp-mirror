@@ -60,7 +60,8 @@ export function useCreateRole() {
   const getSalaryValue = () => {
     if (createRoleInput.category === 'Daily Wages') return Number(createRoleInput.perDayWage);
     if (createRoleInput.category === 'Fixed Salary') return Number(createRoleInput.monthlySalary);
-    if (createRoleInput.category === 'Loadmen') return Number(createRoleInput.ratePerLoad);
+    // UPDATED: Set salary_value to 0 for Loadmen (calculated from global per-brick rate)
+    if (createRoleInput.category === 'Loadmen') return 0;
     return 0;
   };
 

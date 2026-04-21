@@ -1,6 +1,8 @@
-import React from 'react';
-import { ArrowLeft, BookOpen, Search, Calculator } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, BookOpen, Search, Calculator, Settings, Save } from 'lucide-react';
 import { useSalaryLedger } from '../../../hooks/useSalaryLedger';
+import { getLoadingPerBrickRate, updateLoadingPerBrickRate } from '../../../../services/middleware.service';
+import { Popup } from '../../../../components/Popup';
 
 const CATEGORY_LABELS: Record<string, string> = {
   DAILY: 'Daily Wages',
@@ -25,6 +27,62 @@ export function SalaryLedgerScreen() {
     goBack,
     goTo,
   } = useSalaryLedger();
+
+  // Loading per-brick rate configuration
+  const [perBrickRate, setPerBrickRate] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [rateError, setRateError] = useState('');
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const [showFailurePopup, setShowFailurePopup] = useState(false);
+
+  useEffect(() => {
+    fetchRate();
+  }, []);
+
+  const fetchRate = async () => {
+    try {
+      const rate = await getLoadingPerBrickRate();
+      setPerBrickRate(rate.toString());
+    } catch (err) {
+      console.error('Error fetching rate:', err);
+    }
+  };
+
+  const handleSaveRate = async () => {
+    // Validate
+    if (!perBrickRate.trim()) {
+      setRateError('Rate is required');
+      return;
+    }
+
+    const rate = Number(perBrickRate);
+    if (isNaN(rate)) {
+      setRateError('Please enter a valid number');
+      return;
+    }
+
+    if (rate < 0) {
+      setRateError('Rate cannot be negative');
+      return;
+    }
+
+    if (rate > 1000) {
+      setRateError('Rate seems too high');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      setRateError('');
+      await updateLoadingPerBrickRate(rate);
+      setShowSuccessPopup(true);
+    } catch (err) {
+      console.error('Error saving rate:', err);
+      setShowFailurePopup(true);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const displayedEmployees = activeTab === 'Active' ? activeEmployees : inactiveEmployees;
   const hasMore = activeTab === 'Active' ? hasMoreActive : hasMoreInactive;
@@ -53,6 +111,55 @@ export function SalaryLedgerScreen() {
               <Calculator className="w-5 h-5" />
               Calculate Salary
             </button>
+          </div>
+        </div>
+
+        {/* Loading Per-Brick Rate Configuration */}
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+          <div className="flex items-start gap-3 mb-4">
+            <Settings className="w-5 h-5 text-blue-600 mt-1 shrink-0" />
+            <div className="flex-1">
+              <h2 className="text-lg font-semibold text-gray-900 mb-2">Loading Work Configuration</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Set the per-brick rate for loading and unloading work. This rate is used to calculate salaries for employees who perform loading/unloading tasks. The amount is automatically divided equally among all selected employees for each order.
+              </p>
+              
+              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
+                <div className="flex-1 max-w-xs">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Per Brick Rate (₹)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="1000"
+                    value={perBrickRate}
+                    onChange={(e) => {
+                      setPerBrickRate(e.target.value);
+                      setRateError('');
+                    }}
+                    placeholder="0.00"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  {rateError && (
+                    <p className="text-red-600 text-sm mt-1">{rateError}</p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    Example: ₹{perBrickRate || '0'} × 5000 bricks ÷ 3 employees = ₹{((Number(perBrickRate || 0) * 5000) / 3).toFixed(2)} per person
+                  </p>
+                </div>
+                
+                <button
+                  onClick={handleSaveRate}
+                  disabled={isSaving || !perBrickRate}
+                  className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  <Save className="w-4 h-4" />
+                  {isSaving ? 'Saving...' : 'Save Rate'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -177,6 +284,26 @@ export function SalaryLedgerScreen() {
           </div>
         </div>
       </div>
+
+      {/* Success Popup */}
+      {showSuccessPopup && (
+        <Popup
+          title="Rate Updated Successfully"
+          message={`Per-brick rate has been updated to ₹${perBrickRate}`}
+          type="success"
+          onClose={() => setShowSuccessPopup(false)}
+        />
+      )}
+
+      {/* Failure Popup */}
+      {showFailurePopup && (
+        <Popup
+          title="Update Failed"
+          message="Failed to update the per-brick rate. Please try again."
+          type="error"
+          onClose={() => setShowFailurePopup(false)}
+        />
+      )}
     </div>
   );
 }

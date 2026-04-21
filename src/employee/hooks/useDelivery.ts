@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { createDelivery } from "../services/delivery.service";
 import { DeliveryInput } from "../types";
-import { getLoadmen, getOrderWithLoadmen, updateOrderWithLoadmen, createSalaryLedgerEntry } from "../../services/middleware.service";
+import { getLoadmen, getOrderWithLoadmen, updateOrderWithLoadmen, createSalaryLedgerEntry, getLoadingPerBrickRate } from "../../services/middleware.service";
 import { EmployeeWithCategory, OrderWithLoadmen, Order } from "../../services/types";
+import { calculateLoadingSalary } from "../../utils/loadmenSalary";
 
 export function useDelivery(orderId: string) {
   const [loading, setLoading] = useState(false);
@@ -144,22 +145,63 @@ export function useDelivery(orderId: string) {
 
       await updateOrderWithLoadmen(orderId, orderUpdate, deliveryInput.loadMen);
 
-      // Create auto salary ledger entries for each selected loadman
-      const salaryEntryDate = new Date().toISOString();
-      await Promise.all(
-        selectedLoadmen.map((loadman) =>
-          createSalaryLedgerEntry({
-            employee_id: loadman.id,
-            entry_type: "SALARY_AUTO_ENTRY",
-            amount: loadman.roles.salary_value,
-            payment_mode: null,
-            sender_account_id: null,
-            receiver_account: null,
-            notes: `Auto salary entry for delivery of order #${orderId}`,
-            payment_at: salaryEntryDate
-          })
-        )
-      );
+      // ========== NEW SALARY CALCULATION LOGIC ==========
+      
+      // Fetch per-brick rate from app_settings table via middleware
+      const perBrickRate = await getLoadingPerBrickRate();
+      
+      // Get loading type (default to LOADING_UNLOADING if not set)
+      const loadingType = order.loading_type || 'LOADING_UNLOADING';
+      
+      // Only calculate salary if employees are selected and not customer self-loading
+      if (perBrickRate > 0 && loadingType !== 'CUSTOMER_SELF' && selectedLoadmen.length > 0) {
+        
+        // Map selected employees with their category info
+        const employeesWithCategory = selectedLoadmen.map(loadman => ({
+          employeeId: loadman.id,
+          isLoadmenCategory: loadman.roles?.category === 'LOADMEN'
+        }));
+
+        // Calculate salary for ALL selected employees (equal division)
+        const salaryCalculations = calculateLoadingSalary(
+          perBrickRate,
+          deliveryInput.quantity, // Use delivered quantity
+          loadingType,
+          employeesWithCategory
+        );
+
+        // Create auto salary entries for ALL selected employees
+        if (salaryCalculations.length > 0) {
+          const salaryEntryDate = new Date().toISOString();
+          
+          await Promise.all(
+            salaryCalculations.map((calc) => {
+              const employee = selectedLoadmen.find(l => l.id === calc.employeeId);
+              const notePrefix = calc.isLoadmenCategory 
+                ? 'Loadmen work' 
+                : 'Additional loading work';
+              
+              return createSalaryLedgerEntry({
+                employee_id: calc.employeeId,
+                entry_type: "SALARY_AUTO_ENTRY",
+                amount: calc.amount,
+                payment_mode: null,
+                sender_account_id: null,
+                receiver_account: null,
+                notes: `${notePrefix} for order #${orderId} (${loadingType}) - ${deliveryInput.quantity} bricks - ${employee?.name}`,
+                payment_at: salaryEntryDate
+              });
+            })
+          );
+
+          console.log(`✅ Created ${salaryCalculations.length} salary entries for loading work`);
+        }
+      } else {
+        console.log('ℹ️ Skipping salary calculation:', {
+          loadingType,
+          selectedCount: selectedLoadmen.length
+        });
+      }
 
       return { success: true };
     } catch (err) {

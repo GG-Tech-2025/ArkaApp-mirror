@@ -146,26 +146,22 @@ export function EditRoleScreen() {
             {/* Dynamic Salary Fields - Loadmen */}
             {editRoleInput.category === 'Loadmen' && (
               <>
-                <div>
-                  <label htmlFor="ratePerLoad" className="block text-gray-700 mb-2">
-                    Rate Per Load (₹) <span className="text-red-600">*</span>
-                  </label>
-                  <input
-                    id="ratePerLoad"
-                    type="number"
-                    value={editRoleInput.ratePerLoad}
-                    onChange={(e) => updateEditRoleInput('ratePerLoad', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                    placeholder="Enter rate per load/delivery"
-                    min="1"
-                    step="0.01"
-                  />
-                  {errors.ratePerLoad && (
-                    <p className="text-red-600 text-sm mt-1">{errors.ratePerLoad}</p>
-                  )}
-                  <p className="text-gray-600 text-sm mt-2">
-                    This rate will be applied when orders are delivered
-                  </p>
+                {/* UPDATED: Show info message instead of rate input */}
+                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+                  <div className="flex gap-3">
+                    <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                    <div className="text-sm text-blue-800">
+                      <p className="font-semibold mb-2">💡 Salary Calculation for Loadmen:</p>
+                      <ul className="list-disc list-inside space-y-1 ml-2">
+                        <li>Salary is calculated from a <strong>global per-brick rate</strong></li>
+                        <li>Individual "Rate per Load" is no longer used</li>
+                        <li>All employees get equal share for loading work</li>
+                        <li>Configuration will be available in Settings after database update</li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
 
                 <div>
@@ -181,7 +177,7 @@ export function EditRoleScreen() {
                     placeholder="Enter minimum loads per month"
                     min="0"
                   />
-                  <p className="text-gray-600 text-sm mt-2">
+                                    <p className="text-gray-600 text-sm mt-2">
                     For business rules and performance tracking (optional)
                   </p>
                 </div>

@@ -125,7 +125,8 @@ export function useEditRole() {
   const getSalaryValue = () => {
     if (editRoleInput.category === 'Daily Wages') return Number(editRoleInput.perDayWage);
     if (editRoleInput.category === 'Fixed Salary') return Number(editRoleInput.monthlySalary);
-    if (editRoleInput.category === 'Loadmen') return Number(editRoleInput.ratePerLoad);
+    // UPDATED: Set salary_value to 0 for Loadmen (calculated from global per-brick rate)
+    if (editRoleInput.category === 'Loadmen') return 0;
     return 0;
   };
 
