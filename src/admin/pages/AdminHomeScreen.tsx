@@ -154,6 +154,13 @@ const handleSessionExpiredClose = () => {
       path: '/admin/loans',
       description: 'Manage borrowed funds',
     },
+    {
+      title: 'App Settings',
+      icon: Settings,
+      color: 'from-gray-500 to-gray-600',
+      path: '/admin/settings',
+      description: 'Configure application settings',
+    },
   ];
 
   return (

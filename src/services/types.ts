@@ -19,6 +19,15 @@ export interface Profile {
   role: UserRole;
 }
 
+export interface AppSetting {
+  id: string;
+  key: string;
+  value: string;
+  description: string | null;
+  updated_at: string;
+  created_at: string;
+}
+
 export interface Material {
   id: string;
   name: string;

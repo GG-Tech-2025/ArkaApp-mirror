@@ -50,6 +50,29 @@ import { getRange, getRangeForProductionStatistics, PAGE_SIZE , mapPaymentModeTo
 export const CASH_ACCOUNT_ID = "04f194f4-af1f-4ac0-98be-a5b7f81b449f";
 
 /* ------------------------------------------------------------------
+   APP SETTINGS
+-------------------------------------------------------------------*/
+
+export async function getAppSettings(): Promise<import('./types').AppSetting[]> {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('*')
+    .order('key', { ascending: true });
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function updateAppSetting(key: string, value: string): Promise<void> {
+  const { error } = await supabase
+    .from('app_settings')
+    .update({ value })
+    .eq('key', key);
+
+  if (error) throw error;
+}
+
+/* ------------------------------------------------------------------
    1. LOGIN 
 -------------------------------------------------------------------*/
 
