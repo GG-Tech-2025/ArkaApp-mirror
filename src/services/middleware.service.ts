@@ -287,6 +287,31 @@ export async function getLoadmen(): Promise<EmployeeWithCategory[]> {
 }
 
 /* ------------------------------------------------------------------
+   GET ALL EMPLOYEES (optionally filter by active)
+-------------------------------------------------------------------*/
+export async function getAllEmployees(isActive?: boolean): Promise<EmployeeWithCategory[]> {
+  let query: any = supabase
+    .from("employees")
+    .select(`
+      id,
+      name,
+      phone,
+      role_id,
+      roles!inner ( id, name, category, salary_value )
+    `);
+
+  if (isActive !== undefined) {
+    query = query.eq("active", isActive);
+  }
+
+  query = query.order("name");
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as unknown as EmployeeWithCategory[];
+}
+
+/* ------------------------------------------------------------------
    11. GET ORDER WITH LOADMEN
 -------------------------------------------------------------------*/
 

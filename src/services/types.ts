@@ -82,6 +82,7 @@ export interface OrderCustomer {
   phone: string;
 }
 
+export type LoadingType = 'LOADING_UNLOADING' | 'LOADING_ONLY' | 'CUSTOMER_SELF';
 export interface Order {
   id: string;
   customer_id: string;
@@ -93,6 +94,7 @@ export interface Order {
   final_price: number;
   location: string;
   payment_status: PaymentStatus;
+  loading_type: LoadingType;
   amount_paid: number;
   gst_number: string | null;
   dc_number: string | null;
@@ -101,6 +103,7 @@ export interface Order {
   created_at: string;
   customers?: OrderCustomer;
   time: string | null;
+  loadingType: LoadingType;
 }
 
 export interface Employee {

@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 import { cn } from '../../../../components/ui/utils';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAdminNavigation } from '../../../hooks/useAdminNavigation';
-import { getOrderWithLoadmen, getLoadmen, updateOrderWithLoadmen } from '../../../../services/middleware.service';
+import { getOrderWithLoadmen, getAllEmployees, updateOrderWithLoadmen } from '../../../../services/middleware.service';
 import { OrderWithLoadmen, EmployeeWithCategory, Order, PaymentStatus } from '../../../../services/types';
 import { validateOrderDetails } from '../../../validators/orderDetails.validator';
 
@@ -21,6 +21,7 @@ interface OrderDetailsInput {
   amountPaid: number;
   gstNumber: string | null;
   deliveryChallanNumber: string;
+  loadingType: 'LOADING_UNLOADING' | 'LOADING_ONLY' | 'CUSTOMER_SELF';
   loadMen: string[];
 }
 
@@ -51,6 +52,7 @@ export function OrderDetailsScreen() {
     amountPaid: 0,
     gstNumber: null,
     deliveryChallanNumber: '',
+    loadingType: 'LOADING_UNLOADING',
     loadMen: [],
   });
 
@@ -81,6 +83,7 @@ export function OrderDetailsScreen() {
         amountPaid: orderData.amount_paid || 0,
         gstNumber: orderData.gst_number || null,
         deliveryChallanNumber: orderData.dc_number || '',
+        loadingType: orderData.loading_type || '',
         loadMen: orderData.loadmen?.map(l => l.id) || [],
       });
     } catch (err) {
@@ -93,7 +96,7 @@ export function OrderDetailsScreen() {
 
   async function getLoadmenData() {
     try {
-      const loadmenData = await getLoadmen();
+  const loadmenData = await getAllEmployees(true);
       setLoadmen(loadmenData);
 
       // Set selected loadmen after both order and loadmen are loaded
@@ -168,6 +171,7 @@ export function OrderDetailsScreen() {
         amount_paid: amountPaid,
         gst_number: orderDetailsInput.gstNumber || null,
         dc_number: orderDetailsInput.deliveryChallanNumber,
+        loading_type: orderDetailsInput.loadingType,
       };
 
       await updateOrderWithLoadmen(orderId!, orderUpdate, orderDetailsInput.loadMen);
@@ -472,17 +476,41 @@ export function OrderDetailsScreen() {
               {errors.deliveryChallanNumber && <p className="text-red-600 text-sm mt-1">{errors.deliveryChallanNumber}</p>}
             </div>
 
-            {/* Load Men */}
+            {/* Load Type */}
+            <div>
+              <label htmlFor="loadingType" className="block text-gray-700 mb-2">
+                Load Type
+              </label>
+              <select
+                id="loadingType"
+                value={orderDetailsInput.loadingType}
+                onChange={(e) => updateOrderDetailsInput('loadingType', e.target.value)}
+                disabled={isDelivered}
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
+                  errors.loadingType ? 'border-red-600' : 'border-gray-300'
+                } ${
+                  isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''
+                }`}
+              >
+                <option value="LOADING_UNLOADING">Loading and Unloading</option>
+                <option value="LOADING_ONLY">Loading Only</option>
+                <option value="CUSTOMER_SELF">Customer Self Loading</option>
+              </select>
+              {errors.loadingType && <p className="text-red-600 text-sm mt-1">{errors.loadingType}</p>}
+            </div>
+
+            {/* Load Men - Multi-select (hidden when customer self loads) */}
+            {orderDetailsInput.loadingType !== 'CUSTOMER_SELF' && (
             <div>
               <label className="block text-gray-700 mb-2">
-                Load Men <span className="text-red-600">*</span>
+                Load Men (Optional)
               </label>
               <div className="border border-gray-300 rounded-lg p-4">
-                <div className="space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                   {loadmen.map((loadman) => (
                     <label
                       key={loadman.id}
-                      className={`flex items-center gap-3 p-2 rounded ${
+                      className={`flex items-center gap-3 p-2 rounded w-full ${
                         isDelivered ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-50'
                       }`}
                     >
@@ -493,7 +521,9 @@ export function OrderDetailsScreen() {
                         disabled={isDelivered}
                         className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                       />
-                      <span className="text-gray-900">{loadman.name}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-gray-900 truncate">{loadman.name}</div>
+                      </div>
                     </label>
                   ))}
                 </div>
@@ -503,8 +533,7 @@ export function OrderDetailsScreen() {
                   Selected: {selectedLoadmen.map(l => l.name).join(', ')}
                 </p>
               )}
-              {errors.loadMen && <p className="text-red-600 text-sm mt-1">{errors.loadMen}</p>}
-            </div>
+            </div>)}
 
             {/* Confirm Button - hidden for delivered orders */}
             {!isDelivered && (

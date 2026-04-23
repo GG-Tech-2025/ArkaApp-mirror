@@ -19,7 +19,7 @@ export function validateDelivery(input: DeliveryInput) {
     errors.deliveryChallanNumber = "Delivery challan number is required";
   }
 
-  if (input.loadMen.length === 0) {
+  if (input.loadingType !== 'CUSTOMER_SELF' && input.loadMen.length === 0) {
     errors.loadMen = "At least one load man must be selected";
   }
 

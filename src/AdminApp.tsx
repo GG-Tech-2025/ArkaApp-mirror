@@ -210,44 +210,6 @@ export default function AdminApp({ onBack }: AdminAppProps) {
   return (
     <div className="min-h-screen bg-gray-50">
       <AdminRoutes />
-      {/* {currentScreen === 'login' && <AdminLoginScreen onLogin={handleLogin} onBack={onBack} />}
-      {currentScreen === 'home' && <AdminHomeScreen onNavigate={handleNavigate} onLogout={handleLogout} />}
-      {currentScreen === 'orders' && <OrderManagementScreen onNavigate={handleNavigate} onOrderSelect={handleOrderSelect} />}
-      {currentScreen === 'create-order' && <CreateOrderScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'order-details' && selectedOrder && <OrderDetailsScreen order={selectedOrder} onNavigate={handleNavigate} />}
-      {currentScreen === 'production' && <ProductionStatisticsScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'inventory' && <InventoryManagementScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'unapproved-procurements' && <UnapprovedProcurementsScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'customers' && <CustomerManagementScreen onNavigate={handleNavigate} onCustomerSelect={handleCustomerSelect} />}
-      {currentScreen === 'customer-details' && selectedCustomer && <CustomerDetailsScreen customer={selectedCustomer} onNavigate={handleNavigate} onOrderSelect={handleOrderSelect} />}
-      {currentScreen === 'accounts' && <AccountsManagementScreen onNavigate={handleNavigate} onExpenseEdit={handleExpenseEdit} onOrderSelect={handleOrderSelect} />}
-      {currentScreen === 'create-expense' && <CreateExpenseScreen onNavigate={handleNavigate} expenseTypes={expenseTypes} expenseSubtypes={expenseSubtypes} onTypeCreated={handleTypeCreated} onSubtypeCreated={handleSubtypeCreated} />}
-      {currentScreen === 'create-expense-subtype' && <CreateExpenseSubtypeScreen onNavigate={handleNavigate} expenseTypes={expenseTypes} expenseSubtypes={expenseSubtypes} onTypeCreated={handleTypeCreated} onSubtypeCreated={handleSubtypeCreated} />}
-      {currentScreen === 'edit-expense' && selectedExpense && <EditExpenseScreen expense={selectedExpense} onNavigate={handleNavigate} expenseTypes={expenseTypes} expenseSubtypes={expenseSubtypes} onTypeCreated={handleTypeCreated} onSubtypeCreated={handleSubtypeCreated} />}
-      {currentScreen === 'metrics' && <MetricsScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'employees' && <EmployeeManagementScreen onNavigate={handleNavigate} onEmployeeEdit={handleEmployeeEdit} />}
-      {currentScreen === 'create-employee' && <CreateEmployeeScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'edit-employee' && selectedEmployee && <EditEmployeeScreen employee={selectedEmployee} onNavigate={handleNavigate} />}
-      {currentScreen === 'attendance' && <EmployeeAttendanceScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'role-setup' && <RoleSalarySetupScreen onNavigate={handleNavigate} onRoleEdit={handleRoleEdit} />}
-      {currentScreen === 'create-role' && <CreateRoleScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'edit-role' && selectedRole && <EditRoleScreen role={selectedRole} onNavigate={handleNavigate} />}
-      {currentScreen === 'salary-ledger' && <SalaryLedgerScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'salary-ledger-detail' && <SalaryLedgerDetailScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'add-payment' && <AddPaymentScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'vendors' && <VendorManagementScreen onNavigate={handleNavigate} onVendorEdit={handleVendorEdit} />}
-      {currentScreen === 'create-vendor' && <CreateVendorScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'edit-vendor' && selectedVendor && <EditVendorScreen vendor={selectedVendor} onNavigate={handleNavigate} />}
-      {currentScreen === 'vendor-ledger' && <VendorLedgerScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'create-procurement-request' && <CreateProcurementRequestScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'procurement-request-detail' && <ProcurementRequestDetailScreen onNavigate={handleNavigate} requestId="PR-001" />}
-      {currentScreen === 'vendor-payment' && <VendorPaymentScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'cash-flow' && <CashFlowScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'cash-ledger' && <CashLedgerScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'loan-management' && <LoanManagementScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'create-loan' && <CreateLoanScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'loan-ledger' && <LoanLedgerScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'add-loan-transaction' && <AddLoanTransactionScreen onNavigate={handleNavigate} />} */}
     </div>
   );
 }

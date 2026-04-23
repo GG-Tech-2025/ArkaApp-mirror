@@ -279,26 +279,52 @@ export function DeliveryEntry() {
               )}
             </div>
 
-            {/* Load Man - Multi-select */}
+            {/* Loading Type */}
+            <div>
+              <label htmlFor="loadingType" className="block text-gray-700 mb-2">
+              Loading Type <span className="text-red-600">*</span>
+              </label>
+              <select
+              id="loadingType"
+              value={deliveryInput?.loadingType}
+              onChange={(e) => updateDeliveryInput("loadingType", e.target.value)}
+              disabled={isDelivered}
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
+                errors.loadingType ? "border-red-500" : "border-gray-300"
+              } ${isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+              >
+              <option value="LOADING_UNLOADING">Loading and Unloading</option>
+                <option value="LOADING_ONLY">Loading Only</option>
+                <option value="CUSTOMER_SELF">Customer Self Loading</option>
+              </select>
+              {errors.loadingType && (
+              <p className="text-red-600 text-sm mt-1">{errors.loadingType}</p>
+              )}
+            </div>
+
+            {/* Load Men - Multi-select (hidden when customer self loads) */}
+            {deliveryInput.loadingType !== 'CUSTOMER_SELF' && (
             <div>
               <label className="block text-gray-700 mb-2">
                 Load Man <span className="text-red-600">*</span>
               </label>
               <div className="border border-gray-300 rounded-lg p-4">
-                <div className="space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                   {loadmen.map((loadMan) => (
                     <label
                       key={loadMan.id}
-                      className={`flex items-center gap-3 p-2 rounded ${isDelivered ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-50'}`}
+                      className={`flex items-center gap-3 p-2 rounded w-full ${isDelivered ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-50'}`}
                     >
                       <input
                         type="checkbox"
                         checked={selectedLoadmen.some(loadman => loadman.id === loadMan.id)}
                         onChange={() => !isDelivered && handleLoadManToggle(loadMan.id)}
                         disabled={isDelivered}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 shrink-0"
                       />
-                      <span className="text-gray-900">{loadMan.name}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-gray-900 truncate">{loadMan.name}</div>
+                      </div>
                     </label>
                   ))}
                 </div>
@@ -311,7 +337,7 @@ export function DeliveryEntry() {
                   Selected: {selectedLoadmen.map(l => l.name).join(", ")}
                 </p>
               )}
-            </div>
+            </div>)}
 
             {/* Submit Button - hidden for delivered orders */}
             {!isDelivered && (

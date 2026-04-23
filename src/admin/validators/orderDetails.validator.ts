@@ -44,10 +44,7 @@ export function validateOrderDetails(input: OrderDetailsInput): Record<string, s
 
   // Delivery Challan Number validation (optional field)
 
-  // Load Men validation
-  if (input.loadMen.length === 0) {
-    errors.loadMen = 'At least one load man must be selected';
-  }
+  // Load Men validation (optional) - no validation required as load men are optional
 
   return errors;
 }
