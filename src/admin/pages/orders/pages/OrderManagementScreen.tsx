@@ -233,7 +233,7 @@ export function OrderManagementScreen() {
                             Delivery Today
                           </th>
                         )}
-                        {(activeTab === "Today" || activeTab === "Undelivered") && (
+                        {(activeTab === "Undelivered") && (
                           <th className="px-4 py-3 text-left text-gray-700">
                             Actions
                           </th>
@@ -315,7 +315,7 @@ export function OrderManagementScreen() {
                               </label>
                             </td>
                           )}
-                          {(activeTab === "Today" || activeTab === "Undelivered") && (
+                          {(activeTab === "Undelivered") && (
                             <td className="px-4 py-4">
                               <button
                                 onClick={(e) => {
@@ -434,7 +434,7 @@ export function OrderManagementScreen() {
                             </div>
                           )}
                       </div>
-                      {(activeTab === "Today" || activeTab === "Undelivered") && (
+                      {(activeTab === "Undelivered") && (
                         <div className="mt-3 flex justify-end">
                           <button
                             onClick={(e) => {
