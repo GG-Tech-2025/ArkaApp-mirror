@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { createDelivery } from "../services/delivery.service";
 import { DeliveryInput } from "../types";
-import { getLoadmen, getOrderWithLoadmen, updateOrderWithLoadmen, createSalaryLedgerEntry } from "../../services/middleware.service";
+import { getAllEmployees, getOrderWithLoadmen, updateOrderWithLoadmen, createSalaryLedgerEntry, getAppSettings } from "../../services/middleware.service";
 import { EmployeeWithCategory, OrderWithLoadmen, Order } from "../../services/types";
 
 export function useDelivery(orderId: string) {
@@ -17,15 +17,39 @@ export function useDelivery(orderId: string) {
     paidAmount: 0,
     deliveryChallanNumber: '',
     gstNumber: '',
+    loadingType: 'LOADING_UNLOADING',
     loadMen: []
   });
   const [selectedLoadmen, setSelectedLoadmen] = useState<EmployeeWithCategory[]>([]);
+  const [loadingAndUnloadingCostPerBrick, setLoadingAndUnloadingCostPerBrick] = useState<number>();
 
   useEffect(() => {
     getOrderData();
-    getLoadmenData()
+    getLoadmenData();
+    getSettingsData();
   }, []);
 
+  async function getSettingsData() {
+    try {
+      const settings = await getAppSettings();
+      const found = settings.find(s => s.key === 'LOADING_AND_UNLOADING_PRICE_PER_BRICK');
+      if (found) {
+        const parsed = parseFloat(found.value);
+        if (!isNaN(parsed) && parsed > 0) {
+          setLoadingAndUnloadingCostPerBrick(parsed);
+        } else {
+          // App setting exists but invalid (non-numeric or non-positive)
+          setError('Invalid LOADING_AND_UNLOADING_PRICE_PER_BRICK value in app settings. It must be a number greater than 0.');
+        }
+      } else {
+        // App setting missing — this setting is required for salary calculation
+        setError('LOADING_AND_UNLOADING_PRICE_PER_BRICK is not configured. Please set it in App Settings.');
+      }
+    } catch (err) {
+      console.error('Failed to load app settings for loading price per brick', err);
+    }
+  }
+  
   useEffect(() => {
     if (order && loadmen.length > 0 && order.loadmen) {
       const selected = loadmen.filter(l => order.loadmen!.some(ol => ol.id === l.id));
@@ -58,10 +82,11 @@ export function useDelivery(orderId: string) {
         quantity: orderData.brick_quantity,
         location: orderData.location || '',
         paymentStatus: orderData.payment_status,
-        gstNumber: orderData.gst_number || undefined,
+        gstNumber: orderData.gst_number ?? '',
         paidAmount: orderData.amount_paid ?? 0,
         deliveryChallanNumber: orderData.dc_number || '',
-        time: orderData.time || ''
+        time: orderData.time || '',
+        loadingType: orderData.loading_type || '',
       }));
     }
     catch (error) {
@@ -71,7 +96,7 @@ export function useDelivery(orderId: string) {
 
   async function getLoadmenData() {
     try {
-      const loadmenData = await getLoadmen();
+  const loadmenData = await getAllEmployees(true);
       console.log("Fetched loadmen data:", loadmenData);
       setLoadmen(loadmenData);
     }
@@ -139,27 +164,48 @@ export function useDelivery(orderId: string) {
         amount_paid: amountPaid,
         gst_number: deliveryInput.gstNumber || null,
         dc_number: deliveryInput.deliveryChallanNumber,
+        loading_type: deliveryInput.loadingType,
         delivered: true
       };
 
       await updateOrderWithLoadmen(orderId, orderUpdate, deliveryInput.loadMen);
 
-      // Create auto salary ledger entries for each selected loadman
-      const salaryEntryDate = new Date().toISOString();
-      await Promise.all(
-        selectedLoadmen.map((loadman) =>
-          createSalaryLedgerEntry({
-            employee_id: loadman.id,
-            entry_type: "SALARY_AUTO_ENTRY",
-            amount: loadman.roles.salary_value,
-            payment_mode: null,
-            sender_account_id: null,
-            receiver_account: null,
-            notes: `Auto salary entry for delivery of order #${orderId}`,
-            payment_at: salaryEntryDate
-          })
-        )
-      );
+      const costPerBrick = loadingAndUnloadingCostPerBrick;
+
+      // The loading/unloading price per brick is required for salary calculations.
+      if (!costPerBrick || costPerBrick <= 0) {
+        // Surface a clear error so callers / UI can prevent the operation.
+        const msg = 'LOADING_AND_UNLOADING_PRICE_PER_BRICK is not configured or invalid. Salary calculation cannot proceed.';
+        setError(msg);
+        throw new Error(msg);
+      }
+      
+      let multiplier = 1;
+      if (deliveryInput.loadingType === 'LOADING_ONLY') {
+        multiplier = 0.5;
+      }
+
+      // Only calculate and create salary entries when at least one loadman is selected
+      if (selectedLoadmen.length > 0) {
+        const salaryPerEmployee = (deliveryInput.quantity * costPerBrick * multiplier) / selectedLoadmen.length;
+
+        // Create auto salary ledger entries for each selected loadman
+        const salaryEntryDate = new Date().toISOString();
+        await Promise.all(
+          selectedLoadmen.map((loadman) =>
+            createSalaryLedgerEntry({
+              employee_id: loadman.id,
+              entry_type: "SALARY_AUTO_ENTRY",
+              amount: salaryPerEmployee,
+              payment_mode: null,
+              sender_account_id: null,
+              receiver_account: null,
+              notes: `Auto salary entry for delivery of order #${orderId}`,
+              payment_at: salaryEntryDate
+            })
+          )
+        );
+      }
 
       return { success: true };
     } catch (err) {

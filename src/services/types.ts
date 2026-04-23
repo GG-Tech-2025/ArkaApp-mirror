@@ -19,6 +19,15 @@ export interface Profile {
   role: UserRole;
 }
 
+export interface AppSetting {
+  id: string;
+  key: string;
+  value: string;
+  description: string | null;
+  updated_at: string;
+  created_at: string;
+}
+
 export interface Material {
   id: string;
   name: string;
@@ -73,6 +82,7 @@ export interface OrderCustomer {
   phone: string;
 }
 
+export type LoadingType = 'LOADING_UNLOADING' | 'LOADING_ONLY' | 'CUSTOMER_SELF';
 export interface Order {
   id: string;
   customer_id: string;
@@ -84,6 +94,7 @@ export interface Order {
   final_price: number;
   location: string;
   payment_status: PaymentStatus;
+  loading_type: LoadingType;
   amount_paid: number;
   gst_number: string | null;
   dc_number: string | null;
@@ -92,6 +103,7 @@ export interface Order {
   created_at: string;
   customers?: OrderCustomer;
   time: string | null;
+  loadingType: LoadingType;
 }
 
 export interface Employee {

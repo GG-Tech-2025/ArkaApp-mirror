@@ -50,6 +50,29 @@ import { getRange, getRangeForProductionStatistics, PAGE_SIZE , mapPaymentModeTo
 export const CASH_ACCOUNT_ID = "04f194f4-af1f-4ac0-98be-a5b7f81b449f";
 
 /* ------------------------------------------------------------------
+   APP SETTINGS
+-------------------------------------------------------------------*/
+
+export async function getAppSettings(): Promise<import('./types').AppSetting[]> {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('*')
+    .order('key', { ascending: true });
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function updateAppSetting(key: string, value: string): Promise<void> {
+  const { error } = await supabase
+    .from('app_settings')
+    .update({ value })
+    .eq('key', key);
+
+  if (error) throw error;
+}
+
+/* ------------------------------------------------------------------
    1. LOGIN 
 -------------------------------------------------------------------*/
 
@@ -261,6 +284,31 @@ export async function getLoadmen(): Promise<EmployeeWithCategory[]> {
 
   if (error) throw error;
   return data as unknown as EmployeeWithCategory[];
+}
+
+/* ------------------------------------------------------------------
+   GET ALL EMPLOYEES (optionally filter by active)
+-------------------------------------------------------------------*/
+export async function getAllEmployees(isActive?: boolean): Promise<EmployeeWithCategory[]> {
+  let query: any = supabase
+    .from("employees")
+    .select(`
+      id,
+      name,
+      phone,
+      role_id,
+      roles!inner ( id, name, category, salary_value )
+    `);
+
+  if (isActive !== undefined) {
+    query = query.eq("active", isActive);
+  }
+
+  query = query.order("name");
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as unknown as EmployeeWithCategory[];
 }
 
 /* ------------------------------------------------------------------

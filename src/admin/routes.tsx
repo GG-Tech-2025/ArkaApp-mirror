@@ -11,6 +11,7 @@ import { InventoryRoutes } from "./pages/Inventory/routes";
 import { AccountsRoutes } from "./pages/accounts/routes";
 import { VendorsRoutes } from "./pages/vendors/routes";
 import { EmployeesRoutes } from "./pages/employees/routes";
+import { SettingsRoutes } from "./pages/settings/routes";
 import { AdminGuard } from "./components/AdminGuard";
 
 export function AdminRoutes() {
@@ -36,6 +37,7 @@ export function AdminRoutes() {
         <Route path="vendors/*" element={<VendorsRoutes />} />
         <Route path="cash/*" element={<CashRoutes />} />
         <Route path="loans/*" element={<LoansRoutes />} />
+        <Route path="settings/*" element={<SettingsRoutes />} />
       </Route>
 
       {/* Safety fallback */}
