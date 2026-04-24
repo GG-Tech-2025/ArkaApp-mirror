@@ -43,6 +43,8 @@ import {
   DailyCashSummaryResponse,
   CashLedgerForDate,
   SalaryEmployee,
+  Withdrawal,
+  CreateWithdrawalInput,
 } from './types'
 import { MaterialPurchaseInput, ProductionInput } from "../employee/types";
 import { getRange, getRangeForProductionStatistics, PAGE_SIZE , mapPaymentModeToDb } from "../utils/reusables";
@@ -3670,4 +3672,99 @@ export async function generateSalaryRPC(
   if (error) throw error;
 
   return data;
+}
+
+/* ------------------------------------------------------------------
+   GET WITHDRAWALS (Paginated)
+-------------------------------------------------------------------*/
+export async function getWithdrawals(
+  page: number,
+  pageSize: number = 20
+): Promise<PaginatedResult<Withdrawal>> {
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+
+  const { data, count, error } = await supabase
+    .from("withdrawals")
+    .select(
+      `
+      id,
+      date,
+      amount,
+      notes,
+      created_at,
+      account_id,
+      accounts ( account_number )
+      `,
+      { count: "exact" }
+    )
+    .order("date", { ascending: false })
+    .range(from, to);
+
+  if (error) throw error;
+
+  return {
+    data: (data ?? []) as unknown as Withdrawal[],
+    total: count ?? 0,
+    hasMore: from + pageSize < (count ?? 0),
+  };
+}
+
+/* ------------------------------------------------------------------
+   GET TOTAL WITHDRAWALS AMOUNT
+-------------------------------------------------------------------*/
+export async function getTotalWithdrawalsAmount(): Promise<number> {
+  const { data, error } = await supabase
+    .from("total_withdrawals_view")
+    .select("total_withdrawals")
+    .single();
+
+  if (error) throw error;
+
+  return Number((data as { total_withdrawals: number | string | null } | null)?.total_withdrawals ?? 0);
+}
+
+/* ------------------------------------------------------------------
+   CREATE WITHDRAWAL (deducts from account balance)
+-------------------------------------------------------------------*/
+export async function createWithdrawal(
+  input: CreateWithdrawalInput
+): Promise<void> {
+  // 1. Deduct account balance first
+  const { error: deductError } = await supabase.rpc(
+    "decrement_account_balance",
+    {
+      p_account_id: input.account_id,
+      p_amount: input.amount,
+    }
+  );
+
+  if (deductError) {
+    const msg = (deductError.message ?? "").toLowerCase();
+    if (msg.includes("insufficient balance")) {
+      throw new Error(
+        "Insufficient balance in the selected account."
+      );
+    }
+    throw deductError;
+  }
+
+  // 2. Insert withdrawal record
+  const { error: insertError } = await supabase
+    .from("withdrawals")
+    .insert({
+      date: input.date,
+      amount: input.amount,
+      notes: input.notes ?? null,
+      account_id: input.account_id,
+    });
+
+  if (insertError) {
+    // Attempt to restore balance if insert fails
+    await supabase.rpc("increment_account_balance", {
+      p_account_id: input.account_id,
+      p_amount: input.amount,
+    });
+    throw insertError;
+  }
 }
