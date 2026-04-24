@@ -64,6 +64,7 @@ export function AttendanceScreen() {
     pendingBulkAction,
     errorMessage,
     isPastDate,
+    isRestrictedPastDate,
     isEditable,
     isAlreadySaved,
     handleDateChange,
@@ -115,7 +116,7 @@ export function AttendanceScreen() {
                 <p className="text-yellow-800 text-sm">
                   {isAlreadySaved
                    ? 'Attendance for this past date has already been recorded and cannot be modified.'
-                   : 'You are marking attendance for a past date.'}
+                   : isRestrictedPastDate ? 'You cannot modify attendance for dates more than 3 days in the past.' : 'You are marking attendance for a past date.' }
                 </p>
               </div>
             )}

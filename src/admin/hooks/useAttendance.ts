@@ -86,8 +86,15 @@ export function useAttendance() {
   // Current entries based on active tab
   const entries = activeTab === 'Active' ? activeEntries : inactiveEntries;
 
-  // Editable only if active tab AND not a past date AND not already saved
-  const isEditable = activeTab === 'Active'  && !isAlreadySaved;
+    // Calculate how many days in the past the selected date is
+  const daysDiff = Math.floor(
+    (new Date(getTodayString()).getTime() - new Date(selectedDate).getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  // Restrict editing if more than 3 days in the past
+  const isRestrictedPastDate = daysDiff > 3;
+
+  const isEditable = activeTab === 'Active' && !isAlreadySaved && !isRestrictedPastDate;
 
   // Fetch employees for a tab
   const fetchEmployeesForTab = useCallback(async (tab: AttendanceTab) => {
@@ -327,6 +334,7 @@ export function useAttendance() {
     pendingBulkAction,
     errorMessage,
     isPastDate,
+    isRestrictedPastDate,  // ← add this
     isEditable,
     isAlreadySaved,
     handleDateChange,
