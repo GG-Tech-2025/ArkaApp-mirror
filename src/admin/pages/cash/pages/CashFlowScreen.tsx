@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Plus, X, Loader2 } from 'lucide-react';
+import { ArrowLeft, Plus, X, Loader2, ArrowDownCircle } from 'lucide-react';
 import { Popup } from '../../../../components/Popup';
 import { useNavigate } from 'react-router-dom';
 import { useCashFlow } from '../../../hooks/useCashFlow';
@@ -82,13 +82,22 @@ export function CashFlowScreen() {
               <h1 className="text-gray-900">Cash Flow Management</h1>
               <p className="text-gray-600 mt-1">Track cash and account balances</p>
             </div>
-            <button
-              onClick={openCreateAccountModal}
-              className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
-            >
-              <Plus className="w-5 h-5" />
-              Create Account
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => navigate('/admin/cash/withdraw')}
+                className="flex items-center gap-2 px-6 py-3 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+              >
+                <ArrowDownCircle className="w-5 h-5" />
+                Withdraw
+              </button>
+              <button
+                onClick={openCreateAccountModal}
+                className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
+              >
+                <Plus className="w-5 h-5" />
+                Create Account
+              </button>
+            </div>
           </div>
         </div>
 

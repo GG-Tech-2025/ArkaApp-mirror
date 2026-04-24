@@ -506,3 +506,22 @@ export interface SalaryEmployee {
   half_days: number;
   base_salary: number;
 }
+
+export interface Withdrawal {
+  id: number;
+  date: string;
+  amount: number;
+  notes: string | null;
+  created_at: string;
+  account_id: string;
+  accounts?: {
+    account_number: string;
+  };
+}
+
+export interface CreateWithdrawalInput {
+  date: string;         // YYYY-MM-DD
+  amount: number;
+  notes?: string | null;
+  account_id: string;
+}
