@@ -87,7 +87,7 @@ export function useAttendance() {
   const entries = activeTab === 'Active' ? activeEntries : inactiveEntries;
 
   // Editable only if active tab AND not a past date AND not already saved
-  const isEditable = activeTab === 'Active' && !isPastDate && !isAlreadySaved;
+  const isEditable = activeTab === 'Active'  && !isAlreadySaved;
 
   // Fetch employees for a tab
   const fetchEmployeesForTab = useCallback(async (tab: AttendanceTab) => {
