@@ -113,7 +113,9 @@ export function AttendanceScreen() {
             {isPastDate && (
               <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3">
                 <p className="text-yellow-800 text-sm">
-                  Attendance for past dates is view-only and cannot be updated.
+                  {isAlreadySaved
+                   ? 'Attendance for this past date has already been recorded and cannot be modified.'
+                   : 'You are marking attendance for a past date.'}
                 </p>
               </div>
             )}
