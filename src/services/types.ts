@@ -202,6 +202,26 @@ export interface CreateAccountInput {
   opening_balance: number;
 }
 
+export interface CreateAccountTransferInput {
+  sender_account_id: string;
+  receiver_account_id: string;
+  amount: number;
+  transfer_date: string;
+  notes?: string | null;
+}
+
+export interface AccountTransfer {
+  id: number;
+  sender_account_id: string;
+  receiver_account_id: string;
+  amount: number;
+  transfer_date: string;
+  notes: string | null;
+  created_at: string;
+  sender_account?: { account_number: string };
+  receiver_account?: { account_number: string };
+}
+
 export interface Loan {
   id: string;
   lender_name: string;

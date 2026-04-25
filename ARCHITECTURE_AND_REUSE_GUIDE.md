@@ -397,7 +397,8 @@ This is the most self-contained, reusable module. It has two screens:
 **Screens:**
 | Screen | Path | Purpose |
 |--------|------|---------|
-| `CashFlowScreen` | `/admin/cash` | Summary cards + daily ledger table |
+| `CashFlowScreen` | `/admin/cash` | Summary cards + daily ledger table + transfer button |
+| `SwitchBalanceScreen` | `/admin/cash/transfer` | Transfer balance between accounts and log transfers |
 | `CashLedgerScreen` | `/admin/cash/ledger/:date` | All transactions for a specific day |
 
 ---
@@ -413,6 +414,8 @@ CashFlowScreen
         ├── getDailyCashSummary(page, 20)
         │     └── RPC: get_daily_cash_summary(p_page, p_page_size)
         │           → { data: [{date, cash_in, cash_out}], total_days, has_more }
+        ├── getAccountTransfers(page) → account_transfers[]
+        ├── createAccountTransfer(input) → decrement_account_balance + increment_account_balance + INSERT INTO account_transfers
         └── createAccount(input)    → new bank account
 ```
 
@@ -707,6 +710,8 @@ const PAGE_SIZE = 20;
 | `getCashLedgerForDate(date)` | RPC: get_cash_ledger_for_date |
 | `getWithdrawals(page)` | SELECT * FROM withdrawals |
 | `createWithdrawal(input)` | INSERT INTO withdrawals |
+| `getAccountTransfers(page)` | SELECT * FROM account_transfers |
+| `createAccountTransfer(input)` | decrement_account_balance + increment_account_balance + INSERT INTO account_transfers |
 | `getTotalWithdrawalsAmount()` | SELECT SUM(amount) FROM withdrawals |
 
 #### Orders
@@ -2644,7 +2649,7 @@ These are dependencies for everything else:
 
 | Module | Files to copy | DB Tables needed | RPCs needed |
 |--------|--------------|-----------------|------------|
-| **Cash Flow** | `admin/pages/cash/` + `admin/hooks/useCashFlow.ts` + `admin/hooks/useCashLedger.ts` *(if exists)* | `accounts`, `withdrawals`, cash_entries table | `get_daily_cash_summary`, `get_cash_ledger_for_date`, `get_financial_summary` |
+| **Cash Flow** | `admin/pages/cash/` + `admin/hooks/useCashFlow.ts` + `admin/hooks/useCashLedger.ts` *(if exists)* | `accounts`, `withdrawals`, `account_transfers`, cash_entries table | `get_daily_cash_summary`, `get_cash_ledger_for_date`, `get_financial_summary`, `increment_account_balance`, `decrement_account_balance` |
 | **Accounts (Expenses)** | `admin/pages/accounts/` + related hooks | `expense_types`, `expense_subtypes`, `expenses` | None (direct table queries) |
 | **Vendors** | `admin/pages/vendors/` + vendor hooks | `vendors`, `vendor_materials`, `materials`, `vendor_payments` | None |
 | **Loans** | `admin/pages/loans/` + loan hooks | `loans`, `loan_ledger`, `accounts` | None |

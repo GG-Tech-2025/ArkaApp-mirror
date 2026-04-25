@@ -17,6 +17,8 @@ import {
   CreateLoanInput,
   Account,
   CreateAccountInput,
+  CreateAccountTransferInput,
+  AccountTransfer,
   CreateCustomerPaymentInput,
   CreateOrderInput,
   ProductionEntry,
@@ -1045,6 +1047,96 @@ export async function createAccount(input: CreateAccountInput): Promise<Account>
 
   if (error) throw error;
   return data;
+}
+
+export async function createAccountTransfer(
+  input: CreateAccountTransferInput
+): Promise<void> {
+  // 1️⃣ Deduct from sender
+  const { error: deductError } = await supabase.rpc("decrement_account_balance", {
+    p_account_id: input.sender_account_id,
+    p_amount: input.amount,
+  });
+
+  if (deductError) {
+    const msg = (deductError.message ?? "").toLowerCase();
+    if (msg.includes("insufficient") || msg.includes("balance") || msg.includes("sender")) {
+      throw new Error("Insufficient balance in the selected sender account.");
+    }
+    throw deductError;
+  }
+
+  // 2️⃣ Add to receiver
+  const { error: incrementError } = await supabase.rpc("increment_account_balance", {
+    p_account_id: input.receiver_account_id,
+    p_amount: input.amount,
+  });
+
+  if (incrementError) {
+    await supabase.rpc("increment_account_balance", {
+      p_account_id: input.sender_account_id,
+      p_amount: input.amount,
+    });
+    throw incrementError;
+  }
+
+  // 3️⃣ Insert transfer record
+  const { error: insertError } = await supabase
+    .from("account_transfers")
+    .insert({
+      sender_account_id: input.sender_account_id,
+      receiver_account_id: input.receiver_account_id,
+      amount: input.amount,
+      transfer_date: input.transfer_date,
+      notes: input.notes ?? null,
+    });
+
+  if (insertError) {
+    await supabase.rpc("increment_account_balance", {
+      p_account_id: input.sender_account_id,
+      p_amount: input.amount,
+    });
+    await supabase.rpc("decrement_account_balance", {
+      p_account_id: input.receiver_account_id,
+      p_amount: input.amount,
+    });
+    throw insertError;
+  }
+}
+
+export async function getAccountTransfers(
+  page: number,
+  pageSize: number = 20
+): Promise<PaginatedResult<AccountTransfer>> {
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+
+  const { data, count, error } = await supabase
+    .from("account_transfers")
+    .select(
+      `
+      id,
+      sender_account_id,
+      receiver_account_id,
+      amount,
+      transfer_date,
+      notes,
+      created_at,
+      sender_account:accounts!fk_sender_account(account_number),
+      receiver_account:accounts!fk_receiver_account(account_number)
+      `,
+      { count: "exact" }
+    )
+    .order("transfer_date", { ascending: false })
+    .range(from, to);
+
+  if (error) throw error;
+
+  return {
+    data: (data ?? []) as unknown as AccountTransfer[],
+    total: count ?? 0,
+    hasMore: from + pageSize < (count ?? 0),
+  };
 }
 
 export async function getFinancialSummary(): Promise<FinancialSummary> {
