@@ -7,6 +7,7 @@ import { RoleSalarySetupScreen } from "./pages/RoleSalarySetupScreen";
 import { CreateRoleScreen } from "./pages/CreateRoleScreen";
 import { EditRoleScreen } from "./pages/EditRoleScreen";
 import { AttendanceScreen } from "./pages/AttendanceScreen";
+import { AttendanceViewScreen } from "./pages/AttendanceViewScreen";
 import { SalaryLedgerScreen } from "./pages/SalaryLedgerScreen";
 import { SalaryLedgerDetailScreen } from "./pages/SalaryLedgerDetailScreen";
 import { AddPaymentScreen } from "./pages/AddPaymentScreen";
@@ -22,6 +23,7 @@ export function EmployeesRoutes() {
       <Route path="role-setup/create" element={<CreateRoleScreen />} />
       <Route path="role-setup/:id/edit" element={<EditRoleScreen />} />
       <Route path="attendance" element={<AttendanceScreen />} />
+      <Route path="attendance/view" element={<AttendanceViewScreen />} />
       <Route path="salary-ledger" element={<SalaryLedgerScreen />} />
       <Route path="salary-ledger/calculate" element={<CalculateSalaryScreen />} />
       <Route path="salary-ledger/:id" element={<SalaryLedgerDetailScreen />} />

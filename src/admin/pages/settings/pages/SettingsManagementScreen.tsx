@@ -161,7 +161,7 @@ export function SettingsManagementScreen() {
                               <div className="flex items-center gap-3">
                                 <span className="text-sm text-gray-500">Current Value:</span>
                                 <span className="text-lg font-semibold text-gray-900 bg-gray-100 px-3 py-1 rounded">
-                                  ₹{setting.value}
+                                  {setting.value}
                                 </span>
                               </div>
                               <button
