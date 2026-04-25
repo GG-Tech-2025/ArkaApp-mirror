@@ -101,6 +101,7 @@ export function AdminLoginScreen() {
                 type="email"
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); setError(""); }}
+                onKeyPress={(e) => { if (e.key === "Enter") handleLogin(); }}
                 placeholder="Enter admin email"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               />
@@ -114,6 +115,7 @@ export function AdminLoginScreen() {
                 type="password"
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); setError(""); }}
+                onKeyPress={(e) => { if (e.key === "Enter") handleLogin(); }}
                 placeholder="Enter your password"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               />
