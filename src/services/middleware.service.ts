@@ -2391,6 +2391,19 @@ export async function approveProcurement(
 }
 
 /**------------------------------------------------------------------------------
+ * 47.5 DELETE PROCUREMENT (Reject)
+ * Deletes a procurement record when rejected
+------------------------------------------------------------------------------ */
+export async function deleteProcurement(procurementId: string): Promise<void> {
+  const { error } = await supabase
+    .from("procurements")
+    .delete()
+    .eq("id", procurementId);
+
+  if (error) throw error;
+}
+
+/**------------------------------------------------------------------------------
  * 47.6 Get inventory stock for all materials or specific material
  * Fetch inventory stock with material details
 ------------------------------------------------------------------------------ */

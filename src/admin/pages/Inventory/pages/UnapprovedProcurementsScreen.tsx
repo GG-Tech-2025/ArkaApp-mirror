@@ -4,7 +4,7 @@ import { ArrowLeft, X } from 'lucide-react';
 import { Popup } from '../../../../components/Popup';
 import { useAdminNavigation } from '../../../hooks/useAdminNavigation';
 import { useAllUnapprovedProcurements } from '../../../hooks/useProcurementsWithFilters';
-import { approveProcurement } from '../../../../services/middleware.service';
+import { approveProcurement, deleteProcurement } from '../../../../services/middleware.service';
 import { ProcurementWithDetails } from '../../../../services/middleware.service';
 
 export function UnapprovedProcurementsScreen() {
@@ -62,12 +62,28 @@ export function UnapprovedProcurementsScreen() {
     }
   };
 
-  const handleReject = () => {
-    if (selectedProcurement) {
-      setApprovalMessage(`Procurement has been rejected.`);
-      setShowRejectionPopup(true);
-      setSelectedProcurement(null);
-      setRate('');
+  const handleReject = async () => {
+    if (selectedProcurement && !isSubmitting) {
+      setIsSubmitting(true);
+      try {
+        await deleteProcurement(selectedProcurement.id);
+        
+        setApprovalMessage(`Procurement has been rejected and deleted.`);
+        setShowRejectionPopup(true);
+        setSelectedProcurement(null);
+        setRate('');
+        
+        // Refetch the procurements list to remove the rejected item
+        if (refetch) {
+          await refetch();
+        }
+      } catch (err) {
+        console.error('Failed to reject procurement', err);
+        setApprovalMessage('Failed to reject procurement. Please try again.');
+        setShowRejectionPopup(true);
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -309,9 +325,10 @@ export function UnapprovedProcurementsScreen() {
               <div className="flex gap-3 pt-4 justify-end">
                 <button
                   onClick={handleReject}
-                  className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  disabled={isSubmitting}
+                  className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed transition-colors"
                 >
-                  Reject
+                  {isSubmitting ? 'Rejecting...' : 'Reject'}
                 </button>
                 <button
                   onClick={handleApprove}

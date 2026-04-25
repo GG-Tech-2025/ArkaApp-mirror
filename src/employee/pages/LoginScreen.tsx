@@ -102,6 +102,7 @@ export function LoginScreen() {
                 type="email"
                 value={email}
                 onChange={handleEmailChange}
+                onKeyPress={(e) => { if (e.key === "Enter") handleLogin(); }}
                 placeholder="Enter your email address"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
               />
@@ -116,6 +117,7 @@ export function LoginScreen() {
                 type="password"
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); setError(""); }}
+                onKeyPress={(e) => { if (e.key === "Enter") handleLogin(); }}
                 placeholder="Enter your password"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
               />
