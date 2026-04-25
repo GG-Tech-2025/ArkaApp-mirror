@@ -74,6 +74,41 @@ export async function updateAppSetting(key: string, value: string): Promise<void
   if (error) throw error;
 }
 
+/**
+ * Returns the year the app started, derived from the APP_START_DATE setting.
+ * Falls back to the current year if the setting is missing or malformed.
+ * Use this anywhere a "start year" is needed for filters/dropdowns.
+ */
+export async function getAppStartYear(): Promise<number> {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'APP_START_DATE')
+    .single();
+
+  if (error || !data?.value) return new Date().getFullYear();
+
+  const year = new Date(data.value).getFullYear();
+  return isNaN(year) ? new Date().getFullYear() : year;
+}
+
+/**
+ * Returns the full app start date string (YYYY-MM-DD) from APP_START_DATE setting.
+ * Falls back to the first day of the current year if missing or malformed.
+ */
+export async function getAppStartDate(): Promise<string> {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'APP_START_DATE')
+    .single();
+
+  if (error || !data?.value) return `${new Date().getFullYear()}-01-01`;
+  // Validate it's a parseable date
+  const d = new Date(data.value);
+  return isNaN(d.getTime()) ? `${new Date().getFullYear()}-01-01` : data.value;
+}
+
 /* ------------------------------------------------------------------
    1. LOGIN 
 -------------------------------------------------------------------*/
@@ -3398,6 +3433,27 @@ export async function getAttendanceForDate(
 
   if (error) throw error;
 
+  return (data ?? []) as AttendanceRecord[];
+}
+
+/* ------------------------------------------------------------------
+  Get Attendance Records For a Month (for Attendance View Screen)
+---------------------------------------------------------------------*/
+export async function getAttendanceForMonth(
+  year: number,
+  month: number // 1-based
+): Promise<AttendanceRecord[]> {
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+  const { data, error } = await supabase
+    .from("attendance")
+    .select("employee_id, date, status")
+    .gte("date", startDate)
+    .lte("date", endDate);
+
+  if (error) throw error;
   return (data ?? []) as AttendanceRecord[];
 }
 

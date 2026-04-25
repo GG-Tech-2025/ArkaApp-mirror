@@ -1,5 +1,6 @@
 import React from 'react';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, LayoutGrid } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Popup } from '../../../../components/Popup';
 import { useAttendance } from '../../../hooks/useAttendance';
 import type { EmployeeCategory } from '../../../../services/types';
@@ -78,6 +79,7 @@ export function AttendanceScreen() {
     goBack,
   } = useAttendance();
 
+  const navigate = useNavigate();
   const today = new Date().toISOString().split('T')[0];
 
   return (
@@ -92,8 +94,19 @@ export function AttendanceScreen() {
             <ArrowLeft className="w-5 h-5" />
             Back to Employee Management
           </button>
-          <h1 className="text-gray-900">Employee Attendance</h1>
-          <p className="text-gray-600 mt-1">Mark daily attendance for employees</p>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-gray-900">Employee Attendance</h1>
+              <p className="text-gray-600 mt-1">Mark daily attendance for employees</p>
+            </div>
+            <button
+              onClick={() => navigate('/admin/employees/attendance/view')}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm whitespace-nowrap"
+            >
+              <LayoutGrid className="w-4 h-4" />
+              View Attendance
+            </button>
+          </div>
         </div>
 
         {/* Date Selector and Bulk Actions */}
