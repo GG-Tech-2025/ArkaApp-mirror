@@ -326,7 +326,7 @@ CreateOrderScreen
 - `approveProcurement(id, input)` — approve and update stock
 - `getProcurements()` — all historical procurements
 - `getInventoryStockForMaterial(materialId)`
-- `reduceInventoryStock(materialId, quantity)` — triggered on production entry
+- `reduceInventoryStock(wetAshKg, marblePowderKg, crusherPowderKg, flyAshKg, cementBags, round)` — triggered on production entry; raw materials (wet ash, marble, crusher, fly ash) are multiplied by `round` before deducting from stock; cement is deducted as-is (converted from bags to KG: 1 bag = 50 kg)
 - `getProcurementsByDateRange(startDate, endDate)`
 - `getAdjustments()` / `createAdjustment(input)` — manual stock corrections
 
@@ -822,11 +822,11 @@ const PAGE_SIZE = 20;
 | `approveProcurement(id, input)` | UPDATE approved + UPDATE inventory_stock |
 | `getProductionEntries()` | SELECT * FROM production_entries |
 | `getProductionEntriesByDateRange(startDate, endDate, page)` | Filtered |
-| `createProductionEntry(input)` | INSERT production_entries + deduct inventory_stock |
+| `createProductionEntry(input)` | INSERT production_entries + deduct inventory_stock (raw materials × round) |
 | `getProductInventory()` | SELECT finished goods inventory |
 | `updateProductInventory(quantity)` | UPDATE finished goods (add) |
 | `deductProductInventory(quantity)` | UPDATE finished goods (subtract) |
-| `reduceInventoryStock(materialId, quantity)` | UPDATE inventory_stock |
+| `reduceInventoryStock(wetAshKg, marblePowderKg, crusherPowderKg, flyAshKg, cementBags, round)` | UPDATE inventory_stock — raw materials multiplied by `round`; cement converted bags→KG (×50) |
 | `getAdjustments()` | SELECT * FROM adjustments |
 | `createAdjustment(input)` | INSERT adjustments + UPDATE inventory_stock |
 

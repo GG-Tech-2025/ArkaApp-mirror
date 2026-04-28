@@ -277,7 +277,8 @@ export async function createProductionEntry(
     input.marblePowder,
     input.crusherPowder,
     input.flyAsh,
-    input.cement
+    input.cement,
+    input.round
   );
 }
 
@@ -2760,7 +2761,8 @@ export async function reduceInventoryStock(
   marblePowderKg: number,
   crusherPowderKg: number,
   flyAshKg: number,
-  cementBags: number
+  cementBags: number,
+  round: number
 ): Promise<void> {
   try {
     // Convert cement from bags to KG (1 bag = 50 kg)
@@ -2778,10 +2780,10 @@ export async function reduceInventoryStock(
 
     // Array of material reductions to process
     const reductions = [
-      { materialId: wetAshMaterial?.id, quantity: wetAshKg, name: 'Wet Ash' },
-      { materialId: marbleMaterial?.id, quantity: marblePowderKg, name: 'Marble Powder' },
-      { materialId: crusherMaterial?.id, quantity: crusherPowderKg, name: 'Crusher Powder' },
-      { materialId: flyAshMaterial?.id, quantity: flyAshKg, name: 'Fly Ash' },
+      { materialId: wetAshMaterial?.id, quantity: wetAshKg*round, name: 'Wet Ash' },
+      { materialId: marbleMaterial?.id, quantity: marblePowderKg*round, name: 'Marble Powder' },
+      { materialId: crusherMaterial?.id, quantity: crusherPowderKg*round, name: 'Crusher Powder' },
+      { materialId: flyAshMaterial?.id, quantity: flyAshKg*round, name: 'Fly Ash' },
       { materialId: cementMaterial?.id, quantity: cementKg, name: 'Cement' },
     ];
 
