@@ -215,6 +215,11 @@ export function RoleSalarySetupScreen() {
                             >
                               {getCategoryLabel(role.category)}
                             </span>
+                            {role.no_loading_salary && (
+                              <span className="ml-2 px-2 py-1 rounded-full text-xs bg-amber-100 text-amber-800">
+                                No Loading Wages
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-4 text-gray-600">
                             {getSalaryTypeLabel(role.category)}
@@ -281,6 +286,11 @@ export function RoleSalarySetupScreen() {
                           >
                             {getCategoryLabel(role.category)}
                           </span>
+                          {role.no_loading_salary && (
+                            <span className="inline-block mt-1 ml-1 px-2 py-1 rounded-full text-xs bg-amber-100 text-amber-800">
+                              No Loading Wages
+                            </span>
+                          )}
                         </div>
                         <div className="flex gap-2 items-center">
                           {activeTab === 'Active' ? (
