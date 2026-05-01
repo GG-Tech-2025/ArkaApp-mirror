@@ -170,29 +170,32 @@ export function useDelivery(orderId: string) {
 
       await updateOrderWithLoadmen(orderId, orderUpdate, deliveryInput.loadMen);
 
-      const costPerBrick = loadingAndUnloadingCostPerBrick;
+      // Exclude employees whose role is flagged as no_loading_salary (they get wages via attendance only)
+      const eligibleLoadmen = selectedLoadmen.filter((l) => !l.roles?.no_loading_salary);
 
-      // The loading/unloading price per brick is required for salary calculations.
-      if (!costPerBrick || costPerBrick <= 0) {
-        // Surface a clear error so callers / UI can prevent the operation.
-        const msg = 'LOADING_AND_UNLOADING_PRICE_PER_BRICK is not configured or invalid. Salary calculation cannot proceed.';
-        setError(msg);
-        throw new Error(msg);
-      }
-      
-      let multiplier = 1;
-      if (deliveryInput.loadingType === 'LOADING_ONLY') {
-        multiplier = 0.5;
-      }
+      // Only proceed with salary calculation if there are eligible loadmen
+      if (eligibleLoadmen.length > 0) {
+        const costPerBrick = loadingAndUnloadingCostPerBrick;
 
-      // Only calculate and create salary entries when at least one loadman is selected
-      if (selectedLoadmen.length > 0) {
+        // The loading/unloading price per brick is required for salary calculations.
+        if (!costPerBrick || costPerBrick <= 0) {
+          const msg = 'LOADING_AND_UNLOADING_PRICE_PER_BRICK is not configured or invalid. Salary calculation cannot proceed.';
+          setError(msg);
+          throw new Error(msg);
+        }
+
+        let multiplier = 1;
+        if (deliveryInput.loadingType === 'LOADING_ONLY') {
+          multiplier = 0.5;
+        }
+
+        // Total cost divided by ALL selected loadmen (including ineligible),
+        // so each eligible employee gets their fair individual share (ineligible share is not redistributed).
         const salaryPerEmployee = (deliveryInput.quantity * costPerBrick * multiplier) / selectedLoadmen.length;
 
-        // Create auto salary ledger entries for each selected loadman
         const salaryEntryDate = new Date().toISOString();
         await Promise.all(
-          selectedLoadmen.map((loadman) =>
+          eligibleLoadmen.map((loadman) =>
             createSalaryLedgerEntry({
               employee_id: loadman.id,
               entry_type: "SALARY_AUTO_ENTRY",

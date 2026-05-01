@@ -337,7 +337,7 @@ export async function getAllEmployees(isActive?: boolean): Promise<EmployeeWithC
       name,
       phone,
       role_id,
-      roles!inner ( id, name, category, salary_value )
+      roles!inner ( id, name, category, salary_value, no_loading_salary )
     `);
 
   if (isActive !== undefined) {
@@ -2204,7 +2204,7 @@ export async function updateEmployeeStatus(
 export async function getRoles(): Promise<RoleWithCategory[]> {
   const { data, error } = await supabase
     .from("roles")
-    .select("id, name, category")
+    .select("id, name, category, no_loading_salary")
     .eq("active", true)
     .order("name");
 
@@ -3349,6 +3349,7 @@ export async function createRole(
       category: input.category,
       salary_value: input.salary_value,
       minimum_requirement: input.minimum_requirement ?? null,
+      no_loading_salary: input.no_loading_salary ?? false,
       active: input.active ?? true,
     })
     .select(`
@@ -3357,6 +3358,7 @@ export async function createRole(
       category,
       salary_value,
       minimum_requirement,
+      no_loading_salary,
       active
     `)
     .single();
@@ -3379,6 +3381,7 @@ export async function getRoleById(roleId: string): Promise<Role> {
       category,
       salary_value,
       minimum_requirement,
+      no_loading_salary,
       active
     `)
     .eq("id", roleId)
@@ -3404,6 +3407,7 @@ export async function updateRole(
       category: input.category,
       salary_value: input.salary_value,
       minimum_requirement: input.minimum_requirement ?? null,
+      no_loading_salary: input.no_loading_salary ?? false,
       active: input.active ?? true,
     })
     .eq("id", roleId)
@@ -3413,6 +3417,7 @@ export async function updateRole(
       category,
       salary_value,
       minimum_requirement,
+      no_loading_salary,
       active
     `)
     .single();
@@ -3439,6 +3444,7 @@ export async function getActiveRoles(
       category,
       salary_value,
       minimum_requirement,
+      no_loading_salary,
       active
       `,
       { count: "exact" }
@@ -3473,6 +3479,7 @@ export async function getInactiveRoles(
       category,
       salary_value,
       minimum_requirement,
+      no_loading_salary,
       active
       `,
       { count: "exact" }

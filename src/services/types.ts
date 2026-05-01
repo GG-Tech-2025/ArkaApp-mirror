@@ -123,6 +123,7 @@ export interface EmployeeWithCategory extends Employee {
     name: string;
     category: EmployeeCategory;
     salary_value: number;
+    no_loading_salary: boolean;
   };
 }
 
@@ -277,6 +278,7 @@ export interface RoleWithCategory {
   id: string;
   name: string;
   category: EmployeeCategory;
+  no_loading_salary: boolean;
 }
 
 export interface CreateEmployeeInput {
@@ -334,6 +336,7 @@ export interface CreateRoleInput {
   category: EmployeeCategory;
   salary_value: number;
   minimum_requirement?: number | null;
+  no_loading_salary?: boolean;
   active?: boolean;
 }
 
@@ -342,6 +345,7 @@ export interface UpdateRoleInput {
   category: EmployeeCategory;
   salary_value: number;
   minimum_requirement?: number | null;
+  no_loading_salary?: boolean;
   active?: boolean;
 }
 
@@ -351,6 +355,7 @@ export interface Role {
   category: EmployeeCategory;
   salary_value: number;
   minimum_requirement: number | null;
+  no_loading_salary: boolean;
   active: boolean;
 }
 

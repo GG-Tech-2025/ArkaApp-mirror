@@ -188,6 +188,28 @@ export function EditRoleScreen() {
               </>
             )}
 
+            {/* No Loading/Unloading Wages toggle — shown for Daily Wages and Fixed Salary */}
+            {(editRoleInput.category === 'Daily Wages' || editRoleInput.category === 'Fixed Salary') && (
+              <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <input
+                  id="noLoadingSalary"
+                  type="checkbox"
+                  checked={editRoleInput.no_loading_salary}
+                  onChange={(e) => updateEditRoleInput('no_loading_salary', e.target.checked)}
+                  className="mt-0.5 w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
+                />
+                <div>
+                  <label htmlFor="noLoadingSalary" className="block text-gray-700 font-medium cursor-pointer">
+                    No Loading / Unloading Wages
+                  </label>
+                  <p className="text-gray-500 text-sm mt-0.5">
+                    Employees in this role will <strong>not</strong> receive automatic salary entries when deliveries are submitted.
+                    They will only receive wages through attendance-based salary.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Buttons */}
             <div className="flex gap-3 pt-4">
               <button

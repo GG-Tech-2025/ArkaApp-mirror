@@ -537,6 +537,15 @@ Cash is **never manually created** for these flows. Every financial transaction 
 - `FIXED` — fixed monthly salary, generated via `generateSalaryRPC`
 - `LOADMEN` — paid per delivery based on loading type
 
+**`no_loading_salary` Flag (on `roles` table):**
+- A boolean flag (`DEFAULT false`) that can be set on any role of category `DAILY` or `FIXED`.
+- When `true`, employees in that role are **excluded** from `SALARY_AUTO_ENTRY` creation on delivery submission.
+- They still appear in the loadmen picker on the delivery screen and are counted in the total headcount for per-person salary division — their share is simply not credited to anyone.
+- Salary for these employees comes exclusively through attendance-based calculation.
+- Configurable in **Admin → Role & Salary Setup → Create/Edit Role** via the "No Loading / Unloading Wages" checkbox (hidden for `Loadmen` category).
+- Displayed as an amber **"No Loading Wages"** badge in `RoleSalarySetupScreen`.
+- **DB Migration:** `ALTER TABLE roles ADD COLUMN no_loading_salary boolean NOT NULL DEFAULT false;`
+
 **Salary Ledger Entry Types:**
 `ADVANCE` | `WEEKLY` | `EMERGENCY` | `DAILY` | `PARTIAL_SETTLEMENT` | `FULL_SETTLEMENT` | `SALARY_AUTO_ENTRY` | `DEDUCTION` | `AUTO`
 
@@ -776,13 +785,15 @@ const PAGE_SIZE = 20;
 #### Roles
 | Function | DB Operation |
 |----------|-------------|
-| `getRoles()` | SELECT * FROM roles |
-| `getActiveRoles(page)` | SELECT roles WHERE active = true |
-| `getInactiveRoles(page)` | SELECT roles WHERE active = false |
-| `createRole(input)` | INSERT INTO roles |
-| `updateRole(id, input)` | UPDATE roles |
-| `getRoleById(id)` | SELECT role by id |
+| `getRoles()` | SELECT id, name, category, no_loading_salary FROM roles WHERE active |
+| `getActiveRoles(page)` | SELECT roles + no_loading_salary WHERE active = true (paginated) |
+| `getInactiveRoles(page)` | SELECT roles + no_loading_salary WHERE active = false (paginated) |
+| `createRole(input)` | INSERT INTO roles (includes no_loading_salary) |
+| `updateRole(id, input)` | UPDATE roles (includes no_loading_salary) |
+| `getRoleById(id)` | SELECT role by id (includes no_loading_salary) |
 | `updateRoleStatus(id, active)` | UPDATE roles.active |
+
+> **Note:** `getAllEmployees()` also selects `no_loading_salary` via the `roles!inner(...)` join so the delivery hook can filter eligible loadmen.
 
 #### Vendors
 | Function | DB Operation |
