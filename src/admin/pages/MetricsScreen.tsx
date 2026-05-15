@@ -1,10 +1,11 @@
-import { useState } from 'react';
-import { ArrowLeft, Wallet, X, Droplets, Mountain, Sparkles, Hammer, Wind, Square } from 'lucide-react';
-import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { useState, useMemo } from 'react';
+import { ArrowLeft, Wallet, X, Droplets, Mountain, Sparkles, Hammer, Wind, Square, TrendingUp, TrendingDown } from 'lucide-react';
+import { LineChart, Line, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useAdminNavigation } from '../hooks/useAdminNavigation';
 import { useAccountsIncome } from '../hooks/useAccountsIncome';
 import { useAccountsExpenses } from '../hooks/useAccountsExpenses';
 import { useAccountsLoanInterest } from '../hooks/useAccountsLoanInterest';
+import { useAccountsLoanIncome } from '../hooks/useAccountsLoanIncome';
 import { useAllInventoryStock } from '../hooks/useInventoryStock';
 import { useProductInventory } from '../hooks/useProductInventory';
 import { useProductionByDateRange } from '../hooks/useProductionByDateRange';
@@ -19,6 +20,7 @@ export function MetricsScreen() {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [selectedExpenseTypeId, setSelectedExpenseTypeId] = useState<string>('Overall');
+  const [activeIncomeExpenseTab, setActiveIncomeExpenseTab] = useState<'income' | 'expenses'>('income');
 
   // Fetch income data based on filter
   const {
@@ -35,6 +37,16 @@ export function MetricsScreen() {
     loading: loanInterestLoading,
     totalLoanInterest,
   } = useAccountsLoanInterest(
+    filterType,
+    filterType === 'Custom range' ? customStartDate : undefined,
+    filterType === 'Custom range' ? customEndDate : undefined
+  );
+
+  // Fetch loan disbursement income based on filter
+  const {
+    loading: loanIncomeLoading,
+    totalLoanIncome,
+  } = useAccountsLoanIncome(
     filterType,
     filterType === 'Custom range' ? customStartDate : undefined,
     filterType === 'Custom range' ? customEndDate : undefined
@@ -109,6 +121,21 @@ export function MetricsScreen() {
   const INVENTORY_METRICS = buildInventoryMetrics();
 
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
+
+  // ─── Adaptive chart: group slices <5% into "Others" ───
+  const adaptedChartData = useMemo(() => {
+    if (pieChartData.length === 0) return [];
+    const total = pieChartData.reduce((sum, d) => sum + d.value, 0);
+    const THRESHOLD = 0.05;
+    const main = pieChartData.filter((d) => d.value / total >= THRESHOLD);
+    const others = pieChartData.filter((d) => d.value / total < THRESHOLD);
+    const othersTotal = others.reduce((sum, d) => sum + d.value, 0);
+    const result = [...main];
+    if (othersTotal > 0) result.push({ name: 'Others', value: othersTotal });
+    return result;
+  }, [pieChartData]);
+
+  const useBarChart = adaptedChartData.length > 5;
 
   // Calculate number of days in the selected range
   const getDaysInRange = (): number => {
@@ -222,106 +249,189 @@ export function MetricsScreen() {
           <h2 className="text-gray-900 mb-4">Income & Expenses</h2>
           
           {/* Profit Section */}
-          <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-            <div className="flex items-center justify-center">
-              <div className="text-center">
-                <p className="text-gray-600 mb-2">Profit</p>
-                <p className={`${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  ₹{Math.abs(profit).toLocaleString()}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
+              <p className="text-xs text-gray-500 mb-1">Total Income</p>
+              <p className="text-green-600 font-semibold text-lg">
+                {incomeLoading ? '...' : `₹${totalIncome.toLocaleString()}`}
+              </p>
+            </div>
+            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-red-500">
+              <p className="text-xs text-gray-500 mb-1">Total Expenses</p>
+              <p className="text-red-600 font-semibold text-lg">
+                {(expensesLoading || loanInterestLoading) ? '...' : `₹${(totalExpenses + totalProcurements + totalLoanInterest + totalSalary).toLocaleString()}`}
+              </p>
+            </div>
+            <div className={`bg-white rounded-lg shadow p-4 border-l-4 ${profit >= 0 ? 'border-blue-500' : 'border-orange-500'}`}>
+              <p className="text-xs text-gray-500 mb-1">Net Profit</p>
+              <div className="flex items-center gap-1">
+                {profit >= 0
+                  ? <TrendingUp className="w-4 h-4 text-blue-500" />
+                  : <TrendingDown className="w-4 h-4 text-orange-500" />}
+                <p className={`font-semibold text-lg ${profit >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+                  {profit < 0 ? '-' : ''}₹{Math.abs(profit).toLocaleString()}
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Income and Expenses Split Container */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Income Section */}
-            <div className="bg-white rounded-lg shadow-lg">
-              <div className="p-6 border-b border-gray-200">
-                <h3 className="text-gray-900">Income</h3>
-              </div>
-              
-              {/* Income - Total Income with Icon */}
-              <div className="p-6 bg-green-50">
-                <div className="flex flex-col items-center justify-center">
-                  <div className="bg-green-100 p-4 rounded-full mb-4">
-                    <Wallet className="w-10 h-10 text-green-600" />
-                  </div>
-                  <p className="text-gray-700 mb-2">Total Income</p>
-                  {incomeLoading ? (
-                    <p className="text-green-600 text-lg">Loading...</p>
-                  ) : (
-                    <p className="text-green-600 text-lg">₹{totalIncome.toLocaleString()}</p>
-                  )}
-                </div>
-              </div>
+          {/* Income and Expenses Tabbed Container */}
+          <div className="bg-white rounded-lg shadow-lg flex flex-col">
+
+            {/* Tab Bar */}
+            <div className="flex border-b border-gray-200">
+              <button
+                onClick={() => setActiveIncomeExpenseTab('income')}
+                className={`flex-1 py-4 text-sm font-semibold transition-colors border-b-2 ${
+                  activeIncomeExpenseTab === 'income'
+                    ? 'border-green-500 text-green-700 bg-green-50'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                💰 Income
+                {!incomeLoading && (
+                  <span className="ml-2 text-xs font-normal text-gray-500">
+                    ₹{totalIncome.toLocaleString()}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setActiveIncomeExpenseTab('expenses')}
+                className={`flex-1 py-4 text-sm font-semibold transition-colors border-b-2 ${
+                  activeIncomeExpenseTab === 'expenses'
+                    ? 'border-red-500 text-red-700 bg-red-50'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                📉 Expenses
+                {!expensesLoading && !loanInterestLoading && (
+                  <span className="ml-2 text-xs font-normal text-gray-500">
+                    ₹{(totalExpenses + totalProcurements + totalLoanInterest + totalSalary).toLocaleString()}
+                  </span>
+                )}
+              </button>
             </div>
 
-            {/* Expenses Section */}
-            <div className="bg-white rounded-lg shadow-lg">
-              <div className="p-6 border-b border-gray-200">
-                <h3 className="text-gray-900">Expenses</h3>
-              </div>
+            {/* ══════════ INCOME TAB ══════════ */}
+            {activeIncomeExpenseTab === 'income' && (
+              <div className="p-6 space-y-4">
+                {incomeLoading || loanIncomeLoading ? (
+                  <p className="text-center text-gray-500 py-8">Loading income...</p>
+                ) : (
+                  <>
+                    {/* Breakdown rows */}
+                    <div className="divide-y divide-gray-100 rounded-xl border border-gray-200 overflow-hidden">
+                      <div className="flex items-center justify-between px-5 py-4 bg-white hover:bg-gray-50">
+                        <div className="flex items-center gap-3">
+                          <div className="bg-green-100 p-2 rounded-lg">
+                            <Wallet className="w-5 h-5 text-green-600" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-800">Orders</p>
+                            <p className="text-xs text-gray-500">Customer sales income</p>
+                          </div>
+                        </div>
+                        <p className="text-green-600 font-semibold">₹{totalIncome.toLocaleString()}</p>
+                      </div>
+                      <div className="flex items-center justify-between px-5 py-4 bg-white hover:bg-gray-50">
+                        <div className="flex items-center gap-3">
+                          <div className="bg-purple-100 p-2 rounded-lg">
+                            <TrendingUp className="w-5 h-5 text-purple-600" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-800">Loan Disbursements</p>
+                            <p className="text-xs text-gray-500">Loans issued to employees</p>
+                          </div>
+                        </div>
+                        <p className="text-purple-600 font-semibold">₹{totalLoanIncome.toLocaleString()}</p>
+                      </div>
+                    </div>
 
-              {/* Expense Type Filter */}
-              <div className="px-6 pt-4 pb-2 bg-red-50 border-b border-gray-200">
-                <label className="block text-gray-700 text-sm mb-2">Filter by Expense Type</label>
-                <select
-                  value={selectedExpenseTypeId}
-                  onChange={(e) => setSelectedExpenseTypeId(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                >
-                  <option value="Overall">Overall</option>
-                  <option value="Procurement">📦 Procurement</option>
-                  <option value="LoanInterest">💰 Loan Interest</option>
-                  <option value="Salary">👷 Salary</option>
-                  {expenseTypes.map((type) => (
-                    <option key={type.id} value={type.id}>
-                      {type.name}
-                    </option>
-                  ))}
-                </select>
+                    {/* Total */}
+                    <div className="flex items-center justify-between px-5 py-4 bg-green-600 rounded-xl">
+                      <p className="text-white font-semibold">Total Income</p>
+                      <p className="text-white font-bold text-lg">₹{(totalIncome + totalLoanIncome).toLocaleString()}</p>
+                    </div>
+                  </>
+                )}
               </div>
+            )}
 
-              {/* Expenses - Pie Chart */}
-              <div className="p-6 bg-red-50">
-                <div className="flex flex-col items-center">
+            {/* ══════════ EXPENSES TAB ══════════ */}
+            {activeIncomeExpenseTab === 'expenses' && (
+              <div className="flex flex-col">
+                {/* Expense Type Filter */}
+                <div className="px-6 pt-4 pb-2 bg-red-50 border-b border-gray-200">
+                  <label className="block text-gray-700 text-sm mb-2">Filter by Expense Type</label>
+                  <select
+                    value={selectedExpenseTypeId}
+                    onChange={(e) => setSelectedExpenseTypeId(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-400 focus:border-transparent outline-none"
+                  >
+                    <option value="Overall">All Types</option>
+                    <option value="Procurement">📦 Procurement</option>
+                    <option value="LoanInterest">💰 Loan Interest</option>
+                    <option value="Salary">👷 Salary</option>
+                    {expenseTypes.map((type) => (
+                      <option key={type.id} value={type.id}>{type.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Adaptive Chart */}
+                <div className="p-6 bg-red-50 flex flex-col items-center">
                   {(expensesLoading || loanInterestLoading) ? (
                     <div className="h-48 flex items-center justify-center">
                       <p className="text-gray-500">Loading chart...</p>
                     </div>
-                  ) : pieChartData.length === 0 ? (
+                  ) : adaptedChartData.length === 0 ? (
                     <div className="h-48 flex items-center justify-center">
                       <p className="text-gray-500">No expenses for this period</p>
                     </div>
                   ) : (
                     <>
-                      <ResponsiveContainer width="100%" height={200}>
-                        <PieChart>
-                          <Pie
-                            data={pieChartData}
-                            cx="50%"
-                            cy="50%"
-                            labelLine={false}
-                            outerRadius={70}
-                            fill="#8884d8"
-                            dataKey="value"
-                          >
-                            {pieChartData.map((_entry, index) => (
-                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                            ))}
-                          </Pie>
-                          <Tooltip formatter={(value) => `₹${(value as number).toLocaleString()}`} />
-                          <Legend />
-                        </PieChart>
-                      </ResponsiveContainer>
+                      {useBarChart ? (
+                        <ResponsiveContainer width="100%" height={adaptedChartData.length * 32 + 24}>
+                          <BarChart data={adaptedChartData} layout="vertical" margin={{ left: 4, right: 16, top: 2, bottom: 2 }}>
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                            <XAxis type="number" tickFormatter={(v) => `₹${(v as number).toLocaleString()}`} tick={{ fontSize: 10 }} />
+                            <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11 }} />
+                            <Tooltip formatter={(value) => `₹${(value as number).toLocaleString()}`} />
+                            <Bar dataKey="value" name="Amount">
+                              {adaptedChartData.map((_entry, index) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <ResponsiveContainer width="100%" height={200}>
+                          <PieChart>
+                            <Pie
+                              data={adaptedChartData}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={false}
+                              outerRadius={70}
+                              fill="#8884d8"
+                              dataKey="value"
+                            >
+                              {adaptedChartData.map((_entry, index) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(value) => `₹${(value as number).toLocaleString()}`} />
+                            <Legend wrapperStyle={{ fontSize: '11px' }} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      )}
                       <p className="text-gray-700 mt-4 mb-2">Total Expenses</p>
                       <p className="text-red-600 text-lg">₹{(totalExpenses + totalProcurements + totalLoanInterest + totalSalary).toLocaleString()}</p>
                     </>
                   )}
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
