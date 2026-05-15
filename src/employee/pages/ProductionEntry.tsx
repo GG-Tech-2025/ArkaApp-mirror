@@ -29,6 +29,7 @@ export function ProductionEntry() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [showErrorPopup, setShowErrorPopup] = useState(false);
+  const [notes, setNotes] = useState("");
 
   const handleSubmit = async () => {
     const payload: ProductionInput = {
@@ -40,6 +41,7 @@ export function ProductionEntry() {
       crusherPowder: Number(crusherPowder),
       flyAsh: Number(flyAsh),
       cement: Number(cement),
+      notes: notes.trim() || undefined,
     };
 
     const validationErrors = validateProduction(payload);
@@ -272,6 +274,21 @@ export function ProductionEntry() {
               {errors.cement && (
                 <p className="text-red-600 text-sm mt-1">{errors.cement}</p>
               )}
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label htmlFor="notes" className="block text-gray-700 mb-2">
+                Notes
+              </label>
+              <textarea
+                id="notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Any additional notes (optional)"
+                rows={3}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+              />
             </div>
 
             {/* Submit Button */}

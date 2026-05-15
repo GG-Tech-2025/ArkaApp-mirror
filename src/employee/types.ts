@@ -60,5 +60,6 @@ export interface ProductionInput {
   crusherPowder: number;
   flyAsh: number;
   cement: number;
+  notes?: string;
 }
 
