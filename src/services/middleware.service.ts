@@ -3680,7 +3680,7 @@ export async function createSalaryLedgerEntry(
   input: CreateSalaryLedgerInput
 ): Promise<SalaryLedger> {
 
-  const isPayment = input.entry_type !== "AUTO" && input.entry_type !== "SALARY_AUTO_ENTRY";
+  const isPayment = input.entry_type !== "AUTO" && input.entry_type !== "SALARY_AUTO_ENTRY" && input.entry_type !== "SALARY_MANUAL_ENTRY";
 
   /* -------------------------------------------------------------
      1. DEDUCT FROM ACCOUNT FIRST (payments only)
@@ -3741,7 +3741,7 @@ export async function createSalaryLedgerEntry(
 
   let newBalance = currentBalance;
 
-  if (input.entry_type === "AUTO" || input.entry_type === "SALARY_AUTO_ENTRY") {
+  if (input.entry_type === "AUTO" || input.entry_type === "SALARY_AUTO_ENTRY" || input.entry_type === "SALARY_MANUAL_ENTRY") {
     newBalance += input.amount;
   } else {
     newBalance -= input.amount;

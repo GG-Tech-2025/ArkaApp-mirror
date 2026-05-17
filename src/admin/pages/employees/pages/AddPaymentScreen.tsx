@@ -120,6 +120,7 @@ export function AddPaymentScreen() {
                 <option value="Daily / Ad-hoc Payment">Daily / Ad-hoc Payment</option>
                 <option value="Partial Settlement">Partial Settlement</option>
                 <option value="Full Settlement">Full Settlement</option>
+                <option value="Manual Salary Entry">Manual Salary Entry</option>
               </select>
               {errors.entryType && <p className="text-red-600 text-sm mt-1">{errors.entryType}</p>}
               {/* {runningBalance === 0 && (
@@ -194,6 +195,7 @@ export function AddPaymentScreen() {
             </div>
 
             {/* Mode of Payment */}
+            {formInput.entryType !== 'Manual Salary Entry' && (
             <div>
               <label htmlFor="modeOfPayment" className="block text-gray-700 mb-2">
                 Mode of Payment <span className="text-red-600">*</span>
@@ -212,9 +214,10 @@ export function AddPaymentScreen() {
               </select>
               {errors.modeOfPayment && <p className="text-red-600 text-sm mt-1">{errors.modeOfPayment}</p>}
             </div>
+            )}
 
             {/* SAI - Only show if mode is not Cash */}
-            {formInput.modeOfPayment !== 'Cash' && (
+            {formInput.entryType !== 'Manual Salary Entry' && formInput.modeOfPayment !== 'Cash' && (
               <div>
                 <label htmlFor="senderAccountId" className="block text-gray-700 mb-2">
                   SAI (Sender Account) <span className="text-red-600">*</span>
@@ -241,7 +244,7 @@ export function AddPaymentScreen() {
             )}
 
             {/* RAI - Only show if mode is not Cash */}
-            {formInput.modeOfPayment !== 'Cash' && (
+            {formInput.entryType !== 'Manual Salary Entry' && formInput.modeOfPayment !== 'Cash' && (
               <div>
                 <label htmlFor="receiverAccountInfo" className="block text-gray-700 mb-2">
                   RAI (Receiver Account Info) <span className="text-red-600">*</span>
@@ -262,12 +265,26 @@ export function AddPaymentScreen() {
               </div>
             )}
 
+            {/* Manual Salary Entry Alert */}
+            {formInput.entryType === 'Manual Salary Entry' && (
+              <div className="p-4 rounded-lg bg-yellow-50 border border-yellow-400">
+                <p className="text-sm font-semibold text-yellow-800">⚠️ Salary Credit Warning</p>
+                <p className="text-sm text-yellow-700 mt-1">
+                  You are about to manually credit a salary entry for this employee. This will
+                  increase the running balance just like an auto-generated salary entry
+                  (SALARY_AUTO_ENTRY). Please double-check the amount before confirming.
+                </p>
+              </div>
+            )}
+
             {/* Info Box */}
             {formInput.entryType && (
               <div
                 className={`p-4 rounded-lg ${
                   formInput.entryType.includes('Settlement')
                     ? 'bg-green-50 border border-green-200'
+                    : formInput.entryType === 'Manual Salary Entry'
+                    ? 'bg-yellow-50 border border-yellow-200'
                     : 'bg-blue-50 border border-blue-200'
                 }`}
               >
@@ -276,12 +293,16 @@ export function AddPaymentScreen() {
                     ? `This settlement will ${
                         formInput.entryType === 'Full Settlement' ? 'clear the entire' : 'reduce the'
                       } running balance.`
+                    : formInput.entryType === 'Manual Salary Entry'
+                    ? 'This entry will credit salary and increase the running balance.'
                     : 'This payment will be deducted from the running balance.'}
                 </p>
                 {formInput.amount && (
                   <p className="text-sm text-gray-700 mt-1">
                     New balance after this transaction: ₹
-                    {(runningBalance - Number(formInput.amount)).toLocaleString()}
+                    {formInput.entryType === 'Manual Salary Entry'
+                      ? (runningBalance + Number(formInput.amount)).toLocaleString()
+                      : (runningBalance - Number(formInput.amount)).toLocaleString()}
                   </p>
                 )}
               </div>
