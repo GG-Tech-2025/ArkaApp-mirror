@@ -448,6 +448,7 @@ export type SalaryLedgerEntryType =
   | "PARTIAL_SETTLEMENT"
   | "FULL_SETTLEMENT"
   | "SALARY_AUTO_ENTRY"
+  | "SALARY_MANUAL_ENTRY"
   | "DEDUCTION"
   | "AUTO";
 

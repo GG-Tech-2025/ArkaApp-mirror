@@ -22,6 +22,7 @@ const ENTRY_TYPE_TO_DB: Record<Exclude<PaymentEntryTypeLabel, ''>, SalaryLedgerE
   'Daily / Ad-hoc Payment': 'DAILY',
   'Partial Settlement': 'PARTIAL_SETTLEMENT',
   'Full Settlement': 'FULL_SETTLEMENT',
+  'Manual Salary Entry': 'SALARY_MANUAL_ENTRY',
 };
 
 const PAYMENT_MODE_TO_DB: Record<PaymentModeLabel, string> = {
@@ -79,6 +80,15 @@ export function useAddPayment() {
     const runningBalance = employee?.running_balance ?? 0;
     if (type === 'Full Settlement') {
       setFormInput((prev) => ({ ...prev, entryType: type, amount: runningBalance.toString() }));
+    } else if (type === 'Manual Salary Entry') {
+      setFormInput((prev) => ({
+        ...prev,
+        entryType: type,
+        amount: prev.entryType === 'Full Settlement' ? '' : prev.amount,
+        modeOfPayment: 'UPI',
+        senderAccountId: '',
+        receiverAccountInfo: '',
+      }));
     } else {
       setFormInput((prev) => ({
         ...prev,
@@ -90,6 +100,9 @@ export function useAddPayment() {
       const next = { ...prev };
       delete next.entryType;
       delete next.amount;
+      delete next.modeOfPayment;
+      delete next.senderAccountId;
+      delete next.receiverAccountInfo;
       return next;
     });
   }
@@ -115,6 +128,7 @@ export function useAddPayment() {
    * - Other modes → selected sender account balance
    */
   function getSelectedAccountBalance(): number | null {
+    if (formInput.entryType === 'Manual Salary Entry') return null;
     if (formInput.modeOfPayment === 'Cash') {
       const cashAccount = accounts.find((a) => a.id === CASH_ACCOUNT_ID);
       return cashAccount?.balance ?? null;
@@ -144,11 +158,11 @@ export function useAddPayment() {
         employee_id: employeeId,
         entry_type: ENTRY_TYPE_TO_DB[formInput.entryType as Exclude<PaymentEntryTypeLabel, ''>],
         amount: Number(formInput.amount),
-        payment_mode: PAYMENT_MODE_TO_DB[formInput.modeOfPayment],
+        payment_mode: formInput.entryType === 'Manual Salary Entry' ? null : PAYMENT_MODE_TO_DB[formInput.modeOfPayment],
         sender_account_id:
-          formInput.modeOfPayment !== 'Cash' ? formInput.senderAccountId : null,
+          formInput.entryType === 'Manual Salary Entry' || formInput.modeOfPayment === 'Cash' ? null : formInput.senderAccountId,
         receiver_account:
-          formInput.modeOfPayment !== 'Cash' ? formInput.receiverAccountInfo.trim() : null,
+          formInput.entryType === 'Manual Salary Entry' || formInput.modeOfPayment === 'Cash' ? null : formInput.receiverAccountInfo.trim(),
         notes: formInput.notes.trim() || null,
         // created_at: new Date(formInput.dateTime).toISOString(),
         payment_at: new Date(formInput.dateTime).toISOString(),
