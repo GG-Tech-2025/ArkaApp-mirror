@@ -647,15 +647,29 @@ export function CustomerDetailsScreen() {
     const nextPage = page + 1;
     const res = await getCustomerOrdersWithSettlement(customer.id, nextPage);
     const mappedOrders = res.data.map((o: any) => ({
-      ...o,
+      id: o.order_id,
+      date: o.order_date,
+      deliveryDate: o.delivery_date,
+
+      customerName: customer.name,
+      customerNumber: customer.phoneNumber,
+      customerId: o.customer_id,
+
+      quantity: o.brick_quantity,
+      finalPrice: o.final_price,
+
+      amountPaid: o.total_paid,
+      unpaidAmount: o.remaining_balance,
+
+      gstNumber: o.gst_number,
+      deliveryChallanNumber: o.dc_number,
+
       paymentStatus:
         o.payment_status === "FULLY_PAID"
           ? "Fully Paid"
           : o.payment_status === "PARTIALLY_PAID"
             ? "Partially Paid"
             : "Not Paid",
-      customerName: customer.name,
-      customerNumber: customer.phoneNumber,
     }));
     setOrders((prev) => [...prev, ...mappedOrders]);
     setHasMoreOrders(res.hasMore);
