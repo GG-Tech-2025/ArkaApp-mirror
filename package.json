@@ -58,7 +58,7 @@
             "@types/react": "^19.2.10",
             "@vitejs/plugin-react-swc": "^3.10.2",
             "tailwindcss": "^4.2.2",
-            "vite": "6.3.5"
+            "vite": "^6.4.3"
       },
       "scripts": {
             "dev": "vite",
