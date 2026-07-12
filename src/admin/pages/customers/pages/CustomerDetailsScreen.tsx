@@ -699,15 +699,11 @@ export function CustomerDetailsScreen() {
     (a) => !a.label.toUpperCase().includes("CASH"),
   );
 
-  // Compute delivered orders outstanding for payment validation
-  const deliveredTotalSales = orders.reduce(
-    (sum, o) => sum + (o.finalPrice ?? 0),
-    0
-  );
-  const deliveredOutstanding = orders.reduce(
-    (sum, o) => sum + (o.unpaidAmount ?? 0),
-    0
-  );
+  // Total sales / outstanding for delivered orders come from the customer
+  // financial summary (whole dataset), not just the currently-loaded page
+  // of orders — the orders list is paginated via "Load More".
+  const deliveredTotalSales = customer?.totalSales ?? 0;
+  const deliveredOutstanding = customer?.unpaidAmount ?? 0;
 
   if (loading) {
     return (

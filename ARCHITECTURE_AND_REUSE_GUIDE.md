@@ -357,6 +357,8 @@ CreateOrderScreen
 
 **DB Tables:** `customers`, `orders`, `customer_payments`, `accounts`
 
+> ⚠️ **Gotcha — totals vs. paginated lists:** `CustomerDetailsScreen`'s "Total Sales (Delivered)" and "Outstanding Amount (Delivered)" cards must be sourced from `customer.totalSales` / `customer.unpaidAmount` (from `getCustomerFinancialById`, backed by the `customer_financials` view — see [10.2 Views](#102-views)), **not** by summing the `orders` array in component state. `orders` is paginated via `getCustomerOrdersWithSettlement` (20/page, "Load More"), so summing it only reflects whatever pages have been fetched so far and under-reports until every page is loaded. This exact bug shipped once (totals appeared to "fix themselves" after clicking Load More to the end) — always use the financials-view totals for whole-customer aggregates, and only use the `orders` array for rendering the order list itself.
+
 ---
 
 ### 6.5 Accounts Module (Expenses)
@@ -1413,6 +1415,9 @@ from customer_payments p
 group by p.customer_id;
 
 ## Customer Financials
+
+> `total_sales` / `outstanding_amount` here are aggregated server-side over **all** delivered orders for the customer — this is the correct source for any "whole customer" total (used correctly by `CustomerManagementScreen`'s Unpaid Amount, and by `CustomerDetailsScreen` via `getCustomerFinancialById`). Do not recompute these totals client-side by summing a paginated orders list (see [6.4 Customers Module](#64-customers-module) gotcha).
+
 create or replace view customer_financials as
 select
   c.id as customer_id,
