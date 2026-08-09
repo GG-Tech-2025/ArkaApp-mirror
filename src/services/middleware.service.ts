@@ -20,6 +20,7 @@ import {
   CreateAccountTransferInput,
   AccountTransfer,
   CreateCustomerPaymentInput,
+  CreateCustomerWriteOffInput,
   CreateOrderInput,
   ProductionEntry,
   Loan,
@@ -666,7 +667,7 @@ export async function getCustomerFinancialById(customerId: string) {
   // 2️⃣ Fetch financials from the view separately
   const { data: financials, error: financialsError } = await supabase
     .from("customer_financials")
-    .select("total_sales, outstanding_amount")
+    .select("total_sales, outstanding_amount, total_written_off")
     .eq("customer_id", customerId)
     .maybeSingle();
 
@@ -680,6 +681,7 @@ export async function getCustomerFinancialById(customerId: string) {
     gst_number: customer.gst_number ?? null,
     total_sales: financials?.total_sales ?? 0,
     outstanding_amount: financials?.outstanding_amount ?? 0,
+    total_written_off: financials?.total_written_off ?? 0,
   };
 }
 
@@ -736,7 +738,8 @@ export async function getCustomerOrdersWithSettlement(
         total_paid,
         remaining_balance,
         payment_status,
-        delivered
+        delivered,
+        written_off_amount
       `,
       { count: "exact" }
     )
@@ -1282,6 +1285,99 @@ export async function getCustomerPayments(
     data: data ?? [],
     hasMore: count ? to < count - 1 : false,
   };
+}
+
+/* ------------------------------------------------------------------
+   28a. CREATE CUSTOMER WRITE-OFF (Apply FIFO, no cash movement)
+-------------------------------------------------------------------*/
+
+export async function createCustomerWriteOff(
+  input: CreateCustomerWriteOffInput
+) {
+  const { data: writeOff, error: insertError } = await supabase
+    .from("customer_writeoffs")
+    .insert({
+      customer_id: input.customer_id,
+      amount: input.amount,
+      reason: input.reason,
+    })
+    .select()
+    .single();
+
+  if (insertError) throw insertError;
+
+  const { error: fifoError } = await supabase.rpc(
+    "apply_customer_writeoff_fifo",
+    {
+      p_customer_id: input.customer_id,
+      p_writeoff_id: writeOff.id,
+      p_amount: input.amount,
+    }
+  );
+
+  if (fifoError) throw fifoError;
+
+  return writeOff;
+}
+
+/* ------------------------------------------------------------------
+   28b. DELETE CUSTOMER WRITE-OFF (Reverse FIFO — no account rollback needed)
+-------------------------------------------------------------------*/
+
+export async function deleteCustomerWriteOff(writeOffId: string): Promise<void> {
+  const { error } = await supabase.rpc("reverse_customer_writeoff", {
+    p_writeoff_id: writeOffId,
+  });
+
+  if (error) throw error;
+}
+
+/* ------------------------------------------------------------------
+   28c. GET CUSTOMER WRITE-OFFS
+-------------------------------------------------------------------*/
+
+export async function getCustomerWriteOffs(
+  customerId: string,
+  page = 1
+) {
+  const PAGE_SIZE = 20;
+  const from = (page - 1) * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+
+  const { data, count, error } = await supabase
+    .from("customer_writeoffs_view")
+    .select("*", { count: "exact" })
+    .eq("customer_id", customerId)
+    .range(from, to);
+
+  if (error) throw error;
+
+  return {
+    data: data ?? [],
+    hasMore: count ? to < count - 1 : false,
+  };
+}
+
+/* ------------------------------------------------------------------
+   28d. GET CUSTOMER WRITE-OFFS FOR EXPORT (date-filtered by write_off_date)
+-------------------------------------------------------------------*/
+
+export async function getCustomerWriteOffsForExport(
+  customerId: string,
+  fromDate: string,
+  toDate: string
+) {
+  const { data, error } = await supabase
+    .from("customer_writeoffs_view")
+    .select("*")
+    .eq("customer_id", customerId)
+    .gte("write_off_date", fromDate)
+    .lte("write_off_date", toDate)
+    .order("write_off_date", { ascending: true });
+
+  if (error) throw error;
+
+  return data ?? [];
 }
 
 /* ------------------------------------------------------------------

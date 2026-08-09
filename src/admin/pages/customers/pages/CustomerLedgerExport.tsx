@@ -22,16 +22,24 @@ interface ExportPayment {
   modeOfPayment: string;
 }
 
+interface ExportWriteOff {
+  id: string;
+  date: string;
+  amount: number;
+  reason: string;
+}
+
 interface CustomerLedgerExportProps {
   customer: ExportCustomer;
   orders: ExportOrder[];
   payments: ExportPayment[];
+  writeOffs?: ExportWriteOff[];
   fromDate: string;
   toDate: string;
 }
 
 export const CustomerLedgerExport = React.forwardRef<HTMLDivElement, CustomerLedgerExportProps>(
-  ({ customer, orders, payments, fromDate, toDate }, ref) => {
+  ({ customer, orders, payments, writeOffs, fromDate, toDate }, ref) => {
     const totalOrders = (orders ?? []).reduce(
   (sum, o) => sum + (o.finalPrice ?? 0),
   0
@@ -42,7 +50,12 @@ const totalPayments = (payments ?? []).reduce(
   0
 );
 
-    const outstanding = totalOrders - totalPayments;
+const totalWriteOffs = (writeOffs ?? []).reduce(
+  (sum, w) => sum + (w.amount ?? 0),
+  0
+);
+
+    const outstanding = totalOrders - totalPayments - totalWriteOffs;
 
     return (
       <div
@@ -149,6 +162,35 @@ const totalPayments = (payments ?? []).reduce(
             </table>
           </div>
         </div>
+
+        {/* Write-offs (only shown when the customer has any in range) */}
+        {(writeOffs ?? []).length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            <h3 style={{ marginBottom: 8, color: '#6e6e6d' }}>Write-offs / Discounts</h3>
+            <table width="100%" style={{ borderCollapse: "collapse", marginBottom: 16, fontSize: 15 }}>
+              <thead>
+                <tr style={{ background: '#9b9c9c' }}>
+                  <th style={{ border: '1px solid #a6110b', padding: 8, color: '#fff' }}>Date</th>
+                  <th style={{ border: '1px solid #a6110b', padding: 8, color: '#fff' }}>Reason</th>
+                  <th style={{ border: '1px solid #a6110b', padding: 8, textAlign: 'right', color: '#fff' }}>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(writeOffs ?? []).map((w) => (
+                  <tr key={w.id}>
+                    <td style={{ border: '1px solid #9b9c9c', padding: 8 }}>{new Date(w.date).toLocaleDateString()}</td>
+                    <td style={{ border: '1px solid #9b9c9c', padding: 8 }}>{w.reason}</td>
+                    <td style={{ border: '1px solid #9b9c9c', padding: 8, textAlign: 'right' }}>₹{w.amount.toLocaleString()}</td>
+                  </tr>
+                ))}
+                <tr style={{ background: '#f5f5f5' }}>
+                  <td colSpan={2} style={{ border: '1px solid #a6110b', padding: 8, textAlign: 'right', color: '#a6110b' }}><strong>Total</strong></td>
+                  <td style={{ border: '1px solid #a6110b', padding: 8, textAlign: 'right', color: '#a6110b' }}><strong>₹{totalWriteOffs.toLocaleString()}</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Final Outstanding */}
         <div style={{ marginTop: "40px", textAlign: "right" }}>

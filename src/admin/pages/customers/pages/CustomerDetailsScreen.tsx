@@ -16,6 +16,10 @@ import {
   deleteCustomerPayment,
   getCustomerOrdersForExport,
   getCustomerPaymentsForExport,
+  createCustomerWriteOff,
+  deleteCustomerWriteOff,
+  getCustomerWriteOffs,
+  getCustomerWriteOffsForExport,
 } from "../../../../services/middleware.service";
 import { useAdminNavigation } from "../../../hooks/useAdminNavigation";
 import { validateCustomer } from "../../../validators/customer.validator";
@@ -27,6 +31,13 @@ interface Payment {
   modeOfPayment: "Cash" | "UPI" | "Bank Transfer" | "Cheque";
   senderAccountInfo: string;
   receiverAccountInfo: string;
+}
+
+interface WriteOff {
+  id: string;
+  date: string;
+  amount: number;
+  reason: string;
 }
 
 export function CustomerDetailsScreen() {
@@ -44,6 +55,7 @@ export function CustomerDetailsScreen() {
     finalPrice: number;
     amountPaid: number;
     unpaidAmount: number;
+    writtenOffAmount: number;
     gstNumber?: string;
     deliveryChallanNumber?: string;
     paymentStatus: string;
@@ -55,7 +67,18 @@ export function CustomerDetailsScreen() {
   const [savingCustomer, setSavingCustomer] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
 
-  const [activeTab, setActiveTab] = useState<"Orders" | "Payments">("Orders");
+  const [activeTab, setActiveTab] = useState<"Orders" | "Payments" | "Write-offs">("Orders");
+  const [writeOffs, setWriteOffs] = useState<WriteOff[]>([]);
+  const [writeOffsPage, setWriteOffsPage] = useState(1);
+  const [hasMoreWriteOffs, setHasMoreWriteOffs] = useState(true);
+  const [showWriteOffModal, setShowWriteOffModal] = useState(false);
+  const [writeOffAmount, setWriteOffAmount] = useState("");
+  const [writeOffReason, setWriteOffReason] = useState("");
+  const [writeOffAmountError, setWriteOffAmountError] = useState("");
+  const [savingWriteOff, setSavingWriteOff] = useState(false);
+  const [showDeleteWriteOffConfirm, setShowDeleteWriteOffConfirm] = useState(false);
+  const [deletingWriteOffId, setDeletingWriteOffId] = useState<string | null>(null);
+  const [deletingWriteOff, setDeletingWriteOff] = useState(false);
   const [displayCount, setDisplayCount] = useState(10);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
@@ -103,6 +126,7 @@ export function CustomerDetailsScreen() {
 
   const [exportOrders, setExportOrders] = useState<any[]>([]);
   const [exportPayments, setExportPayments] = useState<any[]>([]);
+  const [exportWriteOffs, setExportWriteOffs] = useState<any[]>([]);
   const [exporting, setExporting] = useState(false);
 
   const [receiverAccounts, setReceiverAccounts] = useState<
@@ -181,6 +205,32 @@ export function CustomerDetailsScreen() {
   }, [activeTab, customerId]);
 
   useEffect(() => {
+    if (!customerId) return;
+
+    const loadWriteOffs = async () => {
+      try {
+        const res = await getCustomerWriteOffs(customerId, 1);
+
+        setWriteOffs(
+          res.data.map((w: any) => ({
+            id: w.id,
+            date: w.write_off_date,
+            amount: w.amount,
+            reason: w.reason,
+          })),
+        );
+
+        setWriteOffsPage(1);
+        setHasMoreWriteOffs(res.hasMore);
+      } catch (e) {
+        console.error("Failed to load write-offs", e);
+      }
+    };
+
+    loadWriteOffs();
+  }, [activeTab, customerId]);
+
+  useEffect(() => {
     if (paymentMode === "Cash") {
       const cash = receiverAccounts.find((a) =>
         a.label.toLowerCase().includes("cash"),
@@ -209,6 +259,7 @@ export function CustomerDetailsScreen() {
           address: customerData.address,
           totalSales: customerData.total_sales,
           unpaidAmount: customerData.outstanding_amount,
+          totalWrittenOff: customerData.total_written_off,
           gstNumber: customerData.gst_number ?? undefined,
         });
 
@@ -226,6 +277,7 @@ export function CustomerDetailsScreen() {
 
           amountPaid: o.total_paid,
           unpaidAmount: o.remaining_balance,
+          writtenOffAmount: o.written_off_amount ?? 0,
 
           gstNumber: o.gst_number,
           deliveryChallanNumber: o.dc_number,
@@ -331,6 +383,7 @@ export function CustomerDetailsScreen() {
         address: customerData.address,
         totalSales: customerData.total_sales,
         unpaidAmount: customerData.outstanding_amount,
+        totalWrittenOff: customerData.total_written_off,
       });
 
       setOrders(
@@ -345,6 +398,7 @@ export function CustomerDetailsScreen() {
           finalPrice: o.final_price,
           amountPaid: o.total_paid,
           unpaidAmount: o.remaining_balance,
+          writtenOffAmount: o.written_off_amount ?? 0,
           gstNumber: o.gst_number,
           deliveryChallanNumber: o.dc_number,
           paymentStatus:
@@ -410,6 +464,7 @@ export function CustomerDetailsScreen() {
         address: customerData.address,
         totalSales: customerData.total_sales,
         unpaidAmount: customerData.outstanding_amount,
+        totalWrittenOff: customerData.total_written_off,
       });
 
       setOrders(
@@ -424,6 +479,7 @@ export function CustomerDetailsScreen() {
           finalPrice: o.final_price,
           amountPaid: o.total_paid,
           unpaidAmount: o.remaining_balance,
+          writtenOffAmount: o.written_off_amount ?? 0,
           gstNumber: o.gst_number,
           deliveryChallanNumber: o.dc_number,
           paymentStatus:
@@ -454,6 +510,191 @@ export function CustomerDetailsScreen() {
       alert("Failed to delete payment. Please try again.");
     } finally {
       setDeletingPayment(false);
+    }
+  };
+
+  const handleAddWriteOff = () => {
+    setWriteOffAmount("");
+    setWriteOffReason("");
+    setWriteOffAmountError("");
+    setShowWriteOffModal(true);
+  };
+
+  const handleCancelWriteOffModal = () => {
+    setShowWriteOffModal(false);
+    setWriteOffAmount("");
+    setWriteOffReason("");
+    setWriteOffAmountError("");
+  };
+
+  const handleConfirmWriteOff = async () => {
+    if (!customer) return;
+
+    const amount = parseFloat(writeOffAmount);
+    const outstanding = deliveredOutstanding;
+
+    if (!writeOffAmount || isNaN(amount) || amount <= 0) {
+      setWriteOffAmountError("Please enter a valid amount.");
+      return;
+    } else if (amount > outstanding) {
+      setWriteOffAmountError(
+        `Amount cannot exceed outstanding balance of delivered orders (₹${outstanding.toLocaleString()}).`
+      );
+      return;
+    } else {
+      setWriteOffAmountError("");
+    }
+
+    if (!writeOffReason.trim()) {
+      return;
+    }
+
+    try {
+      setSavingWriteOff(true);
+      await createCustomerWriteOff({
+        customer_id: customer.id,
+        amount,
+        reason: writeOffReason.trim(),
+      });
+
+      setShowWriteOffModal(false);
+      setSuccessMessage("Amount written off successfully");
+      setShowSuccessPopup(true);
+
+      // 🔄 Refresh everything
+      const customerData = await getCustomerFinancialById(customer.id);
+      const ordersRes = await getCustomerOrdersWithSettlement(customer.id, 1);
+      const writeOffsRes = await getCustomerWriteOffs(customer.id, 1);
+
+      setCustomer({
+        id: customerData.customer_id,
+        name: customerData.name,
+        phoneNumber: customerData.phone,
+        address: customerData.address,
+        totalSales: customerData.total_sales,
+        unpaidAmount: customerData.outstanding_amount,
+        totalWrittenOff: customerData.total_written_off,
+      });
+
+      setOrders(
+        ordersRes.data.map((o: any) => ({
+          id: o.order_id,
+          date: o.order_date,
+          deliveryDate: o.delivery_date,
+          customerName: customerData.name,
+          customerNumber: customerData.phone,
+          customerId: o.customer_id,
+          quantity: o.brick_quantity,
+          finalPrice: o.final_price,
+          amountPaid: o.total_paid,
+          unpaidAmount: o.remaining_balance,
+          writtenOffAmount: o.written_off_amount ?? 0,
+          gstNumber: o.gst_number,
+          deliveryChallanNumber: o.dc_number,
+          paymentStatus:
+            o.payment_status === "FULLY_PAID"
+              ? "Fully Paid"
+              : o.payment_status === "PARTIALLY_PAID"
+                ? "Partially Paid"
+                : "Not Paid",
+        })),
+      );
+
+      setWriteOffs(
+        writeOffsRes.data.map((w: any) => ({
+          id: w.id,
+          date: w.write_off_date,
+          amount: w.amount,
+          reason: w.reason,
+        })),
+      );
+      setWriteOffsPage(1);
+      setHasMoreWriteOffs(writeOffsRes.hasMore);
+
+      setWriteOffAmount("");
+      setWriteOffReason("");
+    } catch (e) {
+      console.error("Write-off failed", e);
+      alert("Failed to write off amount");
+    } finally {
+      setSavingWriteOff(false);
+    }
+  };
+
+  const handleDeleteWriteOff = (writeOffId: string) => {
+    setDeletingWriteOffId(writeOffId);
+    setShowDeleteWriteOffConfirm(true);
+  };
+
+  const handleConfirmDeleteWriteOff = async () => {
+    if (!deletingWriteOffId || !customer) return;
+
+    try {
+      setDeletingWriteOff(true);
+
+      await deleteCustomerWriteOff(deletingWriteOffId);
+
+      setShowDeleteWriteOffConfirm(false);
+      setDeletingWriteOffId(null);
+      setSuccessMessage("Write-off deleted successfully");
+      setShowSuccessPopup(true);
+
+      // 🔄 Refresh everything — customer financials, orders, and write-offs
+      const customerData = await getCustomerFinancialById(customer.id);
+      const ordersRes = await getCustomerOrdersWithSettlement(customer.id, 1);
+      const writeOffsRes = await getCustomerWriteOffs(customer.id, 1);
+
+      setCustomer({
+        id: customerData.customer_id,
+        name: customerData.name,
+        phoneNumber: customerData.phone,
+        address: customerData.address,
+        totalSales: customerData.total_sales,
+        unpaidAmount: customerData.outstanding_amount,
+        totalWrittenOff: customerData.total_written_off,
+      });
+
+      setOrders(
+        ordersRes.data.map((o: any) => ({
+          id: o.order_id,
+          date: o.order_date,
+          deliveryDate: o.delivery_date,
+          customerName: customerData.name,
+          customerNumber: customerData.phone,
+          customerId: o.customer_id,
+          quantity: o.brick_quantity,
+          finalPrice: o.final_price,
+          amountPaid: o.total_paid,
+          unpaidAmount: o.remaining_balance,
+          writtenOffAmount: o.written_off_amount ?? 0,
+          gstNumber: o.gst_number,
+          deliveryChallanNumber: o.dc_number,
+          paymentStatus:
+            o.payment_status === "FULLY_PAID"
+              ? "Fully Paid"
+              : o.payment_status === "PARTIALLY_PAID"
+                ? "Partially Paid"
+                : "Not Paid",
+        })),
+      );
+      setHasMoreOrders(ordersRes.hasMore);
+      setPage(1);
+
+      setWriteOffs(
+        writeOffsRes.data.map((w: any) => ({
+          id: w.id,
+          date: w.write_off_date,
+          amount: w.amount,
+          reason: w.reason,
+        })),
+      );
+      setWriteOffsPage(1);
+      setHasMoreWriteOffs(writeOffsRes.hasMore);
+    } catch (e) {
+      console.error("Failed to delete write-off", e);
+      alert("Failed to delete write-off. Please try again.");
+    } finally {
+      setDeletingWriteOff(false);
     }
   };
 
@@ -555,9 +796,10 @@ export function CustomerDetailsScreen() {
     // Fetch fresh data from API for the selected date range
     setExporting(true);
     try {
-      const [ordersData, paymentsData] = await Promise.all([
+      const [ordersData, paymentsData, writeOffsData] = await Promise.all([
         getCustomerOrdersForExport(customerId, exportFromDate, exportToDate),
         getCustomerPaymentsForExport(customerId, exportFromDate, exportToDate),
+        getCustomerWriteOffsForExport(customerId, exportFromDate, exportToDate),
       ]);
 
       // Map orders to the export format
@@ -577,7 +819,19 @@ export function CustomerDetailsScreen() {
         modeOfPayment: p.mode,
       }));
 
-      if (ordersInRange.length === 0 && paymentsInRange.length === 0) {
+      // Map write-offs to the export format
+      const writeOffsInRange = writeOffsData.map((w: any) => ({
+        id: w.id,
+        date: w.write_off_date,
+        amount: w.amount,
+        reason: w.reason,
+      }));
+
+      if (
+        ordersInRange.length === 0 &&
+        paymentsInRange.length === 0 &&
+        writeOffsInRange.length === 0
+      ) {
         setExporting(false);
         setShowExportModal(false);
         setShowNoTransactionsPopup(true);
@@ -587,6 +841,7 @@ export function CustomerDetailsScreen() {
       // 🔥 Store in state
       setExportOrders(ordersInRange);
       setExportPayments(paymentsInRange);
+      setExportWriteOffs(writeOffsInRange);
 
       // Wait for component render
       setTimeout(async () => {
@@ -660,6 +915,7 @@ export function CustomerDetailsScreen() {
 
       amountPaid: o.total_paid,
       unpaidAmount: o.remaining_balance,
+      writtenOffAmount: o.written_off_amount ?? 0,
 
       gstNumber: o.gst_number,
       deliveryChallanNumber: o.dc_number,
@@ -693,6 +949,23 @@ export function CustomerDetailsScreen() {
     ]);
     setPaymentsPage(nextPage);
     setHasMorePayments(res.hasMore);
+  };
+
+  const loadMoreWriteOffs = async () => {
+    if (!customer) return;
+    const nextPage = writeOffsPage + 1;
+    const res = await getCustomerWriteOffs(customer.id, nextPage);
+    setWriteOffs((prev) => [
+      ...prev,
+      ...res.data.map((w: any) => ({
+        id: w.id,
+        date: w.write_off_date,
+        amount: w.amount,
+        reason: w.reason,
+      })),
+    ]);
+    setWriteOffsPage(nextPage);
+    setHasMoreWriteOffs(res.hasMore);
   };
 
   const nonCashAccounts = receiverAccounts.filter(
@@ -798,6 +1071,20 @@ export function CustomerDetailsScreen() {
                   Add payment
                 </button>
               )}
+              {activeTab === "Write-offs" && (
+                <button
+                  onClick={handleAddWriteOff}
+                  disabled={deliveredOutstanding <= 0}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                    deliveredOutstanding <= 0
+                      ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                      : "bg-blue-600 text-white hover:bg-blue-700"
+                  }`}
+                >
+                  <Plus className="w-5 h-5" />
+                  Write off
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -835,7 +1122,7 @@ export function CustomerDetailsScreen() {
         </div>
 
         {/* Top Quarter - Financial Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           {/* Total Sales Card (Delivered Orders Only) */}
           <div className="bg-white rounded-lg shadow-lg p-6">
             <h3 className="text-gray-700 mb-2">Total Sales (Delivered)</h3>
@@ -853,6 +1140,14 @@ export function CustomerDetailsScreen() {
               {deliveredOutstanding > 0
                 ? `₹${deliveredOutstanding.toLocaleString()}`
                 : "₹0"}
+            </p>
+          </div>
+
+          {/* Total Written Off Card (Delivered Orders Only) */}
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h3 className="text-gray-700 mb-2">Total Written Off (Delivered)</h3>
+            <p className="text-gray-900">
+              ₹{(customer.totalWrittenOff ?? 0).toLocaleString()}
             </p>
           </div>
         </div>
@@ -887,6 +1182,19 @@ export function CustomerDetailsScreen() {
                 }`}
               >
                 Payments
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab("Write-offs");
+                  setDisplayCount(10);
+                }}
+                className={`px-6 py-4 whitespace-nowrap transition-colors ${
+                  activeTab === "Write-offs"
+                    ? "border-b-2 border-blue-600 text-blue-600"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                Write-offs
               </button>
             </div>
           </div>
@@ -990,6 +1298,11 @@ export function CustomerDetailsScreen() {
                             >
                               {order.paymentStatus}
                             </span>
+                            {order.writtenOffAmount > 0 && (
+                              <span className="ml-2 text-xs text-gray-500">
+                                (₹{order.writtenOffAmount.toLocaleString()} written off)
+                              </span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -1026,6 +1339,11 @@ export function CustomerDetailsScreen() {
                           {order.paymentStatus}
                         </span>
                       </div>
+                      {order.writtenOffAmount > 0 && (
+                        <p className="text-xs text-gray-500 mb-2">
+                          ₹{order.writtenOffAmount.toLocaleString()} written off
+                        </p>
+                      )}
                       <div className="grid grid-cols-2 gap-2 text-sm">
                         <div>
                           <p className="text-gray-500">Quantity</p>
@@ -1190,6 +1508,105 @@ export function CustomerDetailsScreen() {
                   <div className="flex justify-center pt-4">
                     <button
                       onClick={loadMorePayments}
+                      className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                    >
+                      Load More
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Write-offs Tab */}
+            {activeTab === "Write-offs" && (
+              <div className="space-y-4">
+                {/* Desktop View - Table */}
+                <div className="hidden lg:block overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-gray-700">
+                          Date
+                        </th>
+                        <th className="px-4 py-3 text-left text-gray-700">
+                          Amount
+                        </th>
+                        <th className="px-4 py-3 text-left text-gray-700">
+                          Reason
+                        </th>
+                        <th className="px-4 py-3 text-left text-gray-700">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {writeOffs.map((writeOff) => (
+                        <tr key={writeOff.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-4 text-gray-900">
+                            {new Date(writeOff.date).toLocaleDateString()}
+                          </td>
+                          <td className="px-4 py-4 text-gray-900">
+                            ₹{writeOff.amount.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-4 text-gray-600">
+                            {writeOff.reason}
+                          </td>
+                          <td className="px-4 py-4">
+                            <button
+                              onClick={() => handleDeleteWriteOff(writeOff.id)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
+                              aria-label="Delete write-off"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile View - Cards */}
+                <div className="lg:hidden space-y-4">
+                  {writeOffs.map((writeOff) => (
+                    <div
+                      key={writeOff.id}
+                      className="border border-gray-200 rounded-lg p-4"
+                    >
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <p className="text-gray-900">
+                            ₹{writeOff.amount.toLocaleString()}
+                          </p>
+                          <p className="text-gray-600 text-sm">
+                            {new Date(writeOff.date).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteWriteOff(writeOff.id)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
+                          aria-label="Delete write-off"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <p className="text-gray-500 text-sm">Reason</p>
+                      <p className="text-gray-900">{writeOff.reason}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {writeOffs.length === 0 && (
+                  <p className="text-center text-gray-500 py-8">
+                    No write-offs recorded for this customer.
+                  </p>
+                )}
+
+                {/* Load More Button */}
+                {hasMoreWriteOffs && (
+                  <div className="flex justify-center pt-4">
+                    <button
+                      onClick={loadMoreWriteOffs}
                       className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
                     >
                       Load More
@@ -1582,6 +1999,157 @@ export function CustomerDetailsScreen() {
         </div>
       )}
 
+      {/* Write Off Modal */}
+      {showWriteOffModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+            <button
+              onClick={handleCancelWriteOffModal}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              aria-label="Close modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h2 className="text-gray-900 mb-2">Write Off Amount</h2>
+            <p className="text-gray-500 text-sm mb-6">
+              Reduces outstanding amount without recording a real payment. Applied
+              to the oldest outstanding delivered orders first.
+            </p>
+
+            <div className="space-y-4">
+              {/* Amount */}
+              <div>
+                <label
+                  htmlFor="writeOffAmount"
+                  className="block text-gray-700 mb-2"
+                >
+                  Amount (₹) <span className="text-red-600">*</span>
+                </label>
+                <input
+                  id="writeOffAmount"
+                  type="number"
+                  value={writeOffAmount}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setWriteOffAmount(val);
+                    const amt = parseFloat(val);
+                    const outstanding = deliveredOutstanding;
+                    if (val && !isNaN(amt) && amt > outstanding) {
+                      setWriteOffAmountError(
+                        `Amount cannot exceed outstanding balance of delivered orders (₹${outstanding.toLocaleString()}).`
+                      );
+                    } else {
+                      setWriteOffAmountError("");
+                    }
+                  }}
+                  onWheel={(e) => e.currentTarget.blur()}
+                  placeholder="Enter amount"
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
+                    writeOffAmountError ? "border-red-500" : "border-gray-300"
+                  }`}
+                />
+                {writeOffAmountError && (
+                  <p className="text-red-600 text-sm mt-1">{writeOffAmountError}</p>
+                )}
+              </div>
+
+              {/* Reason */}
+              <div>
+                <label
+                  htmlFor="writeOffReason"
+                  className="block text-gray-700 mb-2"
+                >
+                  Reason <span className="text-red-600">*</span>
+                </label>
+                <textarea
+                  id="writeOffReason"
+                  value={writeOffReason}
+                  onChange={(e) => setWriteOffReason(e.target.value)}
+                  placeholder="e.g. Negotiated discount on delivery"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                />
+              </div>
+
+              {/* Buttons */}
+              <div className="flex gap-3 pt-4 justify-end">
+                <button
+                  onClick={handleCancelWriteOffModal}
+                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmWriteOff}
+                  disabled={
+                    savingWriteOff ||
+                    !writeOffAmount ||
+                    !writeOffReason.trim() ||
+                    !!writeOffAmountError
+                  }
+                  className={`px-6 py-2 rounded-lg transition-colors ${
+                    writeOffAmount && writeOffReason.trim() && !writeOffAmountError
+                      ? "bg-blue-600 text-white hover:bg-blue-700"
+                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  }`}
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Write-off Confirmation Modal */}
+      {showDeleteWriteOffConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+            <button
+              onClick={() => {
+                setShowDeleteWriteOffConfirm(false);
+                setDeletingWriteOffId(null);
+              }}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              aria-label="Close modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h2 className="text-gray-900 mb-4">Delete Write-off</h2>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete this write-off? This will restore
+              the outstanding amount on the associated orders. This action cannot
+              be undone.
+            </p>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowDeleteWriteOffConfirm(false);
+                  setDeletingWriteOffId(null);
+                }}
+                disabled={deletingWriteOff}
+                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDeleteWriteOff}
+                disabled={deletingWriteOff}
+                className={`px-6 py-2 rounded-lg transition-colors ${
+                  deletingWriteOff
+                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    : "bg-red-600 text-white hover:bg-red-700"
+                }`}
+              >
+                {deletingWriteOff ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Export Modal */}
       {showExportModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1708,6 +2276,7 @@ export function CustomerDetailsScreen() {
           customer={customer}
           orders={exportOrders}
           payments={exportPayments.length > 0 ? exportPayments : payments}
+          writeOffs={exportWriteOffs.length > 0 ? exportWriteOffs : writeOffs}
           fromDate={exportFromDate}
           toDate={exportToDate}
         />
