@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { CustomerLedgerExport } from "./CustomerLedgerExport";
+import {
+  CustomerLedgerExport,
+  CustomerLedgerExportHandle,
+} from "./CustomerLedgerExport";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { Customer } from "../../../../AdminApp";
@@ -66,7 +69,7 @@ export function CustomerDetailsScreen() {
   const [hasMoreOrders, setHasMoreOrders] = useState(true);
   const [loading, setLoading] = useState(true);
   const [savingCustomer, setSavingCustomer] = useState(false);
-  const exportRef = useRef<(HTMLDivElement | null)[]>([]);
+  const exportRef = useRef<CustomerLedgerExportHandle | null>(null);
 
   const [activeTab, setActiveTab] = useState<"Orders" | "Payments" | "Write-offs">("Orders");
   const [writeOffs, setWriteOffs] = useState<WriteOff[]>([]);
@@ -853,31 +856,33 @@ export function CustomerDetailsScreen() {
       // Wait for component render
       setTimeout(async () => {
         try {
-          // CustomerLedgerExport renders one self-contained div per page
-          // (rows are capped per page internally), so each page is captured
-          // and placed independently — no slicing/measuring a single tall
-          // image, which is what caused rows to split or duplicate before.
-          const pageElements = exportRef.current.filter(
-            (el): el is HTMLDivElement => el !== null,
-          );
-          if (pageElements.length === 0) return;
+          const handle = exportRef.current;
+          if (!handle) return;
 
           if (exportFormat === "Image") {
-            for (let i = 0; i < pageElements.length; i++) {
-              const canvas = await html2canvas(pageElements[i], {
-                scale: 2,
-                useCORS: true,
-              });
-              const imgData = canvas.toDataURL("image/png");
-              const link = document.createElement("a");
-              link.href = imgData;
-              link.download =
-                pageElements.length > 1
-                  ? `Arka_Invoice_${customer?.name}_page${i + 1}.png`
-                  : `Arka_Invoice_${customer?.name}.png`;
-              link.click();
-            }
+            // A PNG has no page boundary, so the single continuous render is
+            // captured as one image — no row-capping needed here at all.
+            if (!handle.flatRef) return;
+
+            const canvas = await html2canvas(handle.flatRef, {
+              scale: 2,
+              useCORS: true,
+            });
+            const imgData = canvas.toDataURL("image/png");
+            const link = document.createElement("a");
+            link.href = imgData;
+            link.download = `Arka_Invoice_${customer?.name}.png`;
+            link.click();
           } else {
+            // PDF pages have a fixed height, so CustomerLedgerExport renders
+            // one self-contained div per page (rows capped per page) —
+            // each page is captured and placed independently, avoiding any
+            // slicing/measuring of a single tall image.
+            const pageElements = handle.pageRefs.filter(
+              (el): el is HTMLDivElement => el !== null,
+            );
+            if (pageElements.length === 0) return;
+
             const pdf = new jsPDF("p", "mm", "a4");
             const pdfWidth = pdf.internal.pageSize.getWidth();
 
