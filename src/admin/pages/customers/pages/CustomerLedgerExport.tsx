@@ -57,6 +57,25 @@ const totalWriteOffs = (writeOffs ?? []).reduce(
 
     const outstanding = totalOrders - totalPayments - totalWriteOffs;
 
+    // Payments and write-offs both reduce what the customer owes, so they're
+    // shown together in one chronological "Payments" table rather than two.
+    const paymentLedger = [
+      ...(payments ?? []).map((p) => ({
+        id: p.id,
+        date: p.date,
+        mode: p.modeOfPayment,
+        amount: p.amount,
+      })),
+      ...(writeOffs ?? []).map((w) => ({
+        id: w.id,
+        date: w.date,
+        mode: "Write-off",
+        amount: w.amount,
+      })),
+    ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    const totalPaymentLedger = totalPayments + totalWriteOffs;
+
     return (
       <div
         ref={ref}
@@ -147,50 +166,21 @@ const totalWriteOffs = (writeOffs ?? []).reduce(
                 </tr>
               </thead>
               <tbody>
-                {payments.map((p) => (
+                {paymentLedger.map((p) => (
                   <tr key={p.id}>
                     <td style={{ border: '1px solid #9b9c9c', padding: 8 }}>{new Date(p.date).toLocaleDateString()}</td>
-                    <td style={{ border: '1px solid #9b9c9c', padding: 8 }}>{p.modeOfPayment}</td>
+                    <td style={{ border: '1px solid #9b9c9c', padding: 8 }}>{p.mode}</td>
                     <td style={{ border: '1px solid #9b9c9c', padding: 8, textAlign: 'right' }}>₹{p.amount.toLocaleString()}</td>
                   </tr>
                 ))}
                 <tr style={{ background: '#f5f5f5' }}>
                   <td colSpan={2} style={{ border: '1px solid #a6110b', padding: 8, textAlign: 'right', color: '#a6110b' }}><strong>Total</strong></td>
-                  <td style={{ border: '1px solid #a6110b', padding: 8, textAlign: 'right', color: '#a6110b' }}><strong>₹{totalPayments.toLocaleString()}</strong></td>
+                  <td style={{ border: '1px solid #a6110b', padding: 8, textAlign: 'right', color: '#a6110b' }}><strong>₹{totalPaymentLedger.toLocaleString()}</strong></td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
-
-        {/* Write-offs (only shown when the customer has any in range) */}
-        {(writeOffs ?? []).length > 0 && (
-          <div style={{ marginTop: 8 }}>
-            <h3 style={{ marginBottom: 8, color: '#6e6e6d' }}>Write-offs / Discounts</h3>
-            <table width="100%" style={{ borderCollapse: "collapse", marginBottom: 16, fontSize: 15 }}>
-              <thead>
-                <tr style={{ background: '#9b9c9c' }}>
-                  <th style={{ border: '1px solid #a6110b', padding: 8, color: '#fff' }}>Date</th>
-                  <th style={{ border: '1px solid #a6110b', padding: 8, color: '#fff' }}>Reason</th>
-                  <th style={{ border: '1px solid #a6110b', padding: 8, textAlign: 'right', color: '#fff' }}>Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(writeOffs ?? []).map((w) => (
-                  <tr key={w.id}>
-                    <td style={{ border: '1px solid #9b9c9c', padding: 8 }}>{new Date(w.date).toLocaleDateString()}</td>
-                    <td style={{ border: '1px solid #9b9c9c', padding: 8 }}>{w.reason}</td>
-                    <td style={{ border: '1px solid #9b9c9c', padding: 8, textAlign: 'right' }}>₹{w.amount.toLocaleString()}</td>
-                  </tr>
-                ))}
-                <tr style={{ background: '#f5f5f5' }}>
-                  <td colSpan={2} style={{ border: '1px solid #a6110b', padding: 8, textAlign: 'right', color: '#a6110b' }}><strong>Total</strong></td>
-                  <td style={{ border: '1px solid #a6110b', padding: 8, textAlign: 'right', color: '#a6110b' }}><strong>₹{totalWriteOffs.toLocaleString()}</strong></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        )}
 
         {/* Final Outstanding */}
         <div style={{ marginTop: "40px", textAlign: "right" }}>
