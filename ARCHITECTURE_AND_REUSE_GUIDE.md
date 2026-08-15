@@ -367,6 +367,8 @@ CreateOrderScreen
 - UI: "Write-offs" tab next to Orders/Payments, with a "Write off" action (amount + required reason) and per-entry delete/undo.
 - **Export (`CustomerLedgerExport`):** write-offs are *not* a separate table in the exported ledger — they're merged into the existing Payments table (sorted chronologically alongside real payments, with `Mode` shown as "Write-off"), since both reduce what the customer owes and the customer-facing ledger only needs to reconcile, not distinguish cash source. The underlying data still comes from the separate `customer_writeoffs`/`customer_writeoffs_view` (via `getCustomerWriteOffsForExport`) — only the *presentation* is merged, in `CustomerLedgerExport.tsx`.
 
+**Order location:** `customer_order_settlement` also exposes `orders.location` (appended at the end, same safe-view-evolution pattern as `written_off_amount`) — shown as its own "Location" column in `CustomerDetailsScreen`'s Orders table/cards, and in `CustomerLedgerExport`'s Orders table it *replaces* the "Order Date" column (the exported ledger shows Location + Delivered Date, not Order Date + Delivered Date).
+
 > ⚠️ **Gotcha — totals vs. paginated lists:** `CustomerDetailsScreen`'s "Total Sales (Delivered)" and "Outstanding Amount (Delivered)" cards must be sourced from `customer.totalSales` / `customer.unpaidAmount` (from `getCustomerFinancialById`, backed by the `customer_financials` view — see [10.2 Views](#102-views)), **not** by summing the `orders` array in component state. `orders` is paginated via `getCustomerOrdersWithSettlement` (20/page, "Load More"), so summing it only reflects whatever pages have been fetched so far and under-reports until every page is loaded. This exact bug shipped once (totals appeared to "fix themselves" after clicking Load More to the end) — always use the financials-view totals for whole-customer aggregates, and only use the `orders` array for rendering the order list itself.
 
 ---
@@ -1496,7 +1498,8 @@ select
   end as payment_status,
   o.delivered,
 
-  coalesce(o.written_off_amount, 0) as written_off_amount
+  coalesce(o.written_off_amount, 0) as written_off_amount,
+  o.location
 from orders o;
 
 ## Customer Write-offs View

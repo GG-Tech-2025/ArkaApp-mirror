@@ -739,7 +739,8 @@ export async function getCustomerOrdersWithSettlement(
         remaining_balance,
         payment_status,
         delivered,
-        written_off_amount
+        written_off_amount,
+        location
       `,
       { count: "exact" }
     )
@@ -3383,7 +3384,8 @@ export async function getCustomerOrdersForExport(
       total_paid,
       remaining_balance,
       payment_status,
-      delivered
+      delivered,
+      location
     `)
     .eq("customer_id", customerId)
     .eq("delivered", true)

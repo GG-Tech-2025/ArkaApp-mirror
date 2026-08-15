@@ -56,6 +56,7 @@ export function CustomerDetailsScreen() {
     amountPaid: number;
     unpaidAmount: number;
     writtenOffAmount: number;
+    location?: string;
     gstNumber?: string;
     deliveryChallanNumber?: string;
     paymentStatus: string;
@@ -65,7 +66,7 @@ export function CustomerDetailsScreen() {
   const [hasMoreOrders, setHasMoreOrders] = useState(true);
   const [loading, setLoading] = useState(true);
   const [savingCustomer, setSavingCustomer] = useState(false);
-  const exportRef = useRef<HTMLDivElement>(null);
+  const exportRef = useRef<(HTMLDivElement | null)[]>([]);
 
   const [activeTab, setActiveTab] = useState<"Orders" | "Payments" | "Write-offs">("Orders");
   const [writeOffs, setWriteOffs] = useState<WriteOff[]>([]);
@@ -281,6 +282,7 @@ export function CustomerDetailsScreen() {
 
           gstNumber: o.gst_number,
           deliveryChallanNumber: o.dc_number,
+          location: o.location,
 
           paymentStatus:
             o.payment_status === "FULLY_PAID"
@@ -401,6 +403,7 @@ export function CustomerDetailsScreen() {
           writtenOffAmount: o.written_off_amount ?? 0,
           gstNumber: o.gst_number,
           deliveryChallanNumber: o.dc_number,
+          location: o.location,
           paymentStatus:
             o.payment_status === "FULLY_PAID"
               ? "Fully Paid"
@@ -482,6 +485,7 @@ export function CustomerDetailsScreen() {
           writtenOffAmount: o.written_off_amount ?? 0,
           gstNumber: o.gst_number,
           deliveryChallanNumber: o.dc_number,
+          location: o.location,
           paymentStatus:
             o.payment_status === "FULLY_PAID"
               ? "Fully Paid"
@@ -591,6 +595,7 @@ export function CustomerDetailsScreen() {
           writtenOffAmount: o.written_off_amount ?? 0,
           gstNumber: o.gst_number,
           deliveryChallanNumber: o.dc_number,
+          location: o.location,
           paymentStatus:
             o.payment_status === "FULLY_PAID"
               ? "Fully Paid"
@@ -669,6 +674,7 @@ export function CustomerDetailsScreen() {
           writtenOffAmount: o.written_off_amount ?? 0,
           gstNumber: o.gst_number,
           deliveryChallanNumber: o.dc_number,
+          location: o.location,
           paymentStatus:
             o.payment_status === "FULLY_PAID"
               ? "Fully Paid"
@@ -807,6 +813,7 @@ export function CustomerDetailsScreen() {
         id: o.order_id,
         date: o.order_date,
         deliveryDate: o.delivery_date,
+        location: o.location,
         quantity: o.brick_quantity,
         finalPrice: o.final_price,
       }));
@@ -846,28 +853,47 @@ export function CustomerDetailsScreen() {
       // Wait for component render
       setTimeout(async () => {
         try {
-          const element = exportRef.current;
-          if (!element) return;
-
-          const canvas = await html2canvas(element, {
-            scale: 2,
-            useCORS: true,
-          });
-
-          const imgData = canvas.toDataURL("image/png");
+          // CustomerLedgerExport renders one self-contained div per page
+          // (rows are capped per page internally), so each page is captured
+          // and placed independently — no slicing/measuring a single tall
+          // image, which is what caused rows to split or duplicate before.
+          const pageElements = exportRef.current.filter(
+            (el): el is HTMLDivElement => el !== null,
+          );
+          if (pageElements.length === 0) return;
 
           if (exportFormat === "Image") {
-            const link = document.createElement("a");
-            link.href = imgData;
-            link.download = `Arka_Invoice_${customer?.name}.png`;
-            link.click();
+            for (let i = 0; i < pageElements.length; i++) {
+              const canvas = await html2canvas(pageElements[i], {
+                scale: 2,
+                useCORS: true,
+              });
+              const imgData = canvas.toDataURL("image/png");
+              const link = document.createElement("a");
+              link.href = imgData;
+              link.download =
+                pageElements.length > 1
+                  ? `Arka_Invoice_${customer?.name}_page${i + 1}.png`
+                  : `Arka_Invoice_${customer?.name}.png`;
+              link.click();
+            }
           } else {
             const pdf = new jsPDF("p", "mm", "a4");
-            const imgProps = pdf.getImageProperties(imgData);
             const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
 
-            pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+            for (let i = 0; i < pageElements.length; i++) {
+              const canvas = await html2canvas(pageElements[i], {
+                scale: 2,
+                useCORS: true,
+              });
+              const imgData = canvas.toDataURL("image/png");
+              const imgProps = pdf.getImageProperties(imgData);
+              const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+              if (i > 0) pdf.addPage();
+              pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, imgHeight);
+            }
+
             pdf.save(`Arka_Invoice_${customer?.name}.pdf`);
           }
 
@@ -919,6 +945,7 @@ export function CustomerDetailsScreen() {
 
       gstNumber: o.gst_number,
       deliveryChallanNumber: o.dc_number,
+      location: o.location,
 
       paymentStatus:
         o.payment_status === "FULLY_PAID"
@@ -1219,6 +1246,9 @@ export function CustomerDetailsScreen() {
                           Delivery Date
                         </th>
                         <th className="px-4 py-3 text-left text-gray-700">
+                          Location
+                        </th>
+                        <th className="px-4 py-3 text-left text-gray-700">
                           Customer Name
                         </th>
                         <th className="px-4 py-3 text-left text-gray-700">
@@ -1262,6 +1292,9 @@ export function CustomerDetailsScreen() {
                                   order.deliveryDate,
                                 ).toLocaleDateString()
                               : "-"}
+                          </td>
+                          <td className="px-4 py-4 text-gray-600">
+                            {order.location || "-"}
                           </td>
                           <td className="px-4 py-4 text-gray-900">
                             {customer.name}
@@ -1360,6 +1393,12 @@ export function CustomerDetailsScreen() {
                             {typeof order.finalPrice === "number"
                               ? order.finalPrice.toLocaleString()
                               : "0"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">Location</p>
+                          <p className="text-gray-900">
+                            {order.location || "-"}
                           </p>
                         </div>
                       </div>
