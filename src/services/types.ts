@@ -150,6 +150,11 @@ export interface CreateCustomerPaymentInput {
   sender_account_no?: string;        // ✅ text
   receiver_account_id?: string;      // ✅ uuid, optional for Cash
 }
+export interface CreateCustomerWriteOffInput {
+  customer_id: string;
+  amount: number;
+  reason: string;
+}
 export interface CreateOrderInput {
   customer_id: string;
   order_date: string;        // YYYY-MM-DD

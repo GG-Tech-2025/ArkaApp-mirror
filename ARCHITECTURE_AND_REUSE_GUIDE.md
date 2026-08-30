@@ -342,7 +342,7 @@ CreateOrderScreen
 | Screen | Purpose |
 |--------|---------|
 | `CustomerManagementScreen` | Customer directory with search, financial totals |
-| `CustomerDetailsScreen` | Profile, order history, payment history |
+| `CustomerDetailsScreen` | Profile, order history, payment history, write-offs |
 
 **Service Functions:**
 - `getCustomersWithFinancials(page, search)` — customers + balance due
@@ -351,11 +351,31 @@ CreateOrderScreen
 - `getCustomerOrdersWithSettlement(customerId, page)` — orders + payment status
 - `createCustomer(input)` / `updateCustomer(id, input)` — CRUD
 - `searchCustomers(searchTerm)` — used in order creation
-- `getCustomerOrdersForExport(customerId)` / `getCustomerPaymentsForExport(customerId)`
+- `getCustomerOrdersForExport(customerId)` / `getCustomerPaymentsForExport(customerId)` / `getCustomerWriteOffsForExport(customerId)`
 - `createCustomerPayment(input)` / `deleteCustomerPayment(paymentId)`
 - `getCustomerPayments(customerId, page)`
+- `createCustomerWriteOff(input)` / `deleteCustomerWriteOff(writeOffId)` — write off part/all of a customer's outstanding balance (e.g. a post-delivery negotiated discount)
+- `getCustomerWriteOffs(customerId, page)`
 
-**DB Tables:** `customers`, `orders`, `customer_payments`, `accounts`
+**DB Tables:** `customers`, `orders`, `customer_payments`, `customer_writeoffs`, `accounts`
+
+**Write-offs (post-delivery discounts):** Sometimes a customer negotiates a price reduction after delivery (e.g. billed ₹20,500, customer pays ₹20,000 and the remaining ₹500 is forgiven). A write-off closes that gap in `Outstanding Amount` **without** recording it as a real payment — it never touches `orders.amount_paid`, `customer_payments`, or account balances, so cash-flow/reconciliation figures stay accurate. It's implemented as a fully parallel pipeline to the payment one:
+- `customer_writeoffs(customer_id, amount, reason, write_off_date)` — mirrors `customer_payments`: customer-level (not tied to a specific order), reason required, no per-order allocation stored (the payments side doesn't store one either — see [11.1](#111-functions)).
+- `orders.written_off_amount` — separate column from `amount_paid`, so it's immune to `reverse_customer_payment`'s reset-and-replay of `amount_paid` when an unrelated payment is deleted.
+- `apply_customer_writeoff_fifo` / `reverse_customer_writeoff` RPCs — line-for-line mirrors of `apply_customer_payment_fifo` / `reverse_customer_payment`, oldest-order-first, but writing `written_off_amount` instead of `amount_paid`.
+- `remaining_balance` / `outstanding_amount` subtract write-offs; `total_sales` is untouched (a write-off closes the receivable, it does not rewrite billed revenue).
+- UI: "Write-offs" tab next to Orders/Payments, with a "Write off" action (amount + required reason) and per-entry delete/undo.
+- **Export (`CustomerLedgerExport`):** write-offs are *not* a separate table in the exported ledger — they're merged into the existing Payments table (sorted chronologically alongside real payments, with `Mode` shown as "Write-off"), since both reduce what the customer owes and the customer-facing ledger only needs to reconcile, not distinguish cash source. The underlying data still comes from the separate `customer_writeoffs`/`customer_writeoffs_view` (via `getCustomerWriteOffsForExport`) — only the *presentation* is merged, in `CustomerLedgerExport.tsx`.
+
+**Order location:** `customer_order_settlement` also exposes `orders.location` (appended at the end, same safe-view-evolution pattern as `written_off_amount`) — shown as its own "Location" column in `CustomerDetailsScreen`'s Orders table/cards, and in `CustomerLedgerExport`'s Orders table it *replaces* the "Order Date" column (the exported ledger shows Location + Delivered Date, not Order Date + Delivered Date).
+
+> ⚠️ **Gotcha — PDF pagination for large date ranges:** `html2canvas` + `jsPDF`'s `addImage` does not auto-paginate. Placing one tall captured image on a single A4 page silently clips everything past one page's height — this shipped once (large date ranges just lost data off the bottom). Slicing that one image by pixel offset (even snapping to measured `<tr>` boundaries) doesn't work either: html2canvas doesn't reproduce the live DOM's layout with perfect pixel fidelity, so measured row boundaries drift from the rasterized image, causing rows to be duplicated or split anyway. The fix that actually works: `CustomerLedgerExport` renders content twice —
+> - **`flatRef`** — one continuous, unpaginated div (all rows, no chunking) used for **Image** export, since a PNG has no page boundary and never had this problem in the first place.
+> - **`pageRefs`** — an array of self-contained page divs, `orders`/the merged payment ledger pre-chunked into `ORDERS_ROWS_PER_PAGE`/`PAYMENTS_ROWS_PER_PAGE` (18) rows each, used for **PDF** export. Each page div is captured with its own `html2canvas` call and added as its own full PDF page at natural size — no slicing, no offset math, so nothing can overflow or duplicate.
+>
+> If page content still looks cramped or too sparse, tune the row-cap constants in `CustomerLedgerExport.tsx` rather than reintroducing any form of image-slicing.
+>
+> **`VendorLedgerExport`** (`admin/pages/vendors/pages/VendorLedgerExport.tsx`, used by `VendorLedgerScreen.tsx`) had the exact same single-`addImage` bug and got the identical `flatRef`/`pageRefs` treatment (`PROCUREMENTS_ROWS_PER_PAGE`/`PAYMENTS_ROWS_PER_PAGE`, also 18). Any *other* future ledger-style PDF export in this app (built the same html2canvas+jsPDF way) needs this same split — check for a bare `pdf.addImage(imgData, ..., 0, 0, pdfWidth, pdfHeight)` with no pagination as the tell.
 
 > ⚠️ **Gotcha — totals vs. paginated lists:** `CustomerDetailsScreen`'s "Total Sales (Delivered)" and "Outstanding Amount (Delivered)" cards must be sourced from `customer.totalSales` / `customer.unpaidAmount` (from `getCustomerFinancialById`, backed by the `customer_financials` view — see [10.2 Views](#102-views)), **not** by summing the `orders` array in component state. `orders` is paginated via `getCustomerOrdersWithSettlement` (20/page, "Load More"), so summing it only reflects whatever pages have been fetched so far and under-reports until every page is loaded. This exact bug shipped once (totals appeared to "fix themselves" after clicking Load More to the end) — always use the financials-view totals for whole-customer aggregates, and only use the `orders` array for rendering the order list itself.
 
@@ -1003,6 +1023,19 @@ create table public.customer_payments (
   constraint customer_payments_receiver_account_id_fkey foreign KEY (receiver_account_id) references accounts (id)
 ) TABLESPACE pg_default;
 
+## Customer Write-offs
+create table public.customer_writeoffs (
+  id uuid not null default gen_random_uuid (),
+  customer_id uuid not null,
+  amount numeric not null,
+  reason text not null,
+  write_off_date date not null default current_date,
+  created_at timestamp with time zone not null default now(),
+  constraint customer_writeoffs_pkey primary key (id),
+  constraint customer_writeoffs_amount_check check (amount > 0),
+  constraint customer_writeoffs_customer_id_fkey foreign KEY (customer_id) references customers (id)
+) TABLESPACE pg_default;
+
 ## Customer
 create table public.customers (
   id uuid not null default gen_random_uuid (),
@@ -1170,6 +1203,7 @@ create table public.orders (
   location text null,
   payment_status public.payment_status null default 'NOT_PAID'::payment_status,
   amount_paid numeric null default 0,
+  written_off_amount numeric not null default 0,
   gst_number character varying(15) null,
   dc_number text null,
   delivered boolean null default false,
@@ -1416,7 +1450,7 @@ group by p.customer_id;
 
 ## Customer Financials
 
-> `total_sales` / `outstanding_amount` here are aggregated server-side over **all** delivered orders for the customer — this is the correct source for any "whole customer" total (used correctly by `CustomerManagementScreen`'s Unpaid Amount, and by `CustomerDetailsScreen` via `getCustomerFinancialById`). Do not recompute these totals client-side by summing a paginated orders list (see [6.4 Customers Module](#64-customers-module) gotcha).
+> `total_sales` / `outstanding_amount` here are aggregated server-side over **all** delivered orders for the customer — this is the correct source for any "whole customer" total (used correctly by `CustomerManagementScreen`'s Unpaid Amount, and by `CustomerDetailsScreen` via `getCustomerFinancialById`). Do not recompute these totals client-side by summing a paginated orders list (see [6.4 Customers Module](#64-customers-module) gotcha). `outstanding_amount` also subtracts `total_written_off` (write-offs — see [6.4](#64-customers-module)); `total_sales` is deliberately untouched by write-offs, since a write-off closes the receivable, it doesn't rewrite billed revenue. New columns (`total_written_off`) are appended at the end so `CREATE OR REPLACE VIEW` doesn't need to touch existing column order/types.
 
 create or replace view customer_financials as
 select
@@ -1430,9 +1464,11 @@ select
   -- 🔥 total_paid now from orders (SINGLE SOURCE OF TRUTH)
   coalesce(o.total_paid_from_orders, 0) as total_paid,
 
-  coalesce(o.total_sales, 0) 
-  - coalesce(o.total_paid_from_orders, 0) 
-  as outstanding_amount
+  (coalesce(o.total_sales, 0)
+    - coalesce(o.total_paid_from_orders, 0)
+    - coalesce(o.total_written_off, 0)) as outstanding_amount,
+
+  coalesce(o.total_written_off, 0) as total_written_off
 
 from customers c
 
@@ -1440,7 +1476,8 @@ left join (
   select
     customer_id,
     sum(final_price) as total_sales,
-    sum(coalesce(amount_paid, 0)) as total_paid_from_orders
+    sum(coalesce(amount_paid, 0)) as total_paid_from_orders,
+    sum(coalesce(written_off_amount, 0)) as total_written_off
   from orders
   WHERE delivered = true 
   group by customer_id
@@ -1460,15 +1497,33 @@ select
 
 
   coalesce(o.amount_paid, 0) as total_paid,
-  (o.final_price - coalesce(o.amount_paid, 0)) as remaining_balance,
+  (o.final_price - coalesce(o.amount_paid, 0) - coalesce(o.written_off_amount, 0)) as remaining_balance,
 
   case
-    when coalesce(o.amount_paid, 0) = 0 then 'NOT_PAID'
-    when coalesce(o.amount_paid, 0) >= o.final_price then 'FULLY_PAID'
+    when coalesce(o.amount_paid, 0) + coalesce(o.written_off_amount, 0) = 0 then 'NOT_PAID'
+    when coalesce(o.amount_paid, 0) + coalesce(o.written_off_amount, 0) >= o.final_price then 'FULLY_PAID'
     else 'PARTIALLY_PAID'
   end as payment_status,
-  o.delivered
+  o.delivered,
+
+  coalesce(o.written_off_amount, 0) as written_off_amount,
+  o.location
 from orders o;
+
+## Customer Write-offs View
+
+> Mirrors `customer_payments_view` in shape/purpose — used by `getCustomerWriteOffs` (listing/undo) and `getCustomerWriteOffsForExport` (ledger export, date-filtered by `write_off_date`).
+
+create or replace view customer_writeoffs_view as
+select
+  w.id,
+  w.customer_id,
+  w.amount,
+  w.reason,
+  w.write_off_date,
+  w.created_at
+from customer_writeoffs w
+order by w.write_off_date desc, w.created_at desc;
 
 
 ## Vendor Procurement Settlement
@@ -1643,6 +1698,9 @@ begin
 end;
 
 ## Reverse Customer Payment
+
+> Only ever resets/replays `amount_paid` (step 4/5 below) — `written_off_amount` is a separate column untouched by this function, which is exactly why write-offs survive a payment being deleted (see [6.4 Customers Module](#64-customers-module)). Step 6's status CASE does include `written_off_amount` so status stays correct if the order also has a write-off.
+
 CREATE OR REPLACE FUNCTION reverse_customer_payment(
   p_payment_id UUID
 )
@@ -1695,21 +1753,21 @@ BEGIN
     v_remaining := p.amount;
 
     FOR o IN
-      SELECT id, final_price, COALESCE(amount_paid, 0) AS paid
+      SELECT id, final_price, COALESCE(amount_paid, 0) AS paid, COALESCE(written_off_amount, 0) AS written_off
       FROM orders
       WHERE customer_id = v_customer_id
         AND delivered = true
-        AND final_price > COALESCE(amount_paid, 0)
+        AND final_price > COALESCE(amount_paid, 0) + COALESCE(written_off_amount, 0)
       ORDER BY order_date ASC
     LOOP
       EXIT WHEN v_remaining <= 0;
 
-      IF v_remaining >= (o.final_price - o.paid) THEN
+      IF v_remaining >= (o.final_price - o.paid - o.written_off) THEN
         UPDATE orders
-        SET amount_paid = final_price
+        SET amount_paid = final_price - written_off_amount
         WHERE id = o.id;
 
-        v_remaining := v_remaining - (o.final_price - o.paid);
+        v_remaining := v_remaining - (o.final_price - o.paid - o.written_off);
       ELSE
         UPDATE orders
         SET amount_paid = o.paid + v_remaining
@@ -1724,9 +1782,9 @@ BEGIN
   UPDATE orders
   SET payment_status =
     CASE
-      WHEN COALESCE(amount_paid, 0) = 0
+      WHEN COALESCE(amount_paid, 0) + COALESCE(written_off_amount, 0) = 0
         THEN 'NOT_PAID'::payment_status
-      WHEN amount_paid < final_price
+      WHEN COALESCE(amount_paid, 0) + COALESCE(written_off_amount, 0) < final_price
         THEN 'PARTIALLY_PAID'::payment_status
       ELSE
         'FULLY_PAID'::payment_status
@@ -1734,6 +1792,7 @@ BEGIN
   WHERE customer_id = v_customer_id
     AND delivered = true;
 END;
+$$;
 
 ## Reverse Vendor Payment
 CREATE OR REPLACE FUNCTION reverse_vendor_payment(
@@ -2278,6 +2337,9 @@ left join attendance_summary a
 
 
 ## Apply Customer Payment FIFO
+
+> ⚠️ The eligibility filter and remaining-room math must include `written_off_amount`, not just the final status recompute — an earlier version of this fix only updated the status CASE and left the loop using `amount_paid` alone, which let a real payment get misallocated onto an order already fully/partially covered by a write-off instead of rolling to the next genuinely outstanding order (caught and fixed before commit — see [6.4 Customers Module](#64-customers-module)).
+
 CREATE OR REPLACE FUNCTION apply_customer_payment_fifo(
   p_customer_id uuid,
   p_payment_id uuid,
@@ -2295,21 +2357,22 @@ BEGIN
     SELECT
       id,
       final_price,
-      COALESCE(amount_paid, 0) AS paid
+      COALESCE(amount_paid, 0) AS paid,
+      COALESCE(written_off_amount, 0) AS written_off
     FROM orders
     WHERE customer_id = p_customer_id
       AND delivered = true
-      AND final_price > COALESCE(amount_paid, 0)
+      AND final_price > COALESCE(amount_paid, 0) + COALESCE(written_off_amount, 0)
     ORDER BY order_date ASC
   LOOP
     EXIT WHEN remaining_amount <= 0;
 
-    IF remaining_amount >= (o.final_price - o.paid) THEN
+    IF remaining_amount >= (o.final_price - o.paid - o.written_off) THEN
       UPDATE orders
-      SET amount_paid = final_price
+      SET amount_paid = final_price - written_off_amount
       WHERE id = o.id;
 
-      remaining_amount := remaining_amount - (o.final_price - o.paid);
+      remaining_amount := remaining_amount - (o.final_price - o.paid - o.written_off);
     ELSE
       UPDATE orders
       SET amount_paid = o.paid + remaining_amount
@@ -2320,18 +2383,161 @@ BEGIN
   END LOOP;
 
   -- 🔥 Recalculate payment_status (ENUM SAFE)
+  -- Includes written_off_amount so status stays correct when a write-off already
+  -- covers part of the order. Additive only — written_off_amount defaults to 0.
   UPDATE orders
   SET payment_status =
     CASE
-      WHEN COALESCE(amount_paid, 0) = 0
+      WHEN COALESCE(amount_paid, 0) + COALESCE(written_off_amount, 0) = 0
         THEN 'NOT_PAID'::payment_status
-      WHEN amount_paid < final_price
+      WHEN COALESCE(amount_paid, 0) + COALESCE(written_off_amount, 0) < final_price
         THEN 'PARTIALLY_PAID'::payment_status
       ELSE
         'FULLY_PAID'::payment_status
     END
   WHERE customer_id = p_customer_id
   AND delivered = true;                     
+END;
+$$;
+
+## Apply Customer Write-off FIFO
+
+> Line-for-line mirror of `apply_customer_payment_fifo` above, but writes `written_off_amount` instead of `amount_paid` — never touches `customer_payments`, `accounts`, or the payment RPCs. Oldest outstanding delivered order first, same as payments (see [6.4 Customers Module](#64-customers-module) for why customer-level FIFO rather than per-order).
+
+CREATE OR REPLACE FUNCTION apply_customer_writeoff_fifo(
+  p_customer_id uuid,
+  p_writeoff_id uuid,
+  p_amount numeric
+)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  remaining_amount numeric := p_amount;
+  o RECORD;
+BEGIN
+  FOR o IN
+    SELECT
+      id,
+      final_price,
+      COALESCE(amount_paid, 0) + COALESCE(written_off_amount, 0) AS settled
+    FROM orders
+    WHERE customer_id = p_customer_id
+      AND delivered = true
+      AND final_price > COALESCE(amount_paid, 0) + COALESCE(written_off_amount, 0)
+    ORDER BY order_date ASC
+  LOOP
+    EXIT WHEN remaining_amount <= 0;
+
+    IF remaining_amount >= (o.final_price - o.settled) THEN
+      UPDATE orders
+      SET written_off_amount = COALESCE(written_off_amount, 0) + (o.final_price - o.settled)
+      WHERE id = o.id;
+
+      remaining_amount := remaining_amount - (o.final_price - o.settled);
+    ELSE
+      UPDATE orders
+      SET written_off_amount = COALESCE(written_off_amount, 0) + remaining_amount
+      WHERE id = o.id;
+
+      remaining_amount := 0;
+    END IF;
+  END LOOP;
+
+  UPDATE orders
+  SET payment_status =
+    CASE
+      WHEN COALESCE(amount_paid, 0) + COALESCE(written_off_amount, 0) = 0
+        THEN 'NOT_PAID'::payment_status
+      WHEN COALESCE(amount_paid, 0) + COALESCE(written_off_amount, 0) < final_price
+        THEN 'PARTIALLY_PAID'::payment_status
+      ELSE
+        'FULLY_PAID'::payment_status
+    END
+  WHERE customer_id = p_customer_id
+    AND delivered = true;
+END;
+$$;
+
+## Reverse Customer Write-off
+
+> Mirrors `reverse_customer_payment` below, but only ever resets/replays `written_off_amount` — never touches `amount_paid` or `accounts` (no cash moved, so nothing to roll back there).
+
+CREATE OR REPLACE FUNCTION reverse_customer_writeoff(
+  p_writeoff_id uuid
+)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_customer_id uuid;
+  v_remaining numeric;
+  o RECORD;
+  w RECORD;
+BEGIN
+  SELECT customer_id
+  INTO v_customer_id
+  FROM customer_writeoffs
+  WHERE id = p_writeoff_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Write-off not found: %', p_writeoff_id;
+  END IF;
+
+  DELETE FROM customer_writeoffs
+  WHERE id = p_writeoff_id;
+
+  UPDATE orders
+  SET written_off_amount = 0
+  WHERE customer_id = v_customer_id
+    AND delivered = true;
+
+  FOR w IN
+    SELECT id, amount
+    FROM customer_writeoffs
+    WHERE customer_id = v_customer_id
+    ORDER BY write_off_date ASC, created_at ASC
+  LOOP
+    v_remaining := w.amount;
+
+    FOR o IN
+      SELECT id, final_price, COALESCE(amount_paid, 0) + COALESCE(written_off_amount, 0) AS settled
+      FROM orders
+      WHERE customer_id = v_customer_id
+        AND delivered = true
+        AND final_price > COALESCE(amount_paid, 0) + COALESCE(written_off_amount, 0)
+      ORDER BY order_date ASC
+    LOOP
+      EXIT WHEN v_remaining <= 0;
+
+      IF v_remaining >= (o.final_price - o.settled) THEN
+        UPDATE orders
+        SET written_off_amount = COALESCE(written_off_amount, 0) + (o.final_price - o.settled)
+        WHERE id = o.id;
+
+        v_remaining := v_remaining - (o.final_price - o.settled);
+      ELSE
+        UPDATE orders
+        SET written_off_amount = COALESCE(written_off_amount, 0) + v_remaining
+        WHERE id = o.id;
+
+        v_remaining := 0;
+      END IF;
+    END LOOP;
+  END LOOP;
+
+  UPDATE orders
+  SET payment_status =
+    CASE
+      WHEN COALESCE(amount_paid, 0) + COALESCE(written_off_amount, 0) = 0
+        THEN 'NOT_PAID'::payment_status
+      WHEN COALESCE(amount_paid, 0) + COALESCE(written_off_amount, 0) < final_price
+        THEN 'PARTIALLY_PAID'::payment_status
+      ELSE
+        'FULLY_PAID'::payment_status
+    END
+  WHERE customer_id = v_customer_id
+    AND delivered = true;
 END;
 
 

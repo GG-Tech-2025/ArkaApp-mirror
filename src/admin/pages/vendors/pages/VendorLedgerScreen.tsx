@@ -2,7 +2,7 @@ import  { useState, useRef } from 'react';
 import { ArrowLeft, Trash2, X, Filter } from 'lucide-react';
 import { Popup } from '../../../../components/Popup';
 import { useVendorLedger } from '../../../hooks/useVendorLedger';
-import { VendorLedgerExport } from './VendorLedgerExport';
+import { VendorLedgerExport, VendorLedgerExportHandle } from './VendorLedgerExport';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { getVendorProcurementsForExport, getVendorPaymentsForExport } from '../../../../services/middleware.service';
@@ -43,7 +43,7 @@ export function VendorLedgerScreen() {
     goBack,
     goTo,
   } = useVendorLedger();
-  const exportRef = useRef<HTMLDivElement>(null);
+  const exportRef = useRef<VendorLedgerExportHandle | null>(null);
 
   const [showPopup, setShowPopup] = useState(false);
   const [popupMessage, setPopupMessage] = useState('');
@@ -179,28 +179,49 @@ export function VendorLedgerScreen() {
       // Wait for component render
       setTimeout(async () => {
         try {
-          const element = exportRef.current;
-          if (!element) return;
-
-          const canvas = await html2canvas(element, {
-            scale: 2,
-            useCORS: true,
-          });
-
-          const imgData = canvas.toDataURL('image/png');
+          const handle = exportRef.current;
+          if (!handle) return;
 
           if (exportFormat === 'Image') {
+            // A PNG has no page boundary, so the single continuous render is
+            // captured as one image — no row-capping needed here at all.
+            if (!handle.flatRef) return;
+
+            const canvas = await html2canvas(handle.flatRef, {
+              scale: 2,
+              useCORS: true,
+            });
+            const imgData = canvas.toDataURL('image/png');
             const link = document.createElement('a');
             link.href = imgData;
             link.download = `Arka_Vendor_Ledger_${vendor?.name}.png`;
             link.click();
           } else {
-            const pdf = new jsPDF('p', 'mm', 'a4');
-            const imgProps = pdf.getImageProperties(imgData);
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+            // PDF pages have a fixed height, so VendorLedgerExport renders
+            // one self-contained div per page (rows capped per page) —
+            // each page is captured and placed independently, avoiding any
+            // slicing/measuring of a single tall image.
+            const pageElements = handle.pageRefs.filter(
+              (el): el is HTMLDivElement => el !== null,
+            );
+            if (pageElements.length === 0) return;
 
-            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+
+            for (let i = 0; i < pageElements.length; i++) {
+              const canvas = await html2canvas(pageElements[i], {
+                scale: 2,
+                useCORS: true,
+              });
+              const imgData = canvas.toDataURL('image/png');
+              const imgProps = pdf.getImageProperties(imgData);
+              const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+              if (i > 0) pdf.addPage();
+              pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgHeight);
+            }
+
             pdf.save(`Arka_Vendor_Ledger_${vendor?.name}.pdf`);
           }
 

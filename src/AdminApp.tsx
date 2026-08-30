@@ -69,6 +69,7 @@ export interface Customer {
   address: string;
   unpaidAmount: number;
   totalSales: number;
+  totalWrittenOff: number;
   gstNumber?: string;
 }
 
