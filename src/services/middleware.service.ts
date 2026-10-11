@@ -3,6 +3,7 @@ import supabase from "../lib/supabaseClient"
 import {
   EmployeeCategory,
   Profile,
+  SessionClaims,
   Material,
   Vendor,
   CreateVendorInput,
@@ -137,6 +138,36 @@ export async function validateSession(): Promise<User | null> {
   const { data, error } = await supabase.auth.getUser();
   if (error) return null;
   return data.user;
+}
+
+/**
+ * Decodes the JWT payload without verifying the signature — safe here since
+ * the token comes straight from supabase-js's own session, not an
+ * externally supplied value.
+ */
+function decodeJwtPayload(jwt: string): Record<string, unknown> {
+  const base64Url = jwt.split(".")[1];
+  const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+  return JSON.parse(atob(padded));
+}
+
+/**
+ * Reads the tenancy claims (organization_id, default_branch_id,
+ * is_super_admin) that custom_access_token_hook injects into the JWT on
+ * sign-in/refresh — avoids a separate profiles query for data that's
+ * already on the session's access token.
+ */
+export async function getSessionClaims(): Promise<SessionClaims | null> {
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data.session) return null;
+
+  const payload = decodeJwtPayload(data.session.access_token);
+  return {
+    organizationId: (payload.organization_id as string | null) ?? null,
+    defaultBranchId: (payload.default_branch_id as string | null) ?? null,
+    isSuperAdmin: Boolean(payload.is_super_admin),
+  };
 }
 
 /* ------------------------------------------------------------------

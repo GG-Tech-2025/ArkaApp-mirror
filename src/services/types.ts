@@ -17,6 +17,16 @@ export interface Profile {
   id: string;
   phone: string;
   role: UserRole;
+  organization_id: string | null;
+  default_branch_id: string | null;
+  is_super_admin: boolean;
+}
+
+/** Tenancy claims injected into the JWT by custom_access_token_hook (Phase 2). */
+export interface SessionClaims {
+  organizationId: string | null;
+  defaultBranchId: string | null;
+  isSuperAdmin: boolean;
 }
 
 export interface AppSetting {
