@@ -4,10 +4,16 @@ on:
   pull_request:
     paths:
       - "supabase/migrations/**"
+      - "supabase/tests/**"
+      - "supabase/seed.sql"
+      - "supabase/config.toml"
   push:
     branches: [main]
     paths:
       - "supabase/migrations/**"
+      - "supabase/tests/**"
+      - "supabase/seed.sql"
+      - "supabase/config.toml"
 
 jobs:
   validate-migrations:
@@ -24,6 +30,9 @@ jobs:
 
       - name: Apply all migrations to a fresh database
         run: supabase db reset
+
+      - name: Run database tests (cross-tenant isolation)
+        run: supabase test db
 
       - name: Stop local Supabase stack
         if: always()
