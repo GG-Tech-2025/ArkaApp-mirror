@@ -74,8 +74,20 @@ Verified on `arka-staging`:
 - A real sign-in through the API: claims still injected with RLS on (the Phase 3 landmine below is defused); the user saw only their own branch's customers, their own org, and only that branch through `customer_financials`; inserting into another branch, self-promoting to super-admin, and calling the auth hook directly were all rejected; the anon key saw nothing.
 - Advisor: both ERROR lints (RLS disabled, security-definer views) cleared. Still open: `function_search_path_mutable` ×15 (pre-existing) and `auth_leaked_password_protection` (an Auth dashboard setting — turn it on before any real tenant).
 
-### Phase 4+ — not started
-Frontend OrgContext/branch switcher + write paths → platform control plane → billing → ops hygiene → rollout.
+### Phase 4 — Frontend + RPCs (2026-10-18 →) — **in progress**
+Plan (agreed): one active branch at a time, carried in the JWT; admins get a branch switcher, employees stay on their one branch; the cash account becomes an `accounts.is_cash` flag. Delivered as small PRs.
+
+**PR 1 — database (done on `arka-staging`, branch `phase4-active-branch`):** migration `20261018155319_phase4_active_branch.sql`
+- `private.active_branch_id()`: returns the JWT's `default_branch_id` claim, but only if the user still has a `user_branch_access` row for it in their org (checked live every statement). Otherwise NULL, and everything fails closed.
+- The 32 `tenant_isolation` policies now require `branch_id = active_branch_id()` (was: any accessible branch). Phase 3's "all my branches at once" behaviour is superseded. `branches` still lists every accessible branch (the switcher needs them).
+- `organization_id` / `branch_id` on all 32 tables now **default** from the token (`current_org_id()` / `active_branch_id()`), so inserts need not name them. This also makes `generate_salary_batch` and `apply_vendor_payment_fifo` work unchanged. An explicit `branch_id` that isn't the active branch is rejected.
+- `public.set_active_branch(uuid)`: the only way a user changes their branch. `SECURITY DEFINER`, moves only the caller's own `profiles.default_branch_id`, and only to a branch they have access to in their own org (`42501` otherwise). The client must then `refreshSession()` so the hook mints a token with the new branch.
+- Tests rewritten for the new rules: 56 assertions, all pass on staging; a negative control (old all-branches policy restored) fails as it should. A real-API run confirmed: defaulted inserts land in the active branch, an explicit other branch is blocked, switching works only after a token refresh, other orgs' branches are rejected, anon can't switch, and the choice survives sign-out/sign-in.
+
+Still to do: PR 2 frontend (tenant provider, no-access screen, admin switcher), PR 3 (`is_cash` account, per-branch cash-summary start date, `product_inventory` unique, `seed_branch_defaults`), PR 4 end-to-end verification in the browser.
+
+### Phase 5+ — not started
+Platform control plane → billing → ops hygiene → rollout.
 
 ## 4. Key decisions (and why)
 
@@ -85,6 +97,7 @@ Frontend OrgContext/branch switcher + write paths → platform control plane →
 - **`profiles.organization_id` / `default_branch_id` stay nullable** so a platform super-admin (`is_super_admin = true`) can exist without belonging to any org.
 - **Login is by email, not phone.** `profiles.phone` is only a contact field. Supabase Auth enforces `auth.users.email` uniqueness project-wide, so two orgs can never have users with the same login email.
 - **Read claims from the JWT, not a second query.** `getSessionClaims()` decodes the access token already in the session.
+- **The active branch is a signed claim in the token, not a client parameter or header** (Phase 4). Options weighed: pass `branch_id` on every query (~170 call sites in an untested 4,100-line file, and any forgotten read silently mixes branches), a custom request header (works, but unconventional), or the token (idiomatic for workspace switching, reuses the Phase 2 hook). Chosen: token. Known trade-off: the claim only changes on `refreshSession()`, and tabs share one session, so the UI must read the active branch from the token itself (not separate state) and refresh right after switching. A combined multi-branch view is not supported; an "all branches, read-only" mode could be added later.
 - **Org from the JWT, branch access read live.** A user's org changes rarely and a stale claim lasts only until token refresh (~1h); branch access is looked up in `user_branch_access` on every query so granting/revoking takes effect immediately.
 - **Normal users cannot write platform tables or `profiles`.** A self-editable `profiles` row would let anyone set `is_super_admin` or change org, and the auth hook would then mint a JWT saying so. Those writes go through the service role / SQL editor now and a super-admin control plane in Phase 5.
 - **Super-admin policies are deferred to Phase 5.** A super-admin has no org, so today they see no tenant data — the safe default. Don't add a blanket bypass on tenant tables.
@@ -113,20 +126,24 @@ Format: symptom → cause → fix.
     values ('<user uid>', '<branch id>', '<that branch''s org id>', 'MANAGER');
     ```
     The org must be the branch's real org (a composite FK enforces it).
-14. **Writes fail with `null value in column "organization_id"` or `"branch_id"`** → expected until Phase 4: the app's inserts don't send those columns (see Phase 4 landmines). Not an RLS bug.
+14. **Writes fail with `null value in column "organization_id"` or `"branch_id"`** → between Phase 1 and Phase 4 PR 1 this was expected (the app's inserts don't send those columns). Since Phase 4 PR 1 both columns default from the token, so a signed-in user no longer sees this (see #23 for what they see instead). It can still happen for inserts made as the table owner or service role (SQL editor, seed scripts), which have no token: pass `organization_id` and `branch_id` explicitly there.
 15. **`new row violates row-level security policy`** on insert/update → the row's `organization_id` doesn't match the JWT org, or its `branch_id` isn't one the user has access to. Check the decoded JWT and the user's `user_branch_access` rows.
 16. **pgTAP test errors: `WITH clause containing a data-modifying statement must be at the top level`** → you can't put `with x as (update … returning …)` inside a subquery/argument. Run the update/delete as a plain statement while impersonating the user, then assert on the data afterwards as the owner.
 17. **`permission denied to set role "supabase_auth_admin"`** → the hosted SQL API's database user can't impersonate that system role, so the auth hook's behaviour under RLS can't be tested in plain SQL there. Test it with a real sign-in instead (that's what GoTrue does). The suite checks the policy exists and the hook's logic separately.
 18. **Running pgTAP on a hosted project through the SQL API** → pgTAP 1.3.3 keeps no results table, and only the last statement's output is returned. Recipe: wrap each assertion as `insert into _res select is(…)`, and end the script with a `do $$ … raise exception … _get('curr_test') / _get('failed') … $$` block. The deliberate error rolls everything back, including the temporary `pgtap` extension, so nothing persists. Fixtures must never use ids that collide with `seed.sql`.
 19. **Structural test "every branch_id table has `tenant_isolation`" fails for `user_branch_access`** → it has a `branch_id` column but is a platform table with its own `own_access_read` policy; the test excludes it by name. Any new platform table with `branch_id` needs the same exclusion.
 20. **Test users created in the dashboard** (`test@gmail.com`, `test2@gmail.com`, from Phase 2 manual testing) have profiles but no `user_branch_access` rows, so after Phase 3 they see no business data (#13). Add rows if you want to keep using them.
+21. **User logs in but sees nothing, even though they have a `user_branch_access` row (after Phase 4)** → the token's `default_branch_id` isn't a branch they have access to (or the claim is missing), so there is no active branch and everything fails closed. Decode the token and compare with `select * from user_branch_access where user_id = '<uid>'`. If it's stale, refresh the session.
+22. **After `set_active_branch` the app still shows the old branch** → the token wasn't refreshed. Verified: the old token keeps scoping to the old branch until `supabase.auth.refreshSession()`. Always refresh immediately after switching, and read the active branch from the token.
+23. **Insert with no `branch_id` fails with `new row violates row-level security policy` (42501), not a NOT NULL error** → there's no valid active branch, so the default is NULL; Postgres runs the RLS `WITH CHECK` before the `NOT NULL` check. Same fix as #21.
+24. **Advisor warns `authenticated_security_definer_function_executable` for `public.set_active_branch`** → intentional. It must be callable by signed-in users, and it is safe because it only updates the caller's own `profiles` row after checking their access. Don't "fix" it by revoking execute.
 
 ## 6. Landmines for Phase 4 (frontend + RPCs) — read before starting
 
 The database now enforces tenancy, but the app still behaves like a single-tenant app. Until Phase 4 the app can log in and read, but **cannot write** on a tenant-scoped project.
 
-- **All 32 insert/upsert calls in `src/services/middleware.service.ts` omit `organization_id` and `branch_id`**, which are `NOT NULL` — every write fails. Phase 4's OrgContext has to supply the active org/branch to each one (RLS `WITH CHECK` will reject a wrong value). Worth considering a column `DEFAULT` of the JWT org so the frontend only has to pass the branch.
-- **RPC functions that insert rows don't set org/branch:** `generate_salary_batch` (inserts into `salary_batches`, `salary_batch_items`, `salary_ledger`; called from the frontend) and `apply_vendor_payment_fifo` (inserts into `vendor_procurement_settlements`; not currently called via `rpc()` from the frontend). Both will hit the `NOT NULL`. Fix by deriving org/branch from the parent row or passing them in. The other RPCs only select/update/delete and inherit RLS, but re-test each with two orgs' data.
+- ~~All 32 insert/upsert calls omit `organization_id`/`branch_id`~~ **Resolved by Phase 4 PR 1:** both columns now default from the token, so the existing inserts work unchanged once the user has a valid active branch. Callers can still pass them explicitly, but a `branch_id` other than the active one is rejected.
+- ~~RPC functions that insert rows (`generate_salary_batch`, `apply_vendor_payment_fifo`) don't set org/branch~~ **Resolved the same way** (they inherit the defaults). Still worth re-testing every RPC with two orgs' data in PR 4.
 - **`CASH_ACCOUNT_ID` is a hardcoded UUID** (`middleware.service.ts:56`). The cash account is per-branch now, so this must become a lookup.
 - **`get_daily_cash_summary` hardcodes `2026-04-14`** as its start date instead of reading the per-branch `APP_START_DATE` setting.
 - **Per-branch settings need seeding.** `app_settings` rows (`APP_START_DATE`, `LOADING_AND_UNLOADING_PRICE_PER_BRICK`) exist per branch now; a new branch has none, and neither do `roles`, `materials`, `expense_types`, `expense_subtypes`. Branch provisioning (Phase 5) must seed them.
