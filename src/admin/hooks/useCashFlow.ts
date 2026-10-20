@@ -4,7 +4,6 @@ import {
   createAccount,
   getFinancialSummary,
   getDailyCashSummary,
-  CASH_ACCOUNT_ID,
 } from '../../services/middleware.service';
 import type { Account, CreateAccountInput, DailyCashSummary } from '../../services/types';
 import { useAdminNavigation } from './useAdminNavigation';
@@ -46,9 +45,9 @@ export function useCashFlow() {
   const [failureMessage, setFailureMessage] = useState('');
 
   // ─── Derived values ───
-  const cashAccount = accounts.find((a) => a.id === CASH_ACCOUNT_ID);
+  const cashAccount = accounts.find((a) => a.is_cash);
   const cashBalance = cashAccount ? Number(cashAccount.balance) : 0;
-  const bankAccounts = accounts.filter((a) => a.id !== CASH_ACCOUNT_ID);
+  const bankAccounts = accounts.filter((a) => !a.is_cash);
 
   // ─── Fetch accounts ───
   const fetchAccounts = useCallback(async () => {

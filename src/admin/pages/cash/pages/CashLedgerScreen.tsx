@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { Popup } from '../../../../components/Popup';
 import { useNavigate, useParams } from 'react-router-dom';
-import { getCashLedgerForDate, getAccounts, CASH_ACCOUNT_ID } from '../../../../services/middleware.service';
+import { getCashLedgerForDate, getAccounts } from '../../../../services/middleware.service';
 import type { CashLedgerForDate, Account, AccountAggregate } from '../../../../services/types';
 
 export function CashLedgerScreen() {
@@ -49,8 +49,8 @@ export function CashLedgerScreen() {
   }, [fetchData]);
 
   // ─── Derived values ───
-  const cashAccount = accounts.find((a) => a.id === CASH_ACCOUNT_ID);
-  const bankAccounts = accounts.filter((a) => a.id !== CASH_ACCOUNT_ID);
+  const cashAccount = accounts.find((a) => a.is_cash);
+  const bankAccounts = accounts.filter((a) => !a.is_cash);
 
   const totalCashIn = ledgerData?.total_cash_in ?? 0;
   const totalCashOut = ledgerData?.total_cash_out ?? 0;
@@ -74,8 +74,8 @@ export function CashLedgerScreen() {
 
     return {
       cash: {
-        cashIn: findIn(CASH_ACCOUNT_ID),
-        cashOut: findOut(CASH_ACCOUNT_ID),
+        cashIn: cashAccount ? findIn(cashAccount.id) : 0,
+        cashOut: cashAccount ? findOut(cashAccount.id) : 0,
       },
       banks: bankAccounts.map((ba) => ({
         id: ba.id,

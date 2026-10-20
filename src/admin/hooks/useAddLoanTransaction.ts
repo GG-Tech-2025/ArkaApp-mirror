@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { createLoanLedgerTransaction, getAccounts, getLoanById, CASH_ACCOUNT_ID } from '../../services/middleware.service';
+import { createLoanLedgerTransaction, getAccounts, getLoanById } from '../../services/middleware.service';
 import type { Account, CreateLoanLedgerInput, Loan, LoanTransactionType } from '../../services/types';
 import { validateAddLoanTransaction } from '../validators/addLoanTransaction.validator.ts';
 
@@ -22,6 +22,7 @@ export function useAddLoanTransaction() {
   const [loanLoading, setLoanLoading] = useState(false);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
+  const cashAccountId = accounts.find((a) => a.is_cash)?.id ?? '';
 
   const [transactionInput, setTransactionInput] = useState<TransactionInput>({
     transaction_type: 'REPAYMENT',
@@ -89,12 +90,12 @@ export function useAddLoanTransaction() {
   ) => {
     setTransactionInput((prev) => ({ ...prev, [key]: value }));
 
-    // Set sender_account_id to CASH_ACCOUNT_ID and clear RAI when mode changes to CASH
+    // Set sender_account_id to the branch's cash account and clear RAI when mode changes to CASH
     if (key === 'payment_mode' && value === 'CASH') {
       setTransactionInput((prev) => ({
         ...prev,
         payment_mode: 'CASH',
-        sender_account_id: CASH_ACCOUNT_ID,
+        sender_account_id: cashAccountId,
         receiver_account_info: '',
       }));
     }
@@ -121,7 +122,7 @@ export function useAddLoanTransaction() {
   // Get selected account's balance for validation
   const getSelectedAccountBalance = (): number | undefined => {
     const accountId = transactionInput.payment_mode === 'CASH'
-      ? CASH_ACCOUNT_ID
+      ? cashAccountId
       : transactionInput.sender_account_id;
     if (!accountId) return undefined;
     const account = accounts.find((a) => a.id === accountId);
@@ -151,7 +152,7 @@ export function useAddLoanTransaction() {
 
     // Validate amount against selected account balance
     const accountId = transactionInput.payment_mode === 'CASH'
-      ? CASH_ACCOUNT_ID
+      ? cashAccountId
       : transactionInput.sender_account_id;
     if (accountId && input.amount > 0) {
       const account = accounts.find((a) => a.id === accountId);
