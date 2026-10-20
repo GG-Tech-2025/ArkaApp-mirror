@@ -22,6 +22,13 @@ export interface Profile {
   is_super_admin: boolean;
 }
 
+/** A branch the signed-in user has access to (Phase 4). */
+export interface Branch {
+  id: string;
+  name: string;
+  code: string;
+}
+
 /** Tenancy claims injected into the JWT by custom_access_token_hook (Phase 2). */
 export interface SessionClaims {
   organizationId: string | null;
