@@ -218,6 +218,8 @@ export interface Account {
   opening_balance: number;
   balance: number;
   created_at: string;
+  /** True for the branch's single cash account (the database allows at most one per branch). */
+  is_cash: boolean;
 }
 
 export interface CreateAccountInput {

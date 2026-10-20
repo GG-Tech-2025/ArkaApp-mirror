@@ -54,8 +54,6 @@ import {
 import { MaterialPurchaseInput, ProductionInput } from "../employee/types";
 import { getRange, getRangeForProductionStatistics, PAGE_SIZE , mapPaymentModeToDb } from "../utils/reusables";
 
-export const CASH_ACCOUNT_ID = "04f194f4-af1f-4ac0-98be-a5b7f81b449f";
-
 /* ------------------------------------------------------------------
    APP SETTINGS
 -------------------------------------------------------------------*/
@@ -917,10 +915,9 @@ export async function createLoanWithDisbursementAndCashEntry(
   /* -------------------------------------------------------------
      1. DETERMINE PAYMENT MODE
   --------------------------------------------------------------*/
-  const paymentMode =
-    input.disbursement_account_id === CASH_ACCOUNT_ID
-      ? "CASH"
-      : "BANK";
+  const paymentMode = (await isCashAccount(input.disbursement_account_id))
+    ? "CASH"
+    : "BANK";
 
   /* -------------------------------------------------------------
      2. CREATE LOAN
@@ -1096,7 +1093,8 @@ export async function getAccounts(): Promise<Account[]> {
       account_number,
       opening_balance,
       balance,
-      created_at
+      created_at,
+      is_cash
     `)
     .order("created_at", { ascending: true });
 
@@ -1258,7 +1256,7 @@ export async function updateCustomer(
 export async function getAccountsForPayments() {
   const { data, error } = await supabase
     .from("accounts")
-    .select("id, account_number");
+    .select("id, account_number, is_cash");
 
   if (error) throw error;
   return data ?? [];
@@ -2243,15 +2241,36 @@ export async function getProcurementsByDateRange(
 /* ------------------------------------------------------------------
    43. GET CASH ACCOUNT SAI
 -------------------------------------------------------------------*/
+/**
+ * The active branch's cash account (the row flagged is_cash; the database
+ * allows at most one per branch).
+ */
 export async function getCashAccount() {
   const { data, error } = await supabase
     .from("accounts")
     .select("id")
-    .ilike("account_number", "Cash")
-    .single();
+    .eq("is_cash", true)
+    .maybeSingle();
 
   if (error) throw error;
+  if (!data) {
+    throw new Error(
+      "This branch has no cash account set up. Please contact your administrator."
+    );
+  }
   return data;
+}
+
+/** Whether the given account is the branch's cash account. */
+async function isCashAccount(accountId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("accounts")
+    .select("is_cash")
+    .eq("id", accountId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data?.is_cash === true;
 }
 
 /* ------------------------------------------------------------------

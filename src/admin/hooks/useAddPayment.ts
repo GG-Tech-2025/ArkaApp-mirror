@@ -5,7 +5,6 @@ import {
   getAccounts,
   getEmployeeLedger,
   createSalaryLedgerEntry,
-  CASH_ACCOUNT_ID,
 } from '../../services/middleware.service';
 import {
   validateAddPayment,
@@ -130,7 +129,7 @@ export function useAddPayment() {
   function getSelectedAccountBalance(): number | null {
     if (formInput.entryType === 'Manual Salary Entry') return null;
     if (formInput.modeOfPayment === 'Cash') {
-      const cashAccount = accounts.find((a) => a.id === CASH_ACCOUNT_ID);
+      const cashAccount = accounts.find((a) => a.is_cash);
       return cashAccount?.balance ?? null;
     }
     if (formInput.senderAccountId) {
@@ -192,7 +191,7 @@ export function useAddPayment() {
   const isAmountDisabled = formInput.entryType === 'Full Settlement';
 
   // Filter out the Cash account for the SAI dropdown (non-Cash payment modes)
-  const nonCashAccounts = accounts.filter((a) => a.id !== CASH_ACCOUNT_ID);
+  const nonCashAccounts = accounts.filter((a) => !a.is_cash);
 
   return {
     employee,

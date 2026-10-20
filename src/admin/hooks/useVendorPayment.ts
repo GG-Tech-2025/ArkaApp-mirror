@@ -7,7 +7,6 @@ import {
   getAccountsForPayments,
   getVendorPayments,
   createVendorPayment,
-  CASH_ACCOUNT_ID,
 } from '../../services/middleware.service';
 
 type PaymentMode = 'UPI' | 'Bank Transfer' | 'Cheque' | 'Cash';
@@ -39,7 +38,7 @@ export function useVendorPayment() {
     total_paid: number;
     outstanding_balance: number;
   } | null>(null);
-  const [accounts, setAccounts] = useState<{ id: string; account_number: string }[]>([]);
+  const [accounts, setAccounts] = useState<{ id: string; account_number: string; is_cash: boolean }[]>([]);
   const [lastTransactionDate, setLastTransactionDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -162,15 +161,22 @@ export function useVendorPayment() {
   const handleSubmit = async () => {
     if (!validate() || !vendorId) return;
 
+    if (formData.modeOfPayment === 'Cash' && !cashAccount) {
+      setPopupType('error');
+      setPopupMessage('This branch has no cash account set up. Please contact your administrator.');
+      setShowPopup(true);
+      return;
+    }
+
     try {
       setSubmitting(true);
 
       const dbMode = mapModeToDb(formData.modeOfPayment);
 
-      // For Cash mode, use the CASH_ACCOUNT_ID
+      // For Cash mode, pay from the branch's cash account
       const senderAccountId =
         formData.modeOfPayment === 'Cash'
-          ? CASH_ACCOUNT_ID
+          ? cashAccount!.id
           : formData.senderAccountId;
 
       await createVendorPayment({
@@ -204,8 +210,8 @@ export function useVendorPayment() {
   };
 
   // ─── Derived account lists ───
-  const cashAccount = accounts.find(a => a.id === CASH_ACCOUNT_ID) ?? null;
-  const nonCashAccounts = accounts.filter(a => a.id !== CASH_ACCOUNT_ID);
+  const cashAccount = accounts.find(a => a.is_cash) ?? null;
+  const nonCashAccounts = accounts.filter(a => !a.is_cash);
 
   // ─── Field updater ───
   const updateField = (field: string, value: string) => {
@@ -215,7 +221,7 @@ export function useVendorPayment() {
       // When mode changes, reset account fields appropriately
       if (field === 'modeOfPayment') {
         if (value === 'Cash') {
-          updated.senderAccountId = CASH_ACCOUNT_ID;
+          updated.senderAccountId = cashAccount?.id ?? '';
           updated.receiverAccountInfo = '';
         } else {
           updated.senderAccountId = '';
