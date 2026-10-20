@@ -4,10 +4,12 @@ import AdminApp from "./AdminApp";
 import AppSelector from "./AppSelector";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
+import { TenantProvider } from "./context/TenantContext";
 
 export default function App() {
   return (
     <BrowserRouter>
+      <TenantProvider>
       <Routes>
         {/* App selection */}
         <Route path="/" element={<AppSelector />} />
@@ -21,6 +23,7 @@ export default function App() {
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </TenantProvider>
       <Analytics />
     </BrowserRouter>
   );

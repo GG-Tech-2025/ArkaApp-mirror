@@ -4,6 +4,7 @@ import {
   EmployeeCategory,
   Profile,
   SessionClaims,
+  Branch,
   Material,
   Vendor,
   CreateVendorInput,
@@ -168,6 +169,44 @@ export async function getSessionClaims(): Promise<SessionClaims | null> {
     defaultBranchId: (payload.default_branch_id as string | null) ?? null,
     isSuperAdmin: Boolean(payload.is_super_admin),
   };
+}
+
+/** Branches the signed-in user may work in (RLS limits this to their own). */
+export async function getAccessibleBranches(): Promise<Branch[]> {
+  const { data, error } = await supabase
+    .from("branches")
+    .select("id, name, code")
+    .order("name");
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Name of the signed-in user's organization (RLS exposes only their own). */
+export async function getMyOrganizationName(): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("organizations")
+    .select("name")
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data?.name ?? null;
+}
+
+/**
+ * Makes `branchId` the user's active branch. The database saves it, then the
+ * session is refreshed so the new access token carries it — until that
+ * refresh the old token still points at the old branch.
+ */
+export async function switchActiveBranch(branchId: string): Promise<void> {
+  const { error } = await supabase.rpc("set_active_branch", {
+    p_branch_id: branchId,
+  });
+  if (error) throw error;
+
+  const { error: refreshError } = await supabase.auth.refreshSession();
+  if (refreshError) throw refreshError;
 }
 
 /* ------------------------------------------------------------------
