@@ -1,10 +1,13 @@
-import { Session, User } from "@supabase/supabase-js";
+import { FunctionsHttpError, Session, User } from "@supabase/supabase-js";
 import supabase from "../lib/supabaseClient"
 import {
   EmployeeCategory,
   Profile,
   SessionClaims,
   Branch,
+  PlatformOrganization,
+  ProvisionOrganizationInput,
+  ProvisionOrganizationResult,
   Material,
   Vendor,
   CreateVendorInput,
@@ -178,6 +181,75 @@ export async function getAccessibleBranches(): Promise<Branch[]> {
 
   if (error) throw error;
   return data ?? [];
+}
+
+/* ------------------------------------------------------------------
+   PLATFORM (Phase 5): only a super-admin can see or do any of this.
+   The database enforces it (read-only policies on the platform tables,
+   and the Edge Function checks the caller); the screens just ask.
+-------------------------------------------------------------------*/
+
+/** Every client organization with its branch count and admin phone numbers. */
+export async function getPlatformOrganizations(): Promise<PlatformOrganization[]> {
+  const [orgs, branches, admins] = await Promise.all([
+    supabase
+      .from("organizations")
+      .select("id, name, slug, status, plan, trial_ends_at, created_at, contact_email")
+      .order("created_at", { ascending: false }),
+    supabase.from("branches").select("id, organization_id"),
+    supabase
+      .from("profiles")
+      .select("organization_id, phone")
+      .eq("role", "ADMIN")
+      .not("organization_id", "is", null),
+  ]);
+
+  if (orgs.error) throw orgs.error;
+  if (branches.error) throw branches.error;
+  if (admins.error) throw admins.error;
+
+  return (orgs.data ?? []).map((o) => ({
+    id: o.id,
+    name: o.name,
+    slug: o.slug,
+    status: o.status,
+    plan: o.plan,
+    trialEndsAt: o.trial_ends_at,
+    createdAt: o.created_at,
+    contactEmail: o.contact_email,
+    branchCount: (branches.data ?? []).filter((b) => b.organization_id === o.id).length,
+    adminPhones: (admins.data ?? [])
+      .filter((a) => a.organization_id === o.id)
+      .map((a) => a.phone),
+  }));
+}
+
+/**
+ * Creates a client organization, its first branch and its first admin's login
+ * (via the provision-organization Edge Function). The temporary password in
+ * the result is shown once and cannot be fetched again.
+ */
+export async function provisionOrganization(
+  input: ProvisionOrganizationInput
+): Promise<ProvisionOrganizationResult> {
+  const { data, error } = await supabase.functions.invoke("provision-organization", {
+    body: input,
+  });
+
+  if (error) {
+    let message = "Could not create the organization. Please try again.";
+    if (error instanceof FunctionsHttpError) {
+      try {
+        const body = await error.context.json();
+        if (typeof body?.error === "string") message = body.error;
+      } catch {
+        /* keep the generic message */
+      }
+    }
+    throw new Error(message);
+  }
+
+  return data as ProvisionOrganizationResult;
 }
 
 /** Name of the signed-in user's organization (RLS exposes only their own). */

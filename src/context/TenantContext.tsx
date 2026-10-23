@@ -98,6 +98,19 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      // A platform super-admin belongs to no organization, so there is no
+      // tenant to load (and no branch to switch to).
+      if (claims.isSuperAdmin && !claims.organizationId) {
+        apply((prev) => ({
+          status: "no-access",
+          organizationName: null,
+          branches: [],
+          activeBranchId: null,
+          epoch: prev.epoch,
+        }));
+        return;
+      }
+
       const [branches, organizationName] = await Promise.all([
         getAccessibleBranches(),
         getMyOrganizationName(),

@@ -29,6 +29,39 @@ export interface Branch {
   code: string;
 }
 
+/** One client organization as the platform operator sees it (Phase 5). */
+export interface PlatformOrganization {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  plan: string;
+  trialEndsAt: string | null;
+  createdAt: string;
+  contactEmail: string | null;
+  branchCount: number;
+  adminPhones: string[];
+}
+
+export interface ProvisionOrganizationInput {
+  organizationName: string;
+  slug: string;
+  branchName: string;
+  branchCode: string;
+  adminEmail: string;
+  adminPhone: string;
+  contactEmail?: string;
+  trialDays?: number;
+}
+
+/** Returned once by the provision-organization Edge Function; the password is never retrievable again. */
+export interface ProvisionOrganizationResult {
+  organizationId: string;
+  branchId: string;
+  adminEmail: string;
+  temporaryPassword: string;
+}
+
 /** Tenancy claims injected into the JWT by custom_access_token_hook (Phase 2). */
 export interface SessionClaims {
   organizationId: string | null;
