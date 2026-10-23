@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AdminLoginScreen } from "./pages/AdminLoginScreen";
 import { AdminHomeScreen } from "./pages/AdminHomeScreen";
+import { ChangePasswordScreen } from "./pages/ChangePasswordScreen";
 import { ProductionStatisticsScreen } from "./pages/ProductionStatisticsScreen";
 import { MetricsScreen } from "./pages/MetricsScreen";
 import { CashRoutes } from "./pages/cash/routes";
@@ -22,6 +23,10 @@ export function AdminRoutes() {
 
       {/* Login */}
       <Route path="login" element={<AdminLoginScreen />} />
+
+      {/* Outside the guard on purpose: the guard sends a first-time admin here,
+          and the screen checks the session itself. */}
+      <Route path="change-password" element={<ChangePasswordScreen />} />
 
       {/* Protected routes — require valid ADMIN session */}
       <Route element={<AdminGuard />}>

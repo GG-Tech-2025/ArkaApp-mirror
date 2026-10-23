@@ -4,6 +4,7 @@ import {
   validateSession,
   getUserProfile,
   logout,
+  mustChangePassword,
 } from "../../services/middleware.service";
 import { useTenant } from "../../context/TenantContext";
 import {
@@ -11,7 +12,7 @@ import {
   TenantErrorScreen,
 } from "../../components/TenantStatusScreens";
 
-type AuthState = "checking" | "authenticated" | "unauthenticated";
+type AuthState = "checking" | "authenticated" | "must-change-password" | "unauthenticated";
 
 function Verifying() {
   return (
@@ -44,7 +45,8 @@ export function AdminGuard() {
           return;
         }
 
-        setAuthState("authenticated");
+        // A first-time admin still on the temporary password must choose their own.
+        setAuthState(mustChangePassword(user) ? "must-change-password" : "authenticated");
       } catch {
         setAuthState("unauthenticated");
       }
@@ -74,6 +76,10 @@ export function AdminGuard() {
 
   if (authState === "unauthenticated") {
     return <Navigate to="/admin/login" replace />;
+  }
+
+  if (authState === "must-change-password") {
+    return <Navigate to="/admin/change-password" replace />;
   }
 
   if (tenant.status === "no-access") {

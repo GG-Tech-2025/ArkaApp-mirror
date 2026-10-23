@@ -11,6 +11,7 @@ import {
   Wallet,
   Store,
   LogOut,
+  KeyRound,
   Coins,
   CreditCard,
 } from 'lucide-react';
@@ -175,6 +176,13 @@ const handleSessionExpiredClose = () => {
           </div>
           <div className="flex items-center gap-3">
             <BranchSwitcher />
+            <button
+              onClick={() => navigate('/admin/change-password')}
+              className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
+            >
+              <KeyRound className="w-5 h-5" />
+              <span className="hidden sm:inline">Password</span>
+            </button>
             <button
               onClick={handleLogoutClick}
               className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors shadow-md"
