@@ -26,7 +26,9 @@ export function AdminLoginScreen() {
       try {
         const profile = await getUserProfile(user.id);
 
-        if (profile.role === "ADMIN") {
+        if (profile.is_super_admin && !profile.organization_id) {
+          navigate("/platform", { replace: true });
+        } else if (profile.role === "ADMIN") {
           navigate("/admin/home", { replace: true });
         } else {
           await logout();
@@ -61,7 +63,10 @@ export function AdminLoginScreen() {
         return;
       }
 
-      navigate("/admin/home", { replace: true });
+      navigate(
+        profile.is_super_admin && !profile.organization_id ? "/platform" : "/admin/home",
+        { replace: true }
+      );
     } catch {
       setError("Incorrect credentials. Please check your email and password.");
     }
