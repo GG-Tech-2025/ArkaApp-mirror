@@ -2,7 +2,8 @@
 //
 // 1. Check the caller's token is valid and the caller is a super-admin (read live from
 //    `profiles`: flagged, and belonging to no organization).
-// 2. Create the first admin's login with a generated temporary password.
+// 2. Create the first admin's login with a generated temporary password, marked
+//    must_change_password so the app makes them choose their own on first sign-in.
 // 3. Call the service-role-only `provision_organization` database function, which creates
 //    the org, branch, profile, access and branch defaults in one transaction.
 // 4. If step 3 fails, delete the login again so nothing is left behind.
@@ -69,6 +70,9 @@ Deno.serve(async (req) => {
     email: input.adminEmail,
     password: temporaryPassword,
     email_confirm: true,
+    // Only the service role can write app_metadata, so the admin cannot clear this
+    // themselves; a database trigger clears it when they set a new password.
+    app_metadata: { must_change_password: true },
   });
   if (createError || !created.user) {
     if (createError?.code === "email_exists") {

@@ -294,6 +294,25 @@ export async function getUserProfile(userId: string): Promise<Profile> {
   return data;
 }
 
+/** True while the signed-in user is still on the temporary password they were given. */
+export function mustChangePassword(user: User | null | undefined): boolean {
+  return user?.app_metadata?.must_change_password === true;
+}
+
+/**
+ * Sets a new password for the signed-in user and refreshes the session so the
+ * token no longer carries the "must change password" mark. The mark itself is
+ * cleared by a database trigger when the password really changes, so it
+ * cannot be dodged by skipping this call.
+ */
+export async function changeMyPassword(newPassword: string): Promise<void> {
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
+
+  const { error: refreshError } = await supabase.auth.refreshSession();
+  if (refreshError) throw refreshError;
+}
+
 /* ------------------------------------------------------------------
    4. LOGOUT
 -------------------------------------------------------------------*/
