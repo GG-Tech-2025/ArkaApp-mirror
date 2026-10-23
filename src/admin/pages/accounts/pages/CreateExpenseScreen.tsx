@@ -25,6 +25,7 @@ interface ExpenseSubtype {
 interface Account {
   id: string;
   account_number: string;
+  is_cash: boolean;
 }
 
 export function CreateExpenseScreen() {
@@ -61,9 +62,7 @@ export function CreateExpenseScreen() {
   const [accounts, setAccounts] = useState<Account[]>([]);
 
   // Filter accounts to exclude CASH for non-cash payment modes
-  const nonCashAccounts = accounts.filter(
-    (a) => !a.account_number.toUpperCase().includes("CASH"),
-  );
+  const nonCashAccounts = accounts.filter((a) => !a.is_cash);
 
   // Load expense types and accounts on mount
   useEffect(() => {
