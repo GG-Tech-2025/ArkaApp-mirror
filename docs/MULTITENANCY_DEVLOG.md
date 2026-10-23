@@ -110,8 +110,20 @@ Plan (agreed): one active branch at a time, carried in the JWT; admins get a bra
 
 Still to do: PR 4, end-to-end verification in the browser (a full walkthrough of the main flows with users in two organizations).
 
-### Phase 5+ — not started
-Platform control plane → billing → ops hygiene → rollout.
+### Phase 5 — Platform control plane (2026-10-23 →) — **in progress**
+Goal: you, as the vendor, can create a new client without touching SQL: organization, first branch, first admin's login, and the branch defaults. Agreed (2026-10-23): the work is split into 4 PRs; provisioning runs as a database function called by an Edge Function (the service-role key can't live in the browser, and creating a login needs it); the screen is a hidden `/platform` route in this app, visible only to super-admins; the first admin gets a temporary password shown once (no email dependency on the free tier).
+
+**PR 1 — database (done on `arka-staging`, branch `phase5-provisioning-db`):** migration `20261023050402_phase5_platform_provisioning.sql`
+- `private.is_super_admin()`: true only for a profile flagged `is_super_admin` **while the token carries no organization**. A super-admin is the vendor, not a member of a client org; a flagged user who also belongs to an org gets no extra reach from the flag (a test pins this, and fails without the rule). Read live from `profiles`, not from the token.
+- `super_admin_read` (SELECT only) on the four platform tables: `organizations`, `branches`, `profiles`, `user_branch_access`. **No policy of any kind on the tenant tables**: a super-admin sees no client business data (tested against a real row). No write policy either, and `authenticated` has no UPDATE privilege on `profiles` at all (verified), so a super-admin cannot edit users directly; organizations and the other platform tables have no write policy.
+- `public.provision_organization(name, slug, branch_name, branch_code, admin_user_id, admin_phone, contact_email, plan, trial_days)`: one transaction that creates the org (active, `trial` plan with a 14-day end date by default; a non-trial plan has no end date), its first branch (code upper-cased), the admin's `ADMIN` profile (never a super-admin) and `MANAGER` branch access, then runs `seed_branch_defaults`. Takes an **existing** auth user id: the Edge Function creates the login first. Callable **only by the service role**: `anon`, `authenticated` and even a super-admin get `42501` when calling it directly. Refusals leave nothing behind: invalid input `22023`, unknown user `P0002`, a duplicate slug, phone (still globally unique) or a user who already has a profile `23505`.
+- Tests: new suite `04_platform_provisioning.test.sql`, 38 assertions (CI picks it up): what a super-admin can and cannot see or write, a flagged org member, anon, the full provisioning result (org, branch, profile, access, cash account, 2 settings, 5 materials, the claims the auth hook will mint, and that the new admin sees only their own branch), and each refusal. All 38 pass on staging; negative control (the "no organization" clause removed) fails as it should.
+- Advisor: no new warnings (the function isn't reachable by signed-in users; `is_super_admin` lives in the private schema).
+
+Still to do: PR 2 (Edge Function: verify the caller is a super-admin, create the login with a generated temporary password, call `provision_organization`, delete the login again if provisioning fails), PR 3 (the `/platform` screen), PR 4 (verification: create a super-admin, provision a client from the screen, sign in as its admin).
+
+### Phase 6+ — not started
+Billing → ops hygiene → rollout.
 
 ## 4. Key decisions (and why)
 
@@ -127,6 +139,7 @@ Platform control plane → billing → ops hygiene → rollout.
 - **Super-admin policies are deferred to Phase 5.** A super-admin has no org, so today they see no tenant data — the safe default. Don't add a blanket bypass on tenant tables.
 - **Within-branch roles are not enforced in the database.** Any user with access to a branch can read/write every tenant table for it, regardless of `profiles.role` (ADMIN/EMPLOYEE) or `branch_role` (MANAGER/STAFF). That matches how the app behaved before (UI-only gating), now bounded to the branch. Decide in Phase 4/5 whether employee-role users need narrower table access.
 - **The cash account is a flag on the account (`accounts.is_cash`), unique per branch** (Phase 4 PR 3), not a hardcoded id and not a setting row. A setting would be an unchecked pointer (it could name a deleted account or another branch's, and the Settings screen lets an admin edit any value, so one mistaken edit would break every cash payment); the flag is enforced by the database and needs no extra lookup, since screens already load the branch's accounts.
+- **A super-admin has no organization, and the flag alone grants nothing** (Phase 5). `private.is_super_admin()` requires the flag *and* an empty org in the token, and it only unlocks read-only policies on the four platform tables. The alternative, a blanket bypass on tenant tables, would turn one stolen vendor login into access to every client's business data. Provisioning is a service-role-only function rather than something a super-admin's own session can call, so a compromised browser session still cannot create orgs or logins.
 - **Suspended orgs and inactive branches are not cut off yet.** `organizations.status` and `branches.status` aren't consulted by any policy; wire that in with billing (Phase 6).
 
 ## 5. Troubleshooting
@@ -170,6 +183,8 @@ Format: symptom → cause → fix.
 30. **Cash payment goes to the wrong account, or a bank account named "… Cash …" disappears from the bank dropdown** → two screens (`CustomerDetailsScreen`, `CreateExpenseScreen`) still found the cash account by a name match (`includes("cash")`), a leftover of the hardcoded-id era that PR 3 missed. Fixed to use `account.is_cash`. Verified in the UI with a decoy bank account named "ICICI Cash Credit": a cash payment of ₹100 went to the real Cash account. When adding screens, never identify the cash account by name.
 31. **A test script's "everything passed" is only as good as its logger** → in this PR a results array that was re-created after the logger had captured the old one silently reported nothing; the database showed what really happened. Check the database after a scripted run, not just the script's own output.
 
+32. **`permission denied for table profiles` when a signed-in user tries to update it** → expected: `authenticated` has no UPDATE privilege on `profiles`, not merely no policy. Seen in the Phase 5 tests, where a super-admin's attempted edit failed with `42501` instead of silently matching zero rows. Profile changes go through the service role or a `SECURITY DEFINER` function such as `set_active_branch`.
+
 ## 6. Landmines for Phase 4 (frontend + RPCs) — read before starting
 
 The database now enforces tenancy, but the app still behaves like a single-tenant app. Until Phase 4 the app can log in and read, but **cannot write** on a tenant-scoped project.
@@ -197,7 +212,7 @@ where constraint_schema='public' and constraint_type='FOREIGN KEY' and constrain
 select count(*) from information_schema.table_constraints
 where constraint_schema='public' and constraint_type='UNIQUE' and constraint_name like '%_id_branch_key';
 
--- RLS: tables without it (expect 0), policies (expect 37), invoker views (expect 10)
+-- RLS: tables without it (expect 0), policies (expect 41), invoker views (expect 10)
 select
   (select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
     where n.nspname='public' and c.relkind='r' and not c.relrowsecurity) as tables_without_rls,
