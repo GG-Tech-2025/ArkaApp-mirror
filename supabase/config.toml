@@ -412,3 +412,8 @@ enabled = true
 # declarative_schema_path = "./database"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+# Platform control plane: onboard a new client organization. The caller's token is also
+# checked inside the function (super-admin only), so verify_jwt is belt and braces.
+[functions.provision-organization]
+verify_jwt = true
