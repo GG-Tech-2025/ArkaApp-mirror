@@ -1195,8 +1195,8 @@ export async function getAccountTransfers(
       transfer_date,
       notes,
       created_at,
-      sender_account:accounts!fk_sender_account(account_number),
-      receiver_account:accounts!fk_receiver_account(account_number)
+      sender_account:accounts!account_transfers_sender_account_id_branch_fkey(account_number),
+      receiver_account:accounts!account_transfers_receiver_account_id_branch_fkey(account_number)
       `,
       { count: "exact" }
     )
@@ -2532,8 +2532,8 @@ export async function getUnapprovedProcurements(): Promise<ProcurementWithDetail
       approved,
       created_by,
       created_at,
-      materials!material_id(id, name, unit),
-      vendors!vendor_id(id, name, phone)
+      materials(id, name, unit),
+      vendors(id, name, phone)
     `)
     .eq("approved", false)
     .order("date", { ascending: false });
@@ -2639,7 +2639,7 @@ export async function approveProcurement(
   // First, get the procurement details to access material_id, quantity, and material name
   const { data: procurement, error: fetchError } = await supabase
     .from("procurements")
-    .select("material_id, quantity, materials!material_id(name)")
+    .select("material_id, quantity, materials(name)")
     .eq("id", procurementId)
     .single();
 
@@ -2693,7 +2693,7 @@ export async function getInventoryStock(materialId?: string): Promise<any[]> {
       material_id,
       quantity,
       updated_at,
-      materials!material_id(id, name, unit)
+      materials(id, name, unit)
     `)
     .order("updated_at", { ascending: false });
 
@@ -2718,7 +2718,7 @@ export async function getInventoryStockForMaterial(materialId: string): Promise<
       material_id,
       quantity,
       updated_at,
-      materials!material_id(id, name, unit)
+      materials(id, name, unit)
     `)
     .eq("material_id", materialId)
     .single();
@@ -2749,8 +2749,8 @@ export async function getProcurements(): Promise<any[]> {
       approved,
       created_by,
       created_at,
-      materials!material_id(id, name, unit),
-      vendors!vendor_id(id, name, phone)
+      materials(id, name, unit),
+      vendors(id, name, phone)
     `)
     .eq("approved", true)
     .order("date", { ascending: false });
@@ -3305,7 +3305,7 @@ export async function getVendorProcurements(
       date,
       approved,
       created_at,
-      materials!material_id(id, name, unit)
+      materials(id, name, unit)
     `, { count: "exact" })
     .eq("vendor_id", vendorId)
     .eq("approved", true);
@@ -3405,7 +3405,7 @@ export async function getVendorProcurementsForExport(
       date,
       approved,
       created_at,
-      materials!material_id(id, name, unit)
+      materials(id, name, unit)
     `)
     .eq("vendor_id", vendorId)
     .eq("approved", true)

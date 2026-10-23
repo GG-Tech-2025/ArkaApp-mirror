@@ -134,18 +134,14 @@ export function CustomerDetailsScreen() {
   const [exporting, setExporting] = useState(false);
 
   const [receiverAccounts, setReceiverAccounts] = useState<
-    { id: string; label: string; value: string }[]
+    { id: string; label: string; value: string; isCash: boolean }[]
   >([]);
 
-  const cashAccountId = receiverAccounts.find((a) =>
-    a.label.toUpperCase().includes("CASH"),
-  )?.value;
+  const cashAccountId = receiverAccounts.find((a) => a.isCash)?.value;
 
   useEffect(() => {
     if (paymentMode === "Cash") {
-      const cashAccount = receiverAccounts.find((a) =>
-        a.label.toUpperCase().includes("CASH"),
-      );
+      const cashAccount = receiverAccounts.find((a) => a.isCash);
       if (cashAccount) {
         setReceiverAccount(cashAccount.value);
       }
@@ -163,14 +159,13 @@ export function CustomerDetailsScreen() {
           id: a.id,
           label: a.account_number,
           value: a.id, // IMPORTANT → use account ID
+          isCash: !!a.is_cash,
         }));
 
         setReceiverAccounts(mapped);
 
         // Auto-select Cash account if mode is Cash
-        const cashAccount = mapped.find((a) =>
-          a.label.toLowerCase().includes("cash"),
-        );
+        const cashAccount = mapped.find((a) => a.isCash);
         if (cashAccount) setReceiverAccount(cashAccount.value);
       } catch (e) {
         console.error("Failed to load accounts", e);
@@ -236,9 +231,7 @@ export function CustomerDetailsScreen() {
 
   useEffect(() => {
     if (paymentMode === "Cash") {
-      const cash = receiverAccounts.find((a) =>
-        a.label.toLowerCase().includes("cash"),
-      );
+      const cash = receiverAccounts.find((a) => a.isCash);
       if (cash) setReceiverAccount(cash.value);
     } else {
       setReceiverAccount("");
@@ -1000,9 +993,7 @@ export function CustomerDetailsScreen() {
     setHasMoreWriteOffs(res.hasMore);
   };
 
-  const nonCashAccounts = receiverAccounts.filter(
-    (a) => !a.label.toUpperCase().includes("CASH"),
-  );
+  const nonCashAccounts = receiverAccounts.filter((a) => !a.isCash);
 
   // Total sales / outstanding for delivered orders come from the customer
   // financial summary (whole dataset), not just the currently-loaded page
