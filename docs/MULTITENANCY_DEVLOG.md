@@ -122,7 +122,7 @@ Plan (agreed): one active branch at a time, carried in the JWT; admins get a bra
 
 Phase 4 is complete.
 
-### Phase 5 — Platform control plane (2026-10-23 →) — **in progress**
+### Phase 5 — Platform control plane (2026-10-23) — **complete**
 Goal: you, as the vendor, can create a new client without touching SQL: organization, first branch, first admin's login, and the branch defaults. Agreed (2026-10-23): the work is split into 4 PRs; provisioning runs as a database function called by an Edge Function (the service-role key can't live in the browser, and creating a login needs it); the screen is a hidden `/platform` route in this app, visible only to super-admins; the first admin gets a temporary password shown once (no email dependency on the free tier).
 
 **PR 1 — database (done on `arka-staging`, branch `phase5-provisioning-db`):** migration `20261023050402_phase5_platform_provisioning.sql`
@@ -154,7 +154,15 @@ Goal: you, as the vendor, can create a new client without touching SQL: organiza
 - Verified in a real browser (test logins and organizations removed afterwards): first sign-in at the normal admin login landed on the forced screen with no way out but sign-out; opening `/admin/home` and `/admin/customers` directly bounced back; too short, mismatched and "same as the temporary password" each showed their message; a real new password went to the dashboard, a reload stayed there, and the "Password" button opened the optional version. Console: only the dev server's hot-reload socket, the deliberate 422, and one 403 that did not recur on a clean sign-in/out (most likely signing out a leftover session from an earlier test; I did not pin the exact request). Type-check shows only the 9 older errors; `npm run build` passes.
 - Not covered: employees (they log in elsewhere and are created by their admin, not provisioned), and a forgotten-password flow, which still doesn't exist.
 
-Still to do: **PR 4**, final verification of the whole path with a real super-admin user (and, with that, creating the first real super-admin on production), then Phase 5 is complete.
+**PR 4 — end-to-end verification (done on `arka-staging`, branch `phase5-e2e-verification`):** no code or schema change; this PR is the write-up and the runbook (section 8).
+- Started from a clean slate: a super-admin created the documented way (a login, then the one SQL statement in the runbook), signed in at `/platform/login`, and created two clients from the screen (**Alpha Bricks**, **Gamma Works**). Each first admin signed in with the temporary password, was marked, changed it, and the mark cleared.
+- Then a full business run in each fresh org, with **identical names and phone numbers in both** (uniqueness is per branch): cash account found without any setup, the two seeded settings, setting the loading price, a bank account, a loan into cash, customer, two roles and three employees, an order with two loadmen, delivery and wages, cash and bank customer payments, vendor with a seeded material, procurement and approval, cash and bank vendor payments, a production entry (the seeded Fly Ash stock went 2000 → 1999, so stock deduction works in a freshly provisioned org), attendance, `generate_salary_batch` for the **same month in both orgs**, the loader ledger, and the cash summary (1 day, starting at the seeded `APP_START_DATE`). Both orgs ended with exactly 42 tenant rows and identical balances.
+- Isolation between the two provisioned clients, tested as Gamma against Alpha's real ids: every read was empty or "not found"; every write refused (the balance functions now say "Account not found", customer and vendor payments, a salary batch with an Alpha employee, switching to a foreign branch); Alpha's balances were unchanged afterwards. A client admin sees only their own organization on the platform query, and calling provisioning as a client admin is refused ("Only platform administrators can create organizations"); no "Sneaky" org or login was created.
+- The super-admin sees all four organizations (with branch counts and admin phones) and **no business rows** (0 customers, accounts, orders, salary batches).
+- Not a bug, worth knowing: payments recorded *before* a delivery settle no order (the FIFO function only applies to delivered orders), so in this run the customer's outstanding stayed at the full order value although both payments moved the account balances. The customer screen blocks paying more than the delivered outstanding, so the app can't produce this; it only appeared because the test paid first.
+- Test slips on my side, not product bugs: invalid-length Aadhaar numbers (the column holds 12) and a stale-session sign-out. All test orgs and logins were removed afterwards.
+
+**Phase 5 is complete.** What remains for the platform is Phase 6 (billing and plan enforcement, suspending organizations), Phase 7 (operations) and Phase 8 (rollout). Open items from earlier phases: money-moving flows are several client calls rather than one transaction; page numbers are 0-based in some reads and 1-based in others; there is no forgot-password flow; leaked-password protection is off in the Supabase dashboard.
 
 ### Phase 6+ — not started
 Billing → ops hygiene → rollout.
@@ -264,3 +272,29 @@ select public.custom_access_token_hook(jsonb_build_object(
 
 Decode a token in the browser console without pasting it anywhere external:
 `JSON.parse(atob("<token>".split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))`
+
+## 8. Platform runbook (operating the product)
+
+**Setting up a Supabase project for the platform (once per project)**
+1. Apply the migrations (CI applies them to a scratch database on every PR; staging got them through the Supabase tooling).
+2. Enable the access-token hook: Dashboard → Authentication → Hooks → "Customize Access Token (JWT) Claims" → Postgres function → `custom_access_token_hook` (troubleshooting #4).
+3. Deploy the Edge Function `provision-organization` (keep JWT verification on). **Functions are not deployed by CI**; staging runs the repo version (v2). `supabase functions deploy provision-organization --project-ref <ref>` is the usual command; I deployed through the Supabase tooling and have not run the CLI here.
+4. Create the first super-admin. In Dashboard → Authentication → Users → Add user, tick auto-confirm, then in the SQL editor (this exact statement was tested on staging):
+   ```sql
+   insert into public.profiles (id, phone, role, organization_id, default_branch_id, is_super_admin)
+   select id, '<their phone>', 'ADMIN', null, null, true
+   from auth.users where email = '<their email>';
+   ```
+   They must have **no organization**; the flag alone does nothing for someone who belongs to one.
+5. Sign in at `/platform/login`. The page is not linked from anywhere.
+
+**Onboarding a client**
+- `/platform` → New organization → fill the form → copy the email and temporary password (shown once) and send them to the client's admin. They are made to choose their own password at first sign-in.
+- Tell the admin to set the loading price in Settings: it is seeded as `0` on purpose, and deliveries are refused until it is a real number.
+- Roles, vendors, expense types, accounts other than Cash and everything else are created by the admin in the app. A second branch for an existing client has no screen yet: create it in SQL and run `select public.seed_branch_defaults('<branch id>')` (troubleshooting #25, #26).
+
+**When something goes wrong**
+- "A login with that email already exists" / "phone number already used": both are global across clients (Supabase Auth email, `profiles.phone`).
+- A failed provisioning leaves nothing behind (the login is deleted again). If the function logs `ORPHANED LOGIN`, delete that user by hand in Dashboard → Authentication → Users.
+- A client who forgets their password: there is no forgot-password flow. Setting a new one from the Dashboard's Users page should work but has not been exercised in this project; if you set the `must_change_password` mark again, do it in a separate call (see PR 3b).
+- Removing a test organization is SQL only (delete its rows from the tenant tables, then `user_branch_access`, `profiles`, `branches`, `organizations`, then the logins). There is deliberately no delete button.
