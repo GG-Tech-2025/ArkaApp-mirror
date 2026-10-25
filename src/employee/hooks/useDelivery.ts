@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { createDelivery } from "../services/delivery.service";
 import { DeliveryInput } from "../types";
-import { getAllEmployees, getOrderWithLoadmen, updateOrderWithLoadmen, createSalaryLedgerEntry, getAppSettings } from "../../services/middleware.service";
+import { getDeliveryStaff, getOrderWithLoadmen, completeDelivery, createSalaryLedgerEntry, getAppSettings } from "../../services/middleware.service";
 import { EmployeeWithCategory, OrderWithLoadmen, Order } from "../../services/types";
 
 export function useDelivery(orderId: string) {
@@ -96,7 +96,7 @@ export function useDelivery(orderId: string) {
 
   async function getLoadmenData() {
     try {
-  const loadmenData = await getAllEmployees(true);
+  const loadmenData = await getDeliveryStaff();
       console.log("Fetched loadmen data:", loadmenData);
       setLoadmen(loadmenData);
     }
@@ -164,11 +164,10 @@ export function useDelivery(orderId: string) {
         amount_paid: amountPaid,
         gst_number: deliveryInput.gstNumber || null,
         dc_number: deliveryInput.deliveryChallanNumber,
-        loading_type: deliveryInput.loadingType,
-        delivered: true
+        loading_type: deliveryInput.loadingType
       };
 
-      await updateOrderWithLoadmen(orderId, orderUpdate, deliveryInput.loadMen);
+      await completeDelivery(orderId, orderUpdate, deliveryInput.loadMen);
 
       // Exclude employees whose role is flagged as no_loading_salary (they get wages via attendance only)
       const eligibleLoadmen = selectedLoadmen.filter((l) => !l.roles?.no_loading_salary);

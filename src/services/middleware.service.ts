@@ -523,25 +523,20 @@ export async function getOrderWithLoadmen(
     .select(`
       *,
       customers ( name, phone ),
-      order_loadmen (
-        employees (
-          id,
-          name,
-          phone,
-          role_id
-        )
-      )
+      order_loadmen ( employee_id )
     `)
     .eq("id", orderId)
     .single();
 
   if (error) throw error;
 
+  // Only the ids are needed: callers match them against the staff list
+  // (employees are not readable by the employee app, so no embed here).
   return {
     ...data,
     loadmen: data.order_loadmen.map(
-      (ol: any) => ol.employees
-    )
+      (ol: any) => ({ id: ol.employee_id })
+    ) as Employee[]
   };
 }
 
@@ -599,6 +594,38 @@ export async function updateOrderWithLoadmen(
       }))
     );
   }
+}
+
+/* ------------------------------------------------------------------
+   12a. COMPLETE DELIVERY (employee delivery screen)
+   One database transaction: marks the order delivered with its delivery
+   details, deducts the bricks from stock and replaces the loadmen.
+   Employees have no direct write access to orders or order_loadmen.
+-------------------------------------------------------------------*/
+
+export async function completeDelivery(
+  orderId: string,
+  delivery: Pick<
+    Order,
+    | "time" | "brick_quantity" | "location" | "payment_status" | "amount_paid"
+    | "gst_number" | "dc_number" | "loading_type"
+  >,
+  loadmenIds: string[]
+): Promise<void> {
+  const { error } = await supabase.rpc("complete_delivery", {
+    p_order_id: orderId,
+    p_time: delivery.time ?? null,
+    p_brick_quantity: delivery.brick_quantity,
+    p_location: delivery.location ?? null,
+    p_payment_status: delivery.payment_status,
+    p_amount_paid: delivery.amount_paid ?? 0,
+    p_gst_number: delivery.gst_number ?? null,
+    p_dc_number: delivery.dc_number ?? null,
+    p_loading_type: delivery.loading_type ?? null,
+    p_loadmen: loadmenIds,
+  });
+
+  if (error) throw error;
 }
 
 /* ------------------------------------------------------------------
@@ -3958,6 +3985,20 @@ export async function createSalaryLedgerEntry(
   input: CreateSalaryLedgerInput
 ): Promise<SalaryLedger> {
 
+  // Loader wages / auto entries are credited by the database, which computes the
+  // running balance under a lock. The delivery screen runs as an employee, who has
+  // no direct access to salary_ledger.
+  if (input.entry_type === "SALARY_AUTO_ENTRY") {
+    const { data, error } = await supabase.rpc("record_loader_wage", {
+      p_employee_id: input.employee_id,
+      p_amount: input.amount,
+      p_notes: input.notes ?? null,
+      p_payment_at: input.payment_at ?? null,
+    });
+    if (error) throw error;
+    return data as SalaryLedger;
+  }
+
   const isPayment = input.entry_type !== "AUTO" && input.entry_type !== "SALARY_AUTO_ENTRY" && input.entry_type !== "SALARY_MANUAL_ENTRY";
 
   /* -------------------------------------------------------------
@@ -4077,19 +4118,30 @@ export async function createSalaryLedgerEntry(
 
 /* ------------------------------------------------------------------
   Check Employee Is Active
-  - Looks up the employees table by phone number
-  - Returns true if the employee record exists and active = true
+  - Asks the database whether the signed-in user's employee record
+    (matched by phone) exists, is active and is in the active branch.
+    Employees cannot read the employees table directly (it holds
+    aadhar, addresses, deductions), hence the RPC.
   - Used by EmployeeGuard to block deactivated employees
 ---------------------------------------------------------------------*/
-export async function checkEmployeeIsActive(phone: string): Promise<boolean> {
-  const { data, error } = await supabase
-    .from("employees")
-    .select("active")
-    .eq("phone", phone)
-    .maybeSingle();
+export async function checkEmployeeIsActive(): Promise<boolean> {
+  const { data, error } = await supabase.rpc("am_i_active_employee");
 
-  if (error || !data) return false;
-  return data.active === true;
+  if (error) return false;
+  return data === true;
+}
+
+/* ------------------------------------------------------------------
+  Get Delivery Staff
+  - Active employees with the role fields the delivery screen needs to
+    split loader wages, and nothing else. Same shape getAllEmployees(true)
+    returns, but callable by employees.
+---------------------------------------------------------------------*/
+export async function getDeliveryStaff(): Promise<EmployeeWithCategory[]> {
+  const { data, error } = await supabase.rpc("get_delivery_staff");
+
+  if (error) throw error;
+  return (data ?? []) as unknown as EmployeeWithCategory[];
 }
 
 /* ------------------------------------------------------------------
