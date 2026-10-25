@@ -56,7 +56,7 @@ export function EmployeeGuard() {
         }
 
         if (tenant.status === "ready") {
-          const isActive = await checkEmployeeIsActive(profile.phone);
+          const isActive = await checkEmployeeIsActive();
           if (!isActive) {
             await logout();
             update("blocked");
