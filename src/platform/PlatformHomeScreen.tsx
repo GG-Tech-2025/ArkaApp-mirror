@@ -3,7 +3,7 @@ import { Building2, LogOut, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { getPlatformOrganizations, logout } from "../services/middleware.service";
 import type { PlatformOrganization } from "../services/types";
-import { formatDate, renewalStatus, toneClass } from "./dates";
+import { formatDate, renewalStatus, toneClass } from "../utils/dates";
 
 
 export function PlatformHomeScreen() {

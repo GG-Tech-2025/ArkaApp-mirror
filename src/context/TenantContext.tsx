@@ -10,7 +10,7 @@ import React, {
 import supabase from "../lib/supabaseClient";
 import {
   getAccessibleBranches,
-  getMyOrganizationName,
+  getMyOrganization,
   getSessionClaims,
   switchActiveBranch,
 } from "../services/middleware.service";
@@ -21,11 +21,15 @@ export type TenantStatus =
   | "signed-out"
   | "ready"
   | "no-access"
+  /** Nothing the user can reach is active: their branch (or whole organization) has been paused. */
+  | "paused"
   | "error";
 
 interface TenantState {
   status: TenantStatus;
   organizationName: string | null;
+  /** ACTIVE, or SUSPENDED / CANCELLED when the whole organization has been paused. */
+  organizationStatus: string | null;
   branches: Branch[];
   activeBranchId: string | null;
   /** Increases whenever the active branch changes, so screens can remount and refetch. */
@@ -41,6 +45,7 @@ interface TenantContextValue extends TenantState {
 const INITIAL: TenantState = {
   status: "loading",
   organizationName: null,
+  organizationStatus: null,
   branches: [],
   activeBranchId: null,
   epoch: 0,
@@ -50,11 +55,16 @@ function sameState(a: TenantState, b: TenantState): boolean {
   return (
     a.status === b.status &&
     a.organizationName === b.organizationName &&
+    a.organizationStatus === b.organizationStatus &&
     a.activeBranchId === b.activeBranchId &&
     a.epoch === b.epoch &&
     a.branches.length === b.branches.length &&
     a.branches.every(
-      (branch, i) => branch.id === b.branches[i].id && branch.name === b.branches[i].name
+      (branch, i) =>
+        branch.id === b.branches[i].id &&
+        branch.name === b.branches[i].name &&
+        branch.status === b.branches[i].status &&
+        branch.renewalDate === b.branches[i].renewalDate
     )
   );
 }
@@ -104,6 +114,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         apply((prev) => ({
           status: "no-access",
           organizationName: null,
+          organizationStatus: null,
           branches: [],
           activeBranchId: null,
           epoch: prev.epoch,
@@ -111,31 +122,49 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const [branches, organizationName] = await Promise.all([
+      const [branches, organization] = await Promise.all([
         getAccessibleBranches(),
-        getMyOrganizationName(),
+        getMyOrganization(),
       ]);
       if (seq !== loadSeq.current) return;
+      const organizationName = organization.name;
+      const organizationStatus = organization.status;
 
       if (branches.length === 0) {
         apply((prev) => ({
           status: "no-access",
           organizationName,
+          organizationStatus,
           branches: [],
           activeBranchId: null,
+          epoch: prev.epoch,
+        }));
+        return;
+      }
+
+      // A branch is usable only while it AND its organization are active; the
+      // database enforces the same rule on every query.
+      const usable = organizationStatus === "ACTIVE" ? branches.filter((b) => b.status === "ACTIVE") : [];
+      if (usable.length === 0) {
+        apply((prev) => ({
+          status: "paused",
+          organizationName,
+          organizationStatus,
+          branches,
+          activeBranchId: claims.defaultBranchId,
           epoch: prev.epoch,
         }));
         return;
       }
 
       const activeBranchId = claims.defaultBranchId;
-      if (!activeBranchId || !branches.some((b) => b.id === activeBranchId)) {
-        // The token points at a branch the user can't use (access removed, or
-        // never set). Move them to one they can; the session refresh that
-        // follows triggers another load.
+      if (!activeBranchId || !usable.some((b) => b.id === activeBranchId)) {
+        // The token points at a branch the user can't use (access removed,
+        // never set, or paused) while another one works. Move them to a usable
+        // one; the session refresh that follows triggers another load.
         if (!triedSelfHeal.current) {
           triedSelfHeal.current = true;
-          await switchActiveBranch(branches[0].id);
+          await switchActiveBranch(usable[0].id);
           return;
         }
         apply((prev) => ({ ...prev, status: "error" }));
@@ -146,6 +175,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       apply((prev) => ({
         status: "ready",
         organizationName,
+        organizationStatus,
         branches,
         activeBranchId,
         epoch:
@@ -191,6 +221,24 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       data.subscription.unsubscribe();
     };
   }, [apply, load]);
+
+  // Pausing or resuming a branch happens on the platform, not in this tab, so look
+  // again when the tab comes back into view and once a minute while it is open. A
+  // load that finds nothing changed does not re-render anything.
+  useEffect(() => {
+    const refresh = () => {
+      const { status } = stateRef.current;
+      if ((status === "ready" || status === "paused") && document.visibilityState === "visible") {
+        void load();
+      }
+    };
+    const timer = window.setInterval(refresh, 60_000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [load]);
 
   const switchBranch = useCallback(
     async (branchId: string) => {

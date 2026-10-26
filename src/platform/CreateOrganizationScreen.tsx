@@ -3,7 +3,7 @@ import { ArrowLeft, Check, Copy } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { provisionOrganization } from "../services/middleware.service";
 import type { ProvisionOrganizationResult } from "../services/types";
-import { todayPlus } from "./dates";
+import { todayPlus } from "../utils/dates";
 
 const slugify = (name: string) =>
   name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");

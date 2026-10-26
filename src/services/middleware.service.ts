@@ -177,11 +177,18 @@ export async function getSessionClaims(): Promise<SessionClaims | null> {
 export async function getAccessibleBranches(): Promise<Branch[]> {
   const { data, error } = await supabase
     .from("branches")
-    .select("id, name, code")
+    .select("id, name, code, status, renewal_date, last_payment_date")
     .order("name");
 
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []).map((b) => ({
+    id: b.id,
+    name: b.name,
+    code: b.code,
+    status: b.status,
+    renewalDate: b.renewal_date,
+    lastPaymentDate: b.last_payment_date,
+  }));
 }
 
 /* ------------------------------------------------------------------
@@ -306,16 +313,16 @@ export async function provisionOrganization(
   return data as ProvisionOrganizationResult;
 }
 
-/** Name of the signed-in user's organization (RLS exposes only their own). */
-export async function getMyOrganizationName(): Promise<string | null> {
+/** The signed-in user's organization: its name and whether it is ACTIVE (RLS exposes only their own). */
+export async function getMyOrganization(): Promise<{ name: string | null; status: string | null }> {
   const { data, error } = await supabase
     .from("organizations")
-    .select("name")
+    .select("name, status")
     .limit(1)
     .maybeSingle();
 
   if (error) throw error;
-  return data?.name ?? null;
+  return { name: data?.name ?? null, status: data?.status ?? null };
 }
 
 /**
