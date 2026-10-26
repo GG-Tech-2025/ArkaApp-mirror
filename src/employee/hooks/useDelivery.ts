@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { createDelivery } from "../services/delivery.service";
 import { DeliveryInput } from "../types";
-import { getDeliveryStaff, getOrderWithLoadmen, completeDelivery, createSalaryLedgerEntry, getAppSettings } from "../../services/middleware.service";
+import { getDeliveryStaff, getOrderWithLoadmen, completeDelivery, getAppSettings } from "../../services/middleware.service";
+import type { DeliveryWages } from "../../services/middleware.service";
 import { EmployeeWithCategory, OrderWithLoadmen, Order } from "../../services/types";
 
 export function useDelivery(orderId: string) {
@@ -167,10 +168,14 @@ export function useDelivery(orderId: string) {
         loading_type: deliveryInput.loadingType
       };
 
-      await completeDelivery(orderId, orderUpdate, deliveryInput.loadMen);
-
       // Exclude employees whose role is flagged as no_loading_salary (they get wages via attendance only)
-      const eligibleLoadmen = selectedLoadmen.filter((l) => !l.roles?.no_loading_salary);
+      const eligibleLoadmen = selectedLoadmen.filter(
+        (l) => !l.roles?.no_loading_salary && deliveryInput.loadMen.includes(l.id)
+      );
+
+      // Work out the wages BEFORE completing the delivery, so a missing price setting stops
+      // the whole thing instead of leaving a delivered order with no wages.
+      let wages: DeliveryWages | undefined;
 
       // Only proceed with salary calculation if there are eligible loadmen
       if (eligibleLoadmen.length > 0) {
@@ -192,22 +197,16 @@ export function useDelivery(orderId: string) {
         // so each eligible employee gets their fair individual share (ineligible share is not redistributed).
         const salaryPerEmployee = (deliveryInput.quantity * costPerBrick * multiplier) / selectedLoadmen.length;
 
-        const salaryEntryDate = new Date().toISOString();
-        await Promise.all(
-          eligibleLoadmen.map((loadman) =>
-            createSalaryLedgerEntry({
-              employee_id: loadman.id,
-              entry_type: "SALARY_AUTO_ENTRY",
-              amount: salaryPerEmployee,
-              payment_mode: null,
-              sender_account_id: null,
-              receiver_account: null,
-              notes: `Auto salary entry for delivery of order #${orderId}`,
-              payment_at: salaryEntryDate
-            })
-          )
-        );
+        wages = {
+          loadmenIds: eligibleLoadmen.map((l) => l.id),
+          amountPerLoadman: salaryPerEmployee,
+          notes: `Auto salary entry for delivery of order #${orderId}`,
+          paymentAt: new Date().toISOString(),
+        };
       }
+
+      // One database transaction: the delivery and every loadman's wage, or nothing.
+      await completeDelivery(orderId, orderUpdate, deliveryInput.loadMen, wages);
 
       return { success: true };
     } catch (err) {

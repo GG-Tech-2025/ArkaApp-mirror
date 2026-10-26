@@ -3,9 +3,9 @@ import { useAdminNavigation } from './useAdminNavigation';
 import {
   getEmployeesForAttendance,
   getAttendanceForDate,
-  saveAttendance,
-  createSalaryLedgerEntry,
+  saveAttendanceWithSalary,
 } from '../../services/middleware.service';
+import type { AttendanceSalaryEntry } from '../../services/middleware.service';
 import type {
   EmployeeForAttendance,
   AttendanceStatus,
@@ -250,36 +250,31 @@ export function useAttendance() {
       setSaving(true);
       setErrorMessage(null);
 
-      // 1. Save attendance records
+      // 1. Attendance records
       const payload = activeEntries.map((e) => ({
         employee_id: e.employee.id,
-        date: selectedDate,
         status: DISPLAY_TO_DB[e.status as AttendanceStatus],
       }));
-      await saveAttendance(payload);
+
+      const entryDate = new Date(selectedDate + 'T00:00:00').toISOString();
 
       // 2. Auto-increment salary ledger for active employees (skip FIXED — they only get deductions)
-      const salaryPromises = activeEntries
+      const salaryEntries: AttendanceSalaryEntry[] = activeEntries
         .filter((e) => {
           if (e.employee.roles.category === 'FIXED') return false;
           const amount = getSalaryAmount(e.status as AttendanceStatus, e.employee.roles.salary_value);
           return amount > 0;
         })
-        .map((e) => {
-          const amount = getSalaryAmount(e.status as AttendanceStatus, e.employee.roles.salary_value);
-          return createSalaryLedgerEntry({
-            employee_id: e.employee.id,
-            entry_type: 'SALARY_AUTO_ENTRY',
-            amount,
-            notes: `Auto-entry for ${selectedDate} — ${e.status}`,
-            payment_at: new Date(selectedDate + 'T00:00:00').toISOString(),
-          });
-        });
+        .map((e) => ({
+          employee_id: e.employee.id,
+          entry_type: 'SALARY_AUTO_ENTRY' as const,
+          amount: getSalaryAmount(e.status as AttendanceStatus, e.employee.roles.salary_value),
+          notes: `Auto-entry for ${selectedDate} — ${e.status}`,
+          payment_at: entryDate,
+        }));
 
-      await Promise.all(salaryPromises);
-
-      // 3. Create deduction entries for FIXED salary employees marked Absent or Half Day
-      const deductionPromises = activeEntries
+      // 3. Deduction entries for FIXED salary employees marked Absent or Half Day
+      const deductionEntries: AttendanceSalaryEntry[] = activeEntries
         .filter((e) => {
           const status = e.status as AttendanceStatus;
           return (
@@ -291,19 +286,19 @@ export function useAttendance() {
         })
         .map((e) => {
           const status = e.status as AttendanceStatus;
-          const deductionAmt = status === 'Half Day'
-            ? Math.round(e.employee.deduction_amount! / 2)
-            : e.employee.deduction_amount!;
-          return createSalaryLedgerEntry({
+          return {
             employee_id: e.employee.id,
-            entry_type: 'DEDUCTION',
-            amount: deductionAmt,
+            entry_type: 'DEDUCTION' as const,
+            amount: status === 'Half Day'
+              ? Math.round(e.employee.deduction_amount! / 2)
+              : e.employee.deduction_amount!,
             notes: `Deduction for ${selectedDate} — ${status}`,
-            payment_at: new Date(selectedDate + 'T00:00:00').toISOString(),
-          });
+            payment_at: entryDate,
+          };
         });
 
-      await Promise.all(deductionPromises);
+      // One database transaction: the attendance rows and every salary entry, or nothing.
+      await saveAttendanceWithSalary(selectedDate, payload, [...salaryEntries, ...deductionEntries]);
 
       // Mark as already saved so it becomes read-only
       setIsAlreadySaved(true);

@@ -763,7 +763,20 @@ export async function updateOrderWithLoadmen(
    One database transaction: marks the order delivered with its delivery
    details, deducts the bricks from stock and replaces the loadmen.
    Employees have no direct write access to orders or order_loadmen.
+   When `wages` is given, each listed loadman's wage for the delivery is
+   credited in the same transaction (complete_delivery_with_wages), so a
+   failed wage can no longer leave a delivered order with missing wages.
 -------------------------------------------------------------------*/
+
+export interface DeliveryWages {
+  /** The loadmen to pay: a subset of the delivery's loadmen. */
+  loadmenIds: string[];
+  /** What each of them earns for this delivery. */
+  amountPerLoadman: number;
+  notes?: string | null;
+  /** ISO timestamp for the ledger entries; defaults to now in the database. */
+  paymentAt?: string | null;
+}
 
 export async function completeDelivery(
   orderId: string,
@@ -772,8 +785,31 @@ export async function completeDelivery(
     | "time" | "brick_quantity" | "location" | "payment_status" | "amount_paid"
     | "gst_number" | "dc_number" | "loading_type"
   >,
-  loadmenIds: string[]
+  loadmenIds: string[],
+  wages?: DeliveryWages
 ): Promise<void> {
+  if (wages && wages.loadmenIds.length > 0) {
+    const { error } = await supabase.rpc("complete_delivery_with_wages", {
+      p_order_id: orderId,
+      p_time: delivery.time ?? null,
+      p_brick_quantity: delivery.brick_quantity,
+      p_location: delivery.location ?? null,
+      p_payment_status: delivery.payment_status,
+      p_amount_paid: delivery.amount_paid ?? 0,
+      p_gst_number: delivery.gst_number ?? null,
+      p_dc_number: delivery.dc_number ?? null,
+      p_loading_type: delivery.loading_type ?? null,
+      p_loadmen: loadmenIds,
+      p_wage_loadmen: wages.loadmenIds,
+      p_wage_amount: wages.amountPerLoadman,
+      p_wage_notes: wages.notes ?? null,
+      p_wage_payment_at: wages.paymentAt ?? null,
+    });
+
+    if (error) throw error;
+    return;
+  }
+
   const { error } = await supabase.rpc("complete_delivery", {
     p_order_id: orderId,
     p_time: delivery.time ?? null,
@@ -3282,6 +3318,36 @@ export async function saveAttendance(
       })),
       { onConflict: "employee_id,date" }
     );
+
+  if (error) throw error;
+}
+
+/* ------------------------------------------------------------------
+  Save a day's attendance together with the salary entries it produces
+  - One database transaction (save_attendance_with_salary): the attendance rows, the
+    wage credits (SALARY_AUTO_ENTRY) and the deductions (DEDUCTION) are written
+    together or not at all.
+  - A day can be saved once; saving it again is refused.
+---------------------------------------------------------------------*/
+export interface AttendanceSalaryEntry {
+  employee_id: string;
+  entry_type: "SALARY_AUTO_ENTRY" | "DEDUCTION";
+  amount: number;
+  notes?: string | null;
+  /** ISO timestamp the entry is dated at. */
+  payment_at?: string | null;
+}
+
+export async function saveAttendanceWithSalary(
+  date: string, // YYYY-MM-DD
+  records: { employee_id: string; status: SaveAttendanceInput["status"] }[],
+  entries: AttendanceSalaryEntry[]
+): Promise<void> {
+  const { error } = await supabase.rpc("save_attendance_with_salary", {
+    p_date: date,
+    p_attendance: records,
+    p_entries: entries,
+  });
 
   if (error) throw error;
 }
