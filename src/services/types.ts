@@ -43,6 +43,14 @@ export interface PlatformOrganization {
   adminPhones: string[];
 }
 
+/** A branch of a client organization as the platform operator sees it. */
+export interface PlatformBranch {
+  id: string;
+  name: string;
+  code: string;
+  status: string;
+}
+
 export interface ProvisionOrganizationInput {
   organizationName: string;
   slug: string;

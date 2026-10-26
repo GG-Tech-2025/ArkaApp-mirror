@@ -74,6 +74,7 @@ export function PlatformHomeScreen() {
                   <th className="px-4 py-3">Branches</th>
                   <th className="px-4 py-3">Admin phone</th>
                   <th className="px-4 py-3">Created</th>
+                  <th className="px-4 py-3"></th>
                 </tr>
               </thead>
               <tbody>
@@ -93,6 +94,14 @@ export function PlatformHomeScreen() {
                     <td className="px-4 py-3">{o.branchCount}</td>
                     <td className="px-4 py-3">{o.adminPhones.join(", ") || "—"}</td>
                     <td className="px-4 py-3">{formatDate(o.createdAt)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => navigate(`/platform/organizations/${o.id}/branches/new`)}
+                        className="text-sm text-slate-700 border border-gray-300 rounded-lg px-3 py-1 hover:bg-gray-50 whitespace-nowrap"
+                      >
+                        Add branch
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

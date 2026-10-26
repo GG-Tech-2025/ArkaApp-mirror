@@ -3,6 +3,7 @@ import { PlatformGuard } from "./PlatformGuard";
 import { PlatformLoginScreen } from "./PlatformLoginScreen";
 import { PlatformHomeScreen } from "./PlatformHomeScreen";
 import { CreateOrganizationScreen } from "./CreateOrganizationScreen";
+import { AddBranchScreen } from "./AddBranchScreen";
 
 /** The platform operator's tool. Not linked from anywhere; reached at /platform. */
 export function PlatformRoutes() {
@@ -13,6 +14,7 @@ export function PlatformRoutes() {
       <Route element={<PlatformGuard />}>
         <Route index element={<PlatformHomeScreen />} />
         <Route path="organizations/new" element={<CreateOrganizationScreen />} />
+        <Route path="organizations/:organizationId/branches/new" element={<AddBranchScreen />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/platform" replace />} />
