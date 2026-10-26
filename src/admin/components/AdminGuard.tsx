@@ -8,9 +8,11 @@ import {
 } from "../../services/middleware.service";
 import { useTenant } from "../../context/TenantContext";
 import {
+  BranchPausedScreen,
   NoBranchAccessScreen,
   TenantErrorScreen,
 } from "../../components/TenantStatusScreens";
+import { RenewalBanner } from "./RenewalBanner";
 
 type AuthState = "checking" | "authenticated" | "must-change-password" | "unauthenticated";
 
@@ -82,6 +84,18 @@ export function AdminGuard() {
     return <Navigate to="/admin/change-password" replace />;
   }
 
+  if (tenant.status === "paused") {
+    return (
+      <BranchPausedScreen
+        organizationName={tenant.organizationName}
+        organizationPaused={tenant.organizationStatus !== "ACTIVE"}
+        branchName={tenant.activeBranch?.name}
+        onRetry={() => void tenant.reload()}
+        onSignOut={signOut}
+      />
+    );
+  }
+
   if (tenant.status === "no-access") {
     return (
       <NoBranchAccessScreen
@@ -101,5 +115,10 @@ export function AdminGuard() {
   if (tenant.status !== "ready" && !hasBeenReady.current) return <Verifying />;
 
   // Remounting on a branch change makes every screen refetch for the new branch.
-  return <Outlet key={tenant.epoch} />;
+  return (
+    <>
+      <RenewalBanner />
+      <Outlet key={tenant.epoch} />
+    </>
+  );
 }

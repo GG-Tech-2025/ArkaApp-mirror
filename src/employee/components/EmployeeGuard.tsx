@@ -8,6 +8,7 @@ import {
 } from "../../services/middleware.service";
 import { useTenant } from "../../context/TenantContext";
 import {
+  BranchPausedScreen,
   NoBranchAccessScreen,
   TenantErrorScreen,
 } from "../../components/TenantStatusScreens";
@@ -94,6 +95,18 @@ export function EmployeeGuard() {
 
   if (authState === "unauthenticated") {
     return <Navigate to="/employee/login" replace />;
+  }
+
+  if (tenant.status === "paused") {
+    return (
+      <BranchPausedScreen
+        organizationName={tenant.organizationName}
+        organizationPaused={tenant.organizationStatus !== "ACTIVE"}
+        branchName={tenant.activeBranch?.name}
+        onRetry={() => void tenant.reload()}
+        onSignOut={signOut}
+      />
+    );
   }
 
   if (tenant.status === "no-access") {

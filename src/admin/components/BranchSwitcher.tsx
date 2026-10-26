@@ -51,8 +51,9 @@ export function BranchSwitcher() {
           className="border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-900 disabled:opacity-60"
         >
           {branches.map((branch) => (
-            <option key={branch.id} value={branch.id}>
+            <option key={branch.id} value={branch.id} disabled={branch.status !== "ACTIVE"}>
               {branch.name}
+              {branch.status !== "ACTIVE" ? " (paused)" : ""}
             </option>
           ))}
         </select>

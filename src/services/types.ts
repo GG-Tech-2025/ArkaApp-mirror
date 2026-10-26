@@ -27,6 +27,11 @@ export interface Branch {
   id: string;
   name: string;
   code: string;
+  /** ACTIVE, or INACTIVE when the platform operator has paused it. */
+  status: string;
+  /** YYYY-MM-DD, or null when none has been set. */
+  renewalDate: string | null;
+  lastPaymentDate: string | null;
 }
 
 /** One client organization as the platform operator sees it (Phase 5). */
