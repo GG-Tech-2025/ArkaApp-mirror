@@ -6,6 +6,7 @@ import {
   SessionClaims,
   Branch,
   PlatformOrganization,
+  PlatformBranch,
   ProvisionOrganizationInput,
   ProvisionOrganizationResult,
   Material,
@@ -222,6 +223,45 @@ export async function getPlatformOrganizations(): Promise<PlatformOrganization[]
       .filter((a) => a.organization_id === o.id)
       .map((a) => a.phone),
   }));
+}
+
+/** The branches of one client organization (read through the super-admin policy). */
+export async function getOrganizationBranches(organizationId: string): Promise<PlatformBranch[]> {
+  const { data, error } = await supabase
+    .from("branches")
+    .select("id, name, code, status")
+    .eq("organization_id", organizationId)
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
+ * Adds a branch to an existing client organization. One database transaction
+ * creates it, gives it its defaults (cash account, settings, materials) and
+ * lets every admin of that organization use it. Super-admins only: the
+ * function checks that itself.
+ */
+export async function addBranchToOrganization(input: {
+  organizationId: string;
+  name: string;
+  code: string;
+}): Promise<{ branchId: string; adminsGranted: number }> {
+  const { data, error } = await supabase.rpc("provision_branch", {
+    p_organization_id: input.organizationId,
+    p_name: input.name,
+    p_code: input.code,
+  });
+
+  if (error) {
+    if (error.code === "23505") {
+      throw new Error("That branch code is already used in this organization.");
+    }
+    throw new Error(error.message || "Could not add the branch. Please try again.");
+  }
+
+  return { branchId: data.branch_id, adminsGranted: data.admins_granted };
 }
 
 /**
