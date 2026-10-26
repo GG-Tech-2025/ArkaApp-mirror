@@ -83,7 +83,7 @@ select is(
   (select count(*) from pg_class c
    join pg_namespace n on n.oid = c.relnamespace
    join pg_attribute a on a.attrelid = c.oid and a.attname = 'branch_id' and not a.attisdropped
-   where n.nspname = 'public' and c.relkind = 'r' and c.relname <> 'user_branch_access'
+   where n.nspname = 'public' and c.relkind = 'r' and c.relname not in ('user_branch_access', 'branch_billing_events')
      and not exists (select 1 from pg_policies p
                      where p.schemaname = 'public' and p.tablename = c.relname
                        and p.policyname = 'admin_all' and p.permissive = 'PERMISSIVE')),

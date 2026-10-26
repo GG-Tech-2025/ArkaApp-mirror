@@ -190,14 +190,14 @@ export async function getAccessibleBranches(): Promise<Branch[]> {
    and the Edge Function checks the caller); the screens just ask.
 -------------------------------------------------------------------*/
 
-/** Every client organization with its branch count and admin phone numbers. */
+/** Every client organization with its branch counts, next renewal and admin phone numbers. */
 export async function getPlatformOrganizations(): Promise<PlatformOrganization[]> {
   const [orgs, branches, admins] = await Promise.all([
     supabase
       .from("organizations")
-      .select("id, name, slug, status, plan, trial_ends_at, created_at, contact_email")
+      .select("id, name, slug, status, created_at, contact_email")
       .order("created_at", { ascending: false }),
-    supabase.from("branches").select("id, organization_id"),
+    supabase.from("branches").select("id, organization_id, status, renewal_date"),
     supabase
       .from("profiles")
       .select("organization_id, phone")
@@ -209,32 +209,43 @@ export async function getPlatformOrganizations(): Promise<PlatformOrganization[]
   if (branches.error) throw branches.error;
   if (admins.error) throw admins.error;
 
-  return (orgs.data ?? []).map((o) => ({
-    id: o.id,
-    name: o.name,
-    slug: o.slug,
-    status: o.status,
-    plan: o.plan,
-    trialEndsAt: o.trial_ends_at,
-    createdAt: o.created_at,
-    contactEmail: o.contact_email,
-    branchCount: (branches.data ?? []).filter((b) => b.organization_id === o.id).length,
-    adminPhones: (admins.data ?? [])
-      .filter((a) => a.organization_id === o.id)
-      .map((a) => a.phone),
-  }));
+  return (orgs.data ?? []).map((o) => {
+    const mine = (branches.data ?? []).filter((b) => b.organization_id === o.id);
+    const renewals = mine.map((b) => b.renewal_date as string | null).filter((d): d is string => !!d).sort();
+    return {
+      id: o.id,
+      name: o.name,
+      slug: o.slug,
+      status: o.status,
+      createdAt: o.created_at,
+      contactEmail: o.contact_email,
+      branchCount: mine.length,
+      branchesPaused: mine.filter((b) => b.status !== "ACTIVE").length,
+      nextRenewalDate: renewals[0] ?? null,
+      adminPhones: (admins.data ?? [])
+        .filter((a) => a.organization_id === o.id)
+        .map((a) => a.phone),
+    };
+  });
 }
 
 /** The branches of one client organization (read through the super-admin policy). */
 export async function getOrganizationBranches(organizationId: string): Promise<PlatformBranch[]> {
   const { data, error } = await supabase
     .from("branches")
-    .select("id, name, code, status")
+    .select("id, name, code, status, last_payment_date, renewal_date")
     .eq("organization_id", organizationId)
     .order("created_at", { ascending: true });
 
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []).map((b) => ({
+    id: b.id,
+    name: b.name,
+    code: b.code,
+    status: b.status,
+    lastPaymentDate: b.last_payment_date,
+    renewalDate: b.renewal_date,
+  }));
 }
 
 /**
@@ -247,11 +258,14 @@ export async function addBranchToOrganization(input: {
   organizationId: string;
   name: string;
   code: string;
+  /** The new branch's first renewal date, YYYY-MM-DD. */
+  renewalDate: string;
 }): Promise<{ branchId: string; adminsGranted: number }> {
   const { data, error } = await supabase.rpc("provision_branch", {
     p_organization_id: input.organizationId,
     p_name: input.name,
     p_code: input.code,
+    p_renewal_date: input.renewalDate,
   });
 
   if (error) {

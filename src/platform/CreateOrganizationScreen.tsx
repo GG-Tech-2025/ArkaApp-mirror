@@ -3,6 +3,7 @@ import { ArrowLeft, Check, Copy } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { provisionOrganization } from "../services/middleware.service";
 import type { ProvisionOrganizationResult } from "../services/types";
+import { todayPlus } from "./dates";
 
 const slugify = (name: string) =>
   name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -43,14 +44,15 @@ export function CreateOrganizationScreen() {
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPhone, setAdminPhone] = useState("");
   const [contactEmail, setContactEmail] = useState("");
-  const [trialDays, setTrialDays] = useState("14");
+  const [renewalDate, setRenewalDate] = useState(todayPlus(30));
+  const [lastPaymentDate, setLastPaymentDate] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<ProvisionOrganizationResult | null>(null);
 
   const canSubmit =
-    organizationName.trim() && slug && branchName.trim() && branchCode.trim() && adminEmail.trim() && adminPhone.trim();
+    organizationName.trim() && slug && branchName.trim() && branchCode.trim() && adminEmail.trim() && adminPhone.trim() && renewalDate;
 
   const handleSubmit = async () => {
     if (submitting || !canSubmit) return;
@@ -65,7 +67,8 @@ export function CreateOrganizationScreen() {
         adminEmail,
         adminPhone,
         contactEmail: contactEmail || undefined,
-        trialDays: Number(trialDays),
+        renewalDate,
+        lastPaymentDate: lastPaymentDate || undefined,
       });
       setResult(created);
     } catch (e) {
@@ -176,9 +179,17 @@ export function CreateOrganizationScreen() {
               <label className="block text-gray-700 mb-2">Contact email (optional)</label>
               <input type="email" className={inputClass} value={contactEmail} onChange={(e) => { setContactEmail(e.target.value); setError(""); }} />
             </div>
-            <div>
-              <label className="block text-gray-700 mb-2">Trial length (days)</label>
-              <input type="number" min={1} max={365} className={inputClass} value={trialDays} onChange={(e) => { setTrialDays(e.target.value); setError(""); }} />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-gray-700 mb-2">First renewal date *</label>
+                <input type="date" min={todayPlus(0)} className={inputClass} value={renewalDate} onChange={(e) => { setRenewalDate(e.target.value); setError(""); }} />
+                <p className="text-sm text-gray-500 mt-1">When the first branch's payment is due.</p>
+              </div>
+              <div>
+                <label className="block text-gray-700 mb-2">Last payment date</label>
+                <input type="date" max={todayPlus(0)} className={inputClass} value={lastPaymentDate} onChange={(e) => { setLastPaymentDate(e.target.value); setError(""); }} />
+                <p className="text-sm text-gray-500 mt-1">Optional, if they have already paid.</p>
+              </div>
             </div>
 
             {error && (

@@ -7,6 +7,7 @@ import {
   getPlatformOrganizations,
 } from "../services/middleware.service";
 import type { PlatformBranch, PlatformOrganization } from "../services/types";
+import { formatDate, todayPlus } from "./dates";
 
 const inputClass =
   "w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-500 outline-none";
@@ -23,6 +24,7 @@ export function AddBranchScreen() {
 
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
+  const [renewalDate, setRenewalDate] = useState(todayPlus(30));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [created, setCreated] = useState<{ name: string; code: string; adminsGranted: number } | null>(null);
@@ -40,14 +42,14 @@ export function AddBranchScreen() {
       .finally(() => setLoading(false));
   }, [organizationId]);
 
-  const canSubmit = name.trim() !== "" && code.trim() !== "";
+  const canSubmit = name.trim() !== "" && code.trim() !== "" && renewalDate !== "";
 
   const handleSubmit = async () => {
     if (!organizationId || submitting || !canSubmit) return;
     setSubmitting(true);
     setError("");
     try {
-      const result = await addBranchToOrganization({ organizationId, name, code });
+      const result = await addBranchToOrganization({ organizationId, name, code, renewalDate });
       setCreated({ name: name.trim(), code: code.trim().toUpperCase(), adminsGranted: result.adminsGranted });
     } catch (e) {
       setError((e as Error).message);
@@ -128,6 +130,7 @@ export function AddBranchScreen() {
               {branches.map((b) => (
                 <li key={b.id}>
                   {b.name} <span className="text-gray-500">({b.code})</span>
+                  {b.renewalDate && <span className="text-gray-500"> · renews {formatDate(b.renewalDate)}</span>}
                 </li>
               ))}
             </ul>
@@ -142,6 +145,12 @@ export function AddBranchScreen() {
               <label className="block text-gray-700 mb-2">Branch code *</label>
               <input className={inputClass} value={code} onChange={(e) => { setCode(e.target.value); setError(""); }} />
               <p className="text-sm text-gray-500 mt-1">Short and unique within this organization, for example NORTH.</p>
+            </div>
+
+            <div>
+              <label className="block text-gray-700 mb-2">First renewal date *</label>
+              <input type="date" min={todayPlus(0)} className={inputClass} value={renewalDate} onChange={(e) => { setRenewalDate(e.target.value); setError(""); }} />
+              <p className="text-sm text-gray-500 mt-1">When this branch's first payment is due.</p>
             </div>
 
             {error && (

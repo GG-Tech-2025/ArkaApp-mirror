@@ -91,9 +91,10 @@ Deno.serve(async (req) => {
     p_branch_code: input.branchCode,
     p_admin_user_id: adminUserId,
     p_admin_phone: input.adminPhone,
+    p_renewal_date: input.renewalDate,
     p_contact_email: input.contactEmail,
-    p_plan: input.plan,
-    p_trial_days: input.trialDays,
+    p_last_payment_date: input.lastPaymentDate,
+    p_actor_id: caller.id,
   });
 
   if (rpcError) {

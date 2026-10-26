@@ -77,15 +77,16 @@ select is(
    where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity),
   0::bigint, 'RLS is enabled on every public table');
 
--- user_branch_access has a branch_id column but is a platform table with its
--- own read-only policy (own_access_read), so it is the one deliberate exclusion.
+-- user_branch_access and branch_billing_events have a branch_id column but are platform
+-- tables with their own read-only policies (own_access_read / super_admin_read), so they are
+-- the deliberate exclusions.
 -- Any new platform table that also carries branch_id must be added here.
 select is(
   (select count(*) from pg_class c
    join pg_namespace n on n.oid = c.relnamespace
    join pg_attribute a on a.attrelid = c.oid and a.attname = 'branch_id' and not a.attisdropped
    where n.nspname = 'public' and c.relkind = 'r'
-     and c.relname <> 'user_branch_access'
+     and c.relname not in ('user_branch_access', 'branch_billing_events')
      and not exists (select 1 from pg_policies p
                      where p.schemaname = 'public' and p.tablename = c.relname
                        and p.policyname = 'tenant_isolation')),

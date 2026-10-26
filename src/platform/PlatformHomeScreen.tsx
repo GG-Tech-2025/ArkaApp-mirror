@@ -3,9 +3,8 @@ import { Building2, LogOut, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { getPlatformOrganizations, logout } from "../services/middleware.service";
 import type { PlatformOrganization } from "../services/types";
+import { formatDate, renewalStatus, toneClass } from "./dates";
 
-const formatDate = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 
 export function PlatformHomeScreen() {
   const navigate = useNavigate();
@@ -69,9 +68,9 @@ export function PlatformHomeScreen() {
               <thead className="bg-gray-100 text-gray-600 text-sm">
                 <tr>
                   <th className="px-4 py-3">Organization</th>
-                  <th className="px-4 py-3">Plan</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Branches</th>
+                  <th className="px-4 py-3">Next renewal</th>
                   <th className="px-4 py-3">Admin phone</th>
                   <th className="px-4 py-3">Created</th>
                   <th className="px-4 py-3"></th>
@@ -84,14 +83,19 @@ export function PlatformHomeScreen() {
                       <div className="text-gray-900">{o.name}</div>
                       <div className="text-sm text-gray-500">{o.slug}</div>
                     </td>
+                    <td className="px-4 py-3">{o.status}</td>
                     <td className="px-4 py-3">
-                      <div>{o.plan}</div>
-                      {o.plan === "trial" && o.trialEndsAt && (
-                        <div className="text-sm text-gray-500">ends {formatDate(o.trialEndsAt)}</div>
+                      {o.branchCount}
+                      {o.branchesPaused > 0 && (
+                        <div className="text-sm text-red-700">{o.branchesPaused} paused</div>
                       )}
                     </td>
-                    <td className="px-4 py-3">{o.status}</td>
-                    <td className="px-4 py-3">{o.branchCount}</td>
+                    <td className="px-4 py-3">
+                      <div>{formatDate(o.nextRenewalDate)}</div>
+                      <div className={`text-sm ${toneClass[renewalStatus(o.nextRenewalDate).tone]}`}>
+                        {renewalStatus(o.nextRenewalDate).text}
+                      </div>
+                    </td>
                     <td className="px-4 py-3">{o.adminPhones.join(", ") || "—"}</td>
                     <td className="px-4 py-3">{formatDate(o.createdAt)}</td>
                     <td className="px-4 py-3 text-right">

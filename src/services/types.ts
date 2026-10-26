@@ -35,11 +35,13 @@ export interface PlatformOrganization {
   name: string;
   slug: string;
   status: string;
-  plan: string;
-  trialEndsAt: string | null;
   createdAt: string;
   contactEmail: string | null;
   branchCount: number;
+  /** How many of its branches are paused. */
+  branchesPaused: number;
+  /** The earliest renewal date among its branches, YYYY-MM-DD, or null when none is set. */
+  nextRenewalDate: string | null;
   adminPhones: string[];
 }
 
@@ -49,6 +51,8 @@ export interface PlatformBranch {
   name: string;
   code: string;
   status: string;
+  lastPaymentDate: string | null;
+  renewalDate: string | null;
 }
 
 export interface ProvisionOrganizationInput {
@@ -59,7 +63,10 @@ export interface ProvisionOrganizationInput {
   adminEmail: string;
   adminPhone: string;
   contactEmail?: string;
-  trialDays?: number;
+  /** First renewal date of the first branch, YYYY-MM-DD. */
+  renewalDate: string;
+  /** Optional: when they last paid, YYYY-MM-DD. */
+  lastPaymentDate?: string;
 }
 
 /** Returned once by the provision-organization Edge Function; the password is never retrievable again. */
