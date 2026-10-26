@@ -1444,58 +1444,27 @@ export async function createAccount(input: CreateAccountInput): Promise<Account>
   return data;
 }
 
+/**
+ * One database transaction (transfer_between_accounts): both balances and the transfer
+ * record change together or not at all, so there is nothing to undo here on failure.
+ */
 export async function createAccountTransfer(
   input: CreateAccountTransferInput
 ): Promise<void> {
-  // 1️⃣ Deduct from sender
-  const { error: deductError } = await supabase.rpc("decrement_account_balance", {
-    p_account_id: input.sender_account_id,
+  const { error } = await supabase.rpc("transfer_between_accounts", {
+    p_sender_account_id: input.sender_account_id,
+    p_receiver_account_id: input.receiver_account_id,
     p_amount: input.amount,
+    p_transfer_date: input.transfer_date,
+    p_notes: input.notes ?? null,
   });
 
-  if (deductError) {
-    const msg = (deductError.message ?? "").toLowerCase();
-    if (msg.includes("insufficient") || msg.includes("balance") || msg.includes("sender")) {
+  if (error) {
+    const msg = (error.message ?? "").toLowerCase();
+    if (msg.includes("insufficient")) {
       throw new Error("Insufficient balance in the selected sender account.");
     }
-    throw deductError;
-  }
-
-  // 2️⃣ Add to receiver
-  const { error: incrementError } = await supabase.rpc("increment_account_balance", {
-    p_account_id: input.receiver_account_id,
-    p_amount: input.amount,
-  });
-
-  if (incrementError) {
-    await supabase.rpc("increment_account_balance", {
-      p_account_id: input.sender_account_id,
-      p_amount: input.amount,
-    });
-    throw incrementError;
-  }
-
-  // 3️⃣ Insert transfer record
-  const { error: insertError } = await supabase
-    .from("account_transfers")
-    .insert({
-      sender_account_id: input.sender_account_id,
-      receiver_account_id: input.receiver_account_id,
-      amount: input.amount,
-      transfer_date: input.transfer_date,
-      notes: input.notes ?? null,
-    });
-
-  if (insertError) {
-    await supabase.rpc("increment_account_balance", {
-      p_account_id: input.sender_account_id,
-      p_amount: input.amount,
-    });
-    await supabase.rpc("decrement_account_balance", {
-      p_account_id: input.receiver_account_id,
-      p_amount: input.amount,
-    });
-    throw insertError;
+    throw error;
   }
 }
 
@@ -1591,51 +1560,18 @@ export async function getAccountsForPayments() {
 export async function createCustomerPayment(
   input: CreateCustomerPaymentInput
 ) {
-  /**
-   * 1️⃣ Insert payment
-   */
-  const dbMode = mapPaymentModeToDb(input.mode);
-  const { data: payment, error: insertError } = await supabase
-    .from("customer_payments")
-    .insert({
-      customer_id: input.customer_id,
-      payment_date: input.payment_date,
-      amount: input.amount,
-      mode: dbMode, // MUST be: 'CASH' | 'UPI' | 'BANK' | 'CHEQUE'
-      sender_account_no: input.sender_account_no ?? null,
-      receiver_account_id: input.receiver_account_id,
-    })
-    .select()
-    .single();
+  // One database transaction (record_customer_payment): inserts the payment, applies the
+  // FIFO settlement to the customer's orders and credits the receiving account.
+  const { data: payment, error } = await supabase.rpc("record_customer_payment", {
+    p_customer_id: input.customer_id,
+    p_payment_date: input.payment_date,
+    p_amount: input.amount,
+    p_mode: mapPaymentModeToDb(input.mode), // MUST be: 'CASH' | 'UPI' | 'BANK' | 'CHEQUE'
+    p_receiver_account_id: input.receiver_account_id,
+    p_sender_account_no: input.sender_account_no ?? null,
+  });
 
-  if (insertError) throw insertError;
-
-  /**
-   * 2️⃣ Apply FIFO settlement
-   */
-  const { error: fifoError } = await supabase.rpc(
-    "apply_customer_payment_fifo",
-    {
-      p_customer_id: input.customer_id,
-      p_payment_id: payment.id,
-      p_amount: input.amount,
-    }
-  );
-
-  if (fifoError) throw fifoError;
-
-  /**
-   * 3️⃣ Increment account balance
-   */
-  const { error: accountError } = await supabase.rpc(
-    "increment_account_balance",
-    {
-      p_account_id: input.receiver_account_id,
-      p_amount: input.amount,
-    }
-  );
-
-  if (accountError) throw accountError;
+  if (error) throw error;
 
   return payment;
 }
@@ -2269,38 +2205,17 @@ export async function createExpense(payload: {
   sender_account_id?: string;
   comments?: string;
 }) {
-  // 1️⃣ Decide which account to deduct from
-  let accountIdToDeduct: string | undefined;
-
-  if (payload.payment_mode === "CASH") {
-    const cashAccount = await getCashAccount();
-    accountIdToDeduct = cashAccount.id;
-  } else {
-    accountIdToDeduct = payload.sender_account_id;
-  }
-
-  if (!accountIdToDeduct) {
-    throw new Error("Account not found for deduction");
-  }
-
-  // 2️⃣ Deduct balance FIRST (before inserting expense)
-  // This validates balance and throws error if insufficient
-  const { error: rpcError } = await supabase.rpc(
-    "decrement_account_balance",
-    {
-      p_account_id: accountIdToDeduct,
-      p_amount: payload.amount,
-    }
-  );
-
-  if (rpcError) throw rpcError;
-
-  // 3️⃣ Only insert expense if balance deduction was successful
-  const { data, error } = await supabase
-    .from("expenses")
-    .insert([payload])
-    .select()
-    .single();
+  // One database transaction (record_expense): picks the account (the branch's cash account
+  // for CASH), checks the balance, deducts it and inserts the expense, or does none of it.
+  const { data, error } = await supabase.rpc("record_expense", {
+    p_expense_date: payload.expense_date,
+    p_type_id: payload.type_id,
+    p_subtype_id: payload.subtype_id,
+    p_amount: payload.amount,
+    p_payment_mode: payload.payment_mode,
+    p_sender_account_id: payload.sender_account_id ?? null,
+    p_comments: payload.comments ?? null,
+  });
 
   if (error) throw error;
 
@@ -2311,44 +2226,13 @@ export async function createExpense(payload: {
    40.1 DELETE EXPENSE (Reverse account deduction + remove row)
 -------------------------------------------------------------------*/
 export async function deleteExpense(expenseId: string): Promise<void> {
-  // 1️⃣ Fetch the expense to know amount + account info
-  const { data: expense, error: fetchError } = await supabase
-    .from("expenses")
-    .select("id, amount, payment_mode, sender_account_id")
-    .eq("id", expenseId)
-    .single();
-
-  if (fetchError) throw fetchError;
-  if (!expense) throw new Error("Expense not found");
-
-  // 2️⃣ Determine which account to restore the balance to
-  let accountIdToRestore: string;
-
-  if (expense.payment_mode === "CASH") {
-    const cashAccount = await getCashAccount();
-    accountIdToRestore = cashAccount.id;
-  } else {
-    if (!expense.sender_account_id) {
-      throw new Error("Expense has no sender account to restore balance to");
-    }
-    accountIdToRestore = expense.sender_account_id;
-  }
-
-  // 3️⃣ Restore the balance to the account
-  const { error: rpcError } = await supabase.rpc("increment_account_balance", {
-    p_account_id: accountIdToRestore,
-    p_amount: expense.amount,
+  // One database transaction (delete_expense): refunds the account the expense was paid
+  // from and deletes the row, or does neither.
+  const { error } = await supabase.rpc("delete_expense", {
+    p_expense_id: expenseId,
   });
 
-  if (rpcError) throw rpcError;
-
-  // 4️⃣ Delete the expense row
-  const { error: deleteError } = await supabase
-    .from("expenses")
-    .delete()
-    .eq("id", expenseId);
-
-  if (deleteError) throw deleteError;
+  if (error) throw error;
 }
 
 /* ------------------------------------------------------------------
@@ -3548,44 +3432,18 @@ export async function createVendorPayment(input: {
   sender_account_id: string
   receiver_account_info?: string
 }) {
-  // 1️⃣ Deduct account balance FIRST (validates sufficient funds)
-  const { error: accountError } = await supabase.rpc(
-    "decrement_account_balance",
-    {
-      p_account_id: input.sender_account_id,
-      p_amount: input.amount
-    }
-  )
-
-  if (accountError) throw accountError
-
-  // 2️⃣ Insert payment (only if balance deduction succeeded)
-  const { data: payment, error } = await supabase
-    .from("vendor_payments")
-    .insert({
-      vendor_id: input.vendor_id,
-      payment_date: input.payment_date,
-      amount: input.amount,
-      mode: input.mode,
-      sender_account_id: input.sender_account_id,
-      receiver_account_info: input.receiver_account_info ?? null
-    })
-    .select()
-    .single()
+  // One database transaction (record_vendor_payment): deducts the sender account, inserts
+  // the payment and settles the vendor's procurements oldest-first, or does none of it.
+  const { data: payment, error } = await supabase.rpc("record_vendor_payment", {
+    p_vendor_id: input.vendor_id,
+    p_payment_date: input.payment_date,
+    p_amount: input.amount,
+    p_mode: input.mode,
+    p_sender_account_id: input.sender_account_id,
+    p_receiver_account_info: input.receiver_account_info ?? null
+  })
 
   if (error) throw error
-
-  // 3️⃣ Apply FIFO settlement
-  const { error: fifoError } = await supabase.rpc(
-    "apply_vendor_payment_fifo",
-    {
-      p_vendor_id: input.vendor_id,
-      p_payment_id: payment.id,
-      p_amount: input.amount
-    }
-  )
-
-  if (fifoError) throw fifoError
 
   return payment
 }
@@ -4482,41 +4340,22 @@ export async function getTotalWithdrawalsAmount(): Promise<number> {
 export async function createWithdrawal(
   input: CreateWithdrawalInput
 ): Promise<void> {
-  // 1. Deduct account balance first
-  const { error: deductError } = await supabase.rpc(
-    "decrement_account_balance",
-    {
-      p_account_id: input.account_id,
-      p_amount: input.amount,
-    }
-  );
+  // One database transaction (record_withdrawal): deducts the balance and records the
+  // withdrawal, or does neither.
+  const { error } = await supabase.rpc("record_withdrawal", {
+    p_account_id: input.account_id,
+    p_date: input.date,
+    p_amount: input.amount,
+    p_notes: input.notes ?? null,
+  });
 
-  if (deductError) {
-    const msg = (deductError.message ?? "").toLowerCase();
+  if (error) {
+    const msg = (error.message ?? "").toLowerCase();
     if (msg.includes("insufficient balance")) {
       throw new Error(
         "Insufficient balance in the selected account."
       );
     }
-    throw deductError;
-  }
-
-  // 2. Insert withdrawal record
-  const { error: insertError } = await supabase
-    .from("withdrawals")
-    .insert({
-      date: input.date,
-      amount: input.amount,
-      notes: input.notes ?? null,
-      account_id: input.account_id,
-    });
-
-  if (insertError) {
-    // Attempt to restore balance if insert fails
-    await supabase.rpc("increment_account_balance", {
-      p_account_id: input.account_id,
-      p_amount: input.amount,
-    });
-    throw insertError;
+    throw error;
   }
 }
