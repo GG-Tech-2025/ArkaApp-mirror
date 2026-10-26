@@ -7,6 +7,11 @@ import {
   Branch,
   PlatformOrganization,
   PlatformBranch,
+  PlatformBranchRow,
+  PlatformOrganizationDetail,
+  BranchBillingEvent,
+  OrganizationAdmin,
+  RecordPaymentInput,
   ProvisionOrganizationInput,
   ProvisionOrganizationResult,
   Material,
@@ -283,6 +288,144 @@ export async function addBranchToOrganization(input: {
   }
 
   return { branchId: data.branch_id, adminsGranted: data.admins_granted };
+}
+
+/** Every branch of every client, with its client's name and status (platform overview). */
+export async function getPlatformBranches(): Promise<PlatformBranchRow[]> {
+  const [branches, orgs] = await Promise.all([
+    supabase
+      .from("branches")
+      .select("id, organization_id, name, code, status, last_payment_date, renewal_date"),
+    supabase.from("organizations").select("id, name, status"),
+  ]);
+  if (branches.error) throw branches.error;
+  if (orgs.error) throw orgs.error;
+
+  const byId = new Map((orgs.data ?? []).map((o) => [o.id, o]));
+  return (branches.data ?? []).map((b) => ({
+    id: b.id,
+    organizationId: b.organization_id,
+    organizationName: byId.get(b.organization_id)?.name ?? "Unknown",
+    organizationStatus: byId.get(b.organization_id)?.status ?? "ACTIVE",
+    name: b.name,
+    code: b.code,
+    status: b.status,
+    lastPaymentDate: b.last_payment_date,
+    renewalDate: b.renewal_date,
+  }));
+}
+
+export async function getPlatformOrganization(organizationId: string): Promise<PlatformOrganizationDetail | null> {
+  const { data, error } = await supabase
+    .from("organizations")
+    .select("id, name, slug, status, contact_email, contact_phone, created_at")
+    .eq("id", organizationId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return {
+    id: data.id,
+    name: data.name,
+    slug: data.slug,
+    status: data.status,
+    contactEmail: data.contact_email,
+    contactPhone: data.contact_phone,
+    createdAt: data.created_at,
+  };
+}
+
+/** A client's admins with their email and last sign-in (super-admin only; checked in the database). */
+export async function getOrganizationAdmins(organizationId: string): Promise<OrganizationAdmin[]> {
+  const { data, error } = await supabase.rpc("platform_list_org_admins", { p_organization_id: organizationId });
+  if (error) throw error;
+  return (data ?? []).map(
+    (r: { user_id: string; phone: string; email: string; last_sign_in_at: string | null; created_at: string }) => ({
+      userId: r.user_id,
+      phone: r.phone,
+      email: r.email,
+      lastSignInAt: r.last_sign_in_at,
+      createdAt: r.created_at,
+    })
+  );
+}
+
+/** The billing history of one client, newest first. */
+export async function getBillingEvents(organizationId: string, limit = 100): Promise<BranchBillingEvent[]> {
+  const { data, error } = await supabase
+    .from("branch_billing_events")
+    .select("id, branch_id, event_type, happened_on, amount, reference, note, renewal_date_after, actor_id, created_at")
+    .eq("organization_id", organizationId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  // A payment and the resume it triggers are written in one transaction, so they share a
+  // timestamp: keep the resume after the payment (so it sits above it, newest first).
+  const rank: Record<string, number> = { RESUMED: 2, PAYMENT: 1 };
+  const ordered = [...(data ?? [])].sort(
+    (a, b) =>
+      String(b.created_at).localeCompare(String(a.created_at)) ||
+      (rank[b.event_type] ?? 0) - (rank[a.event_type] ?? 0)
+  );
+  return ordered.map((e) => ({
+    id: e.id,
+    branchId: e.branch_id,
+    eventType: e.event_type,
+    happenedOn: e.happened_on,
+    amount: e.amount === null ? null : Number(e.amount),
+    reference: e.reference,
+    note: e.note,
+    renewalDateAfter: e.renewal_date_after,
+    actorId: e.actor_id,
+    createdAt: e.created_at,
+  }));
+}
+
+/** The database's own message for a refused platform action (they are written for the operator). */
+function platformActionError(error: { message?: string } | null, fallback: string): Error {
+  return new Error(error?.message || fallback);
+}
+
+/** Pause (active = false) or resume a branch. Takes effect for its users immediately. */
+export async function setBranchActive(branchId: string, active: boolean, note?: string): Promise<void> {
+  const { error } = await supabase.rpc("platform_set_branch_status", {
+    p_branch_id: branchId,
+    p_active: active,
+    p_note: note?.trim() || null,
+  });
+  if (error) throw platformActionError(error, "Could not change the branch. Please try again.");
+}
+
+/** Records a payment, moves the renewal date and (by default) resumes a paused branch. */
+export async function recordBranchPayment(input: RecordPaymentInput): Promise<void> {
+  const { error } = await supabase.rpc("platform_record_payment", {
+    p_branch_id: input.branchId,
+    p_paid_on: input.paidOn,
+    p_renewal_date: input.renewalDate,
+    p_amount: input.amount ?? null,
+    p_reference: input.reference?.trim() || null,
+    p_note: input.note?.trim() || null,
+    p_resume: input.resume,
+  });
+  if (error) throw platformActionError(error, "Could not record the payment. Please try again.");
+}
+
+export async function setBranchRenewalDate(branchId: string, renewalDate: string, note?: string): Promise<void> {
+  const { error } = await supabase.rpc("platform_set_renewal_date", {
+    p_branch_id: branchId,
+    p_renewal_date: renewalDate,
+    p_note: note?.trim() || null,
+  });
+  if (error) throw platformActionError(error, "Could not change the renewal date. Please try again.");
+}
+
+/** Suspend (active = false) or resume a whole client, every branch at once. */
+export async function setOrganizationActive(organizationId: string, active: boolean, note?: string): Promise<void> {
+  const { error } = await supabase.rpc("platform_set_org_status", {
+    p_organization_id: organizationId,
+    p_active: active,
+    p_note: note?.trim() || null,
+  });
+  if (error) throw platformActionError(error, "Could not change the client. Please try again.");
 }
 
 /**

@@ -60,6 +60,66 @@ export interface PlatformBranch {
   renewalDate: string | null;
 }
 
+/** One branch of any client, with its client's name and status (platform overview). */
+export interface PlatformBranchRow {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  organizationStatus: string;
+  name: string;
+  code: string;
+  status: string;
+  lastPaymentDate: string | null;
+  renewalDate: string | null;
+}
+
+/** One client organization's own details (platform client page). */
+export interface PlatformOrganizationDetail {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  createdAt: string;
+}
+
+/** An entry in the billing history: payments, pauses, resumes and renewal changes. */
+export interface BranchBillingEvent {
+  id: string;
+  branchId: string | null;
+  eventType: string;
+  happenedOn: string;
+  amount: number | null;
+  reference: string | null;
+  note: string | null;
+  renewalDateAfter: string | null;
+  actorId: string | null;
+  createdAt: string;
+}
+
+/** A client's admin as the platform operator sees them. */
+export interface OrganizationAdmin {
+  userId: string;
+  phone: string;
+  email: string;
+  lastSignInAt: string | null;
+  createdAt: string;
+}
+
+export interface RecordPaymentInput {
+  branchId: string;
+  /** YYYY-MM-DD, not in the future. */
+  paidOn: string;
+  /** The new renewal date, YYYY-MM-DD, after the payment date. */
+  renewalDate: string;
+  amount?: number;
+  reference?: string;
+  note?: string;
+  /** Resume the branch if it is paused (the default on the screen). */
+  resume: boolean;
+}
+
 export interface ProvisionOrganizationInput {
   organizationName: string;
   slug: string;

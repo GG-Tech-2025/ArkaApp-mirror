@@ -45,3 +45,13 @@ export const toneClass: Record<"none" | "overdue" | "soon" | "ok", string> = {
   soon: "text-amber-700",
   ok: "text-gray-500",
 };
+
+/** `iso` plus `months` calendar months, keeping the day (or the month's last day when it is shorter). */
+export function addMonths(iso: string, months: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const total = y * 12 + (m - 1) + months;
+  const ty = Math.floor(total / 12);
+  const tm = total % 12;
+  const lastDay = new Date(ty, tm + 1, 0).getDate();
+  return `${ty}-${pad(tm + 1)}-${pad(Math.min(d, lastDay))}`;
+}
