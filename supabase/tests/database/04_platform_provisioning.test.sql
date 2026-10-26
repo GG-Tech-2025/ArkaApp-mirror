@@ -72,7 +72,7 @@ select throws_ok($$insert into public.organizations (name, slug) values ('Sneaky
   '42501', null, 'a super-admin cannot write organizations directly');
 select throws_ok($$update public.profiles set phone = '8399999999' where id = '43000000-0000-0000-0000-0000000000a1'$$,
   '42501', null, 'a super-admin cannot edit another user''s profile (no write privilege at all)');
-select throws_ok($$select public.provision_organization('X', 'x-co', 'Main', 'MAIN', '43000000-0000-0000-0000-0000000000b1', '8300000099')$$,
+select throws_ok($$select public.provision_organization('X', 'x-co', 'Main', 'MAIN', '43000000-0000-0000-0000-0000000000b1', '8300000099', current_date + 30)$$,
   '42501', null, 'even a super-admin cannot call provisioning directly (only the service role can)');
 reset role;
 
@@ -97,7 +97,7 @@ reset role;
 
 set local request.jwt.claims = '';
 set local role anon;
-select throws_ok($$select public.provision_organization('X', 'x-co', 'Main', 'MAIN', '43000000-0000-0000-0000-0000000000b1', '8300000099')$$,
+select throws_ok($$select public.provision_organization('X', 'x-co', 'Main', 'MAIN', '43000000-0000-0000-0000-0000000000b1', '8300000099', current_date + 30)$$,
   '42501', null, 'anon cannot provision an organization');
 reset role;
 
@@ -106,16 +106,16 @@ reset role;
 -- ------------------------------------------------------------------
 create temp table p1 as
   select public.provision_organization('  New Co  ', 'new-co', 'Main Plant', ' main ',
-    '43000000-0000-0000-0000-0000000000b1', '8300000010', 'owner@newco.test') as r;
+    '43000000-0000-0000-0000-0000000000b1', '8300000010', current_date + 30, 'owner@newco.test') as r;
 
 select ok((select r ? 'organization_id' and r ? 'branch_id' from p1), 'provisioning returns the new organization and branch ids');
 
-select is((select o.name || '/' || o.status || '/' || o.plan || '/' || o.contact_email
+select is((select o.name || '/' || o.status || '/' || o.contact_email
            from public.organizations o where o.id = (select (r ->> 'organization_id')::uuid from p1)),
-  'New Co/ACTIVE/trial/owner@newco.test', 'the organization is created active, on a trial, with the contact email');
-select ok((select o.trial_ends_at > now() + interval '13 days' and o.trial_ends_at < now() + interval '15 days'
-           from public.organizations o where o.id = (select (r ->> 'organization_id')::uuid from p1)),
-  'the default trial is 14 days');
+  'New Co/ACTIVE/owner@newco.test', 'the organization is created active, with the contact email');
+select is((select b.renewal_date || '/' || coalesce(b.last_payment_date::text, 'none')
+           from public.branches b where b.id = (select (r ->> 'branch_id')::uuid from p1)),
+  (current_date + 30)::text || '/none', 'the first branch gets the renewal date, and no last payment date yet');
 select is((select b.name || '/' || b.code || '/' || b.status from public.branches b where b.id = (select (r ->> 'branch_id')::uuid from p1)),
   'Main Plant/MAIN/ACTIVE', 'the first branch is created, with its code upper-cased');
 select is((select p.role || '/' || p.is_super_admin::text || '/' || (p.organization_id = (select (r ->> 'organization_id')::uuid from p1))::text
@@ -156,30 +156,30 @@ reset role;
 -- ------------------------------------------------------------------
 -- Refusals leave nothing behind
 -- ------------------------------------------------------------------
-select throws_ok($$select public.provision_organization('Dup Slug', 'new-co', 'Main', 'MAIN', '43000000-0000-0000-0000-0000000000b2', '8300000020')$$,
+select throws_ok($$select public.provision_organization('Dup Slug', 'new-co', 'Main', 'MAIN', '43000000-0000-0000-0000-0000000000b2', '8300000020', current_date + 30)$$,
   '23505', null, 'an organization slug can only be used once');
-select throws_ok($$select public.provision_organization('Same Admin', 'same-admin-co', 'Main', 'MAIN', '43000000-0000-0000-0000-0000000000b1', '8300000021')$$,
+select throws_ok($$select public.provision_organization('Same Admin', 'same-admin-co', 'Main', 'MAIN', '43000000-0000-0000-0000-0000000000b1', '8300000021', current_date + 30)$$,
   '23505', 'That user already has a profile', 'a user who already has a profile cannot be made the first admin of another org');
-select throws_ok($$select public.provision_organization('Dup Phone', 'dup-phone-co', 'Main', 'MAIN', '43000000-0000-0000-0000-0000000000b3', '8300000010')$$,
+select throws_ok($$select public.provision_organization('Dup Phone', 'dup-phone-co', 'Main', 'MAIN', '43000000-0000-0000-0000-0000000000b3', '8300000010', current_date + 30)$$,
   '23505', null, 'an admin phone already in use is refused');
 select is((select count(*) from public.organizations where slug in ('dup-phone-co', 'same-admin-co')), 0::bigint,
   'a refused provisioning leaves no half-created organization behind');
 
-select throws_ok($$select public.provision_organization('Bad Slug', 'Bad Slug', 'Main', 'MAIN', '43000000-0000-0000-0000-0000000000b4', '8300000030')$$,
+select throws_ok($$select public.provision_organization('Bad Slug', 'Bad Slug', 'Main', 'MAIN', '43000000-0000-0000-0000-0000000000b4', '8300000030', current_date + 30)$$,
   '22023', null, 'a slug with capitals or spaces is refused');
-select throws_ok($$select public.provision_organization('   ', 'blank-co', 'Main', 'MAIN', '43000000-0000-0000-0000-0000000000b4', '8300000031')$$,
+select throws_ok($$select public.provision_organization('   ', 'blank-co', 'Main', 'MAIN', '43000000-0000-0000-0000-0000000000b4', '8300000031', current_date + 30)$$,
   '22023', 'Organization name is required', 'a blank name is refused');
-select throws_ok($$select public.provision_organization('No Branch', 'no-branch-co', 'Main', '  ', '43000000-0000-0000-0000-0000000000b4', '8300000032')$$,
+select throws_ok($$select public.provision_organization('No Branch', 'no-branch-co', 'Main', '  ', '43000000-0000-0000-0000-0000000000b4', '8300000032', current_date + 30)$$,
   '22023', 'Branch name and code are required', 'a blank branch code is refused');
-select throws_ok($$select public.provision_organization('Zero Trial', 'zero-trial-co', 'Main', 'MAIN', '43000000-0000-0000-0000-0000000000b4', '8300000033', null, 'trial', 0)$$,
-  '22023', null, 'a trial of 0 days is refused');
-select throws_ok($$select public.provision_organization('No User', 'no-user-co', 'Main', 'MAIN', '43000000-0000-0000-0000-0000000000ff', '8300000034')$$,
+select throws_ok($$select public.provision_organization('Late Co', 'late-co', 'Main', 'MAIN', '43000000-0000-0000-0000-0000000000b4', '8300000033', current_date - 5)$$,
+  '22023', 'The renewal date is required and cannot be in the past', 'a renewal date in the past is refused');
+select throws_ok($$select public.provision_organization('No User', 'no-user-co', 'Main', 'MAIN', '43000000-0000-0000-0000-0000000000ff', '8300000034', current_date + 30)$$,
   'P0002', 'Admin user not found', 'an admin user that does not exist is refused');
 
-select lives_ok($$select public.provision_organization('Paid Co', 'paid-co', 'Main', 'MAIN', '43000000-0000-0000-0000-0000000000b4', '8300000040', null, 'standard', 14)$$,
-  'a non-trial plan can be provisioned');
-select is((select trial_ends_at is null from public.organizations where slug = 'paid-co'), true,
-  'a non-trial plan has no trial end date');
+select lives_ok($$select public.provision_organization('Paid Co', 'paid-co', 'Main', 'MAIN', '43000000-0000-0000-0000-0000000000b4', '8300000040', current_date + 30, null, current_date - 2)$$,
+  'a client that has already paid can be provisioned with its last payment date');
+select is((select b.last_payment_date from public.branches b join public.organizations o on o.id = b.organization_id where o.slug = 'paid-co'),
+  current_date - 2, 'and that last payment date is stored on its branch');
 
 select * from finish();
 rollback;

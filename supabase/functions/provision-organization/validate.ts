@@ -9,13 +9,22 @@ export interface ProvisionInput {
   adminEmail: string;
   adminPhone: string;
   contactEmail: string | null;
-  plan: string;
-  trialDays: number;
+  /** First renewal date of the new client's first branch, YYYY-MM-DD. */
+  renewalDate: string;
+  /** Optional: when they last paid (already paid at sign-up), YYYY-MM-DD. */
+  lastPaymentDate: string | null;
 }
 
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^[0-9+\-\s]{7,20}$/;
+
+/** A real calendar date in YYYY-MM-DD form (2026-02-30 is not one). */
+function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const d = new Date(value + "T00:00:00Z");
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
+}
 
 function text(value: unknown, max = 200): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -35,8 +44,8 @@ export function validateInput(body: unknown): { ok: true; value: ProvisionInput 
   const adminEmail = text(b.adminEmail).toLowerCase();
   const adminPhone = text(b.adminPhone, 20);
   const contactEmail = text(b.contactEmail) || null;
-  const plan = text(b.plan, 40) || "trial";
-  const trialDays = b.trialDays === undefined || b.trialDays === null ? 14 : Number(b.trialDays);
+  const renewalDate = text(b.renewalDate, 10);
+  const lastPaymentDate = text(b.lastPaymentDate, 10) || null;
 
   if (!organizationName) return { ok: false, error: "Organization name is required" };
   if (!SLUG_RE.test(slug)) {
@@ -47,13 +56,12 @@ export function validateInput(body: unknown): { ok: true; value: ProvisionInput 
   if (!EMAIL_RE.test(adminEmail)) return { ok: false, error: "Admin email is not a valid email address" };
   if (!PHONE_RE.test(adminPhone)) return { ok: false, error: "Admin phone must be 7 to 20 digits" };
   if (contactEmail && !EMAIL_RE.test(contactEmail)) return { ok: false, error: "Contact email is not a valid email address" };
-  if (!Number.isInteger(trialDays) || trialDays < 1 || trialDays > 365) {
-    return { ok: false, error: "Trial length must be a whole number of days from 1 to 365" };
-  }
+  if (!isIsoDate(renewalDate)) return { ok: false, error: "Renewal date is required" };
+  if (lastPaymentDate && !isIsoDate(lastPaymentDate)) return { ok: false, error: "Last payment date is not a valid date" };
 
   return {
     ok: true,
-    value: { organizationName, slug, branchName, branchCode, adminEmail, adminPhone, contactEmail, plan, trialDays },
+    value: { organizationName, slug, branchName, branchCode, adminEmail, adminPhone, contactEmail, renewalDate, lastPaymentDate },
   };
 }
 

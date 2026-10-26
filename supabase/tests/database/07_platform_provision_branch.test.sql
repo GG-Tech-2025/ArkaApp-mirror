@@ -7,7 +7,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(22);
+select plan(25);
 
 insert into public.organizations (id, name, slug) values
   ('a1000000-0000-0000-0000-0000000000a1', 'Branch Test Org G1', 'branch-test-g1'),
@@ -52,19 +52,19 @@ insert into public.user_branch_access (user_id, branch_id, organization_id, bran
 -- ------------------------------------------------------------------
 set local request.jwt.claims = '{"sub":"47000000-0000-0000-0000-0000000000a1","role":"authenticated","organization_id":"a1000000-0000-0000-0000-0000000000a1","default_branch_id":"a1b00000-0000-0000-0000-0000000000a1"}';
 set local role authenticated;
-select throws_ok($$select public.provision_branch('a1000000-0000-0000-0000-0000000000a1', 'Sneaky', 'SNEAK')$$,
+select throws_ok($$select public.provision_branch('a1000000-0000-0000-0000-0000000000a1', 'Sneaky', 'SNEAK', current_date + 30)$$,
   '42501', 'Only platform administrators can add branches', 'a client admin cannot add a branch, not even to their own organization');
 reset role;
 
 set local request.jwt.claims = '{"sub":"47000000-0000-0000-0000-0000000000a2","role":"authenticated","is_super_admin":true,"organization_id":"a1000000-0000-0000-0000-0000000000a1","default_branch_id":"a1b00000-0000-0000-0000-0000000000a1"}';
 set local role authenticated;
-select throws_ok($$select public.provision_branch('a1000000-0000-0000-0000-0000000000a1', 'Sneaky', 'SNEAK')$$,
+select throws_ok($$select public.provision_branch('a1000000-0000-0000-0000-0000000000a1', 'Sneaky', 'SNEAK', current_date + 30)$$,
   '42501', null, 'a token that merely claims is_super_admin gets nothing: the profile is checked, live');
 reset role;
 
 set local request.jwt.claims = '';
 set local role anon;
-select throws_ok($$select public.provision_branch('a1000000-0000-0000-0000-0000000000a1', 'Sneaky', 'SNEAK')$$,
+select throws_ok($$select public.provision_branch('a1000000-0000-0000-0000-0000000000a1', 'Sneaky', 'SNEAK', current_date + 30)$$,
   '42501', null, 'anon cannot add a branch');
 reset role;
 
@@ -80,7 +80,7 @@ grant all on b1 to authenticated;
 set local request.jwt.claims = '{"sub":"47000000-0000-0000-0000-0000000000a0","role":"authenticated","is_super_admin":true}';
 set local role authenticated;
 
-insert into b1 select public.provision_branch('a1000000-0000-0000-0000-0000000000a1', '  North Plant  ', ' north ');
+insert into b1 select public.provision_branch('a1000000-0000-0000-0000-0000000000a1', '  North Plant  ', ' north ', current_date + 30);
 
 select ok((select r ? 'branch_id' and r ? 'admins_granted' from b1), 'the new branch id and the number of admins given access are returned');
 select is((select (r ->> 'admins_granted')::int from b1), 2, 'both of the client''s admins were given access');
@@ -88,6 +88,12 @@ select is((select b.name || '/' || b.code || '/' || b.status || '/' || (b.organi
            from public.branches b where b.id = (select (r ->> 'branch_id')::uuid from b1)),
   'North Plant/NORTH/ACTIVE/true', 'the branch is created under that organization, trimmed, with its code upper-cased');
 reset role;
+
+select is((select b.renewal_date from public.branches b where b.id = (select (r ->> 'branch_id')::uuid from b1)),
+  current_date + 30, 'the branch gets the renewal date that was given');
+select is((select e.event_type || '/' || (e.actor_id = '47000000-0000-0000-0000-0000000000a0')::text
+           from public.branch_billing_events e where e.branch_id = (select (r ->> 'branch_id')::uuid from b1)),
+  'CREATED/true', 'its history starts with a CREATED entry naming the super-admin who added it');
 
 select is((select count(*) from public.accounts where is_cash and branch_id = (select (r ->> 'branch_id')::uuid from b1)),
   1::bigint, 'the new branch has its cash account');
@@ -118,19 +124,21 @@ reset role;
 -- ------------------------------------------------------------------
 set local request.jwt.claims = '{"sub":"47000000-0000-0000-0000-0000000000a0","role":"authenticated","is_super_admin":true}';
 set local role authenticated;
-select throws_ok($$select public.provision_branch('a1000000-0000-0000-0000-0000000000a1', 'Dup', 'north')$$,
+select throws_ok($$select public.provision_branch('a1000000-0000-0000-0000-0000000000a1', 'Dup', 'north', current_date + 30)$$,
   '23505', null, 'a branch code already used in that organization is refused (whatever the case)');
-select lives_ok($$select public.provision_branch('a2000000-0000-0000-0000-0000000000a2', 'Other Org North', 'NORTH')$$,
+select lives_ok($$select public.provision_branch('a2000000-0000-0000-0000-0000000000a2', 'Other Org North', 'NORTH', current_date + 30)$$,
   'but another organization may use the same code');
-select throws_ok($$select public.provision_branch('a1000000-0000-0000-0000-0000000000a1', '   ', 'X1')$$,
+select throws_ok($$select public.provision_branch('a1000000-0000-0000-0000-0000000000a1', 'Past', 'PAST', current_date - 1)$$,
+  '22023', 'The renewal date is required and cannot be in the past', 'a renewal date in the past is refused');
+select throws_ok($$select public.provision_branch('a1000000-0000-0000-0000-0000000000a1', '   ', 'X1', current_date + 30)$$,
   '22023', 'Branch name is required (up to 200 characters)', 'a blank name is refused');
-select throws_ok($$select public.provision_branch('a1000000-0000-0000-0000-0000000000a1', 'No Code', '   ')$$,
+select throws_ok($$select public.provision_branch('a1000000-0000-0000-0000-0000000000a1', 'No Code', '   ', current_date + 30)$$,
   '22023', 'Branch code is required (up to 20 characters)', 'a blank code is refused');
-select throws_ok($$select public.provision_branch('a1000000-0000-0000-0000-0000000000a1', 'Long Code', 'THIS-CODE-IS-FAR-TOO-LONG')$$,
+select throws_ok($$select public.provision_branch('a1000000-0000-0000-0000-0000000000a1', 'Long Code', 'THIS-CODE-IS-FAR-TOO-LONG', current_date + 30)$$,
   '22023', null, 'a code over 20 characters is refused');
-select throws_ok($$select public.provision_branch('00000000-0000-0000-0000-0000000000ff', 'Ghost', 'GHOST')$$,
+select throws_ok($$select public.provision_branch('00000000-0000-0000-0000-0000000000ff', 'Ghost', 'GHOST', current_date + 30)$$,
   'P0002', 'Organization not found', 'an organization that does not exist is refused');
-select throws_ok($$select public.provision_branch('a3000000-0000-0000-0000-0000000000a3', 'Late', 'LATE')$$,
+select throws_ok($$select public.provision_branch('a3000000-0000-0000-0000-0000000000a3', 'Late', 'LATE', current_date + 30)$$,
   '55000', 'Organization is not active', 'a suspended organization cannot get a new branch');
 reset role;
 
