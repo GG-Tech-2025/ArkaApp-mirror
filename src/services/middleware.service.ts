@@ -616,34 +616,25 @@ export async function createProcurement(
 
 export async function createProductionEntry(
   input: ProductionInput,
-  createdBy: string
+  _createdBy?: string // kept for existing callers; the database records the signed-in user itself
 ): Promise<void> {
-  const { error } = await supabase.from("production_entries").insert({
-    production_date: input.date,
-    round: input.round,
-    bricks: input.bricks,
-    wet_ash_kg: input.wetAsh,
-    marble_powder_kg: input.marblePowder,
-    crusher_powder_kg: input.crusherPowder,
-    fly_ash_kg: input.flyAsh,
-    cement_bags: input.cement,
-    created_by: createdBy
+  // One database transaction (record_production_entry): saves the entry, adds the bricks to
+  // product stock and takes the raw materials used out of material stock. Stock changes are
+  // done in the database (quantity = quantity +/- x), so two submissions cannot overwrite
+  // each other.
+  const { error } = await supabase.rpc("record_production_entry", {
+    p_production_date: input.date.split("T")[0],
+    p_round: input.round,
+    p_bricks: input.bricks,
+    p_wet_ash_kg: input.wetAsh,
+    p_marble_powder_kg: input.marblePowder,
+    p_crusher_powder_kg: input.crusherPowder,
+    p_fly_ash_kg: input.flyAsh,
+    p_cement_bags: input.cement,
+    p_notes: input.notes ?? null,
   });
 
   if (error) throw error;
-
-  // Update product inventory with the bricks quantity
-  await updateProductInventory(input.bricks);
-
-  // Reduce raw materials from inventory stock
-  await reduceInventoryStock(
-    input.wetAsh,
-    input.marblePowder,
-    input.crusherPowder,
-    input.flyAsh,
-    input.cement,
-    input.round
-  );
 }
 
 /* ------------------------------------------------------------------
@@ -754,50 +745,17 @@ export async function updateOrderWithLoadmen(
   newLoadmenIds: string[],
   skipLoadmenUpdate: boolean = false
 ): Promise<void> {
-  /* Update order */
-  const { error: orderError } = await supabase
-    .from("orders")
-    .update(orderUpdate)
-    .eq("id", orderId);
+  // One database transaction (update_order_with_loadmen): updates only the columns present
+  // in orderUpdate, takes the bricks off stock if the order becomes delivered, and replaces
+  // the loadmen unless skipLoadmenUpdate is set.
+  const { error } = await supabase.rpc("update_order_with_loadmen", {
+    p_order_id: orderId,
+    p_update: orderUpdate,
+    p_loadmen: newLoadmenIds,
+    p_skip_loadmen: skipLoadmenUpdate,
+  });
 
-  if (orderError) throw orderError;
-
-  /* Deduct bricks from product inventory when order is marked as delivered */
-  if (orderUpdate.delivered === true && orderUpdate.brick_quantity) {
-    await deductProductInventory(orderUpdate.brick_quantity);
-  }
-
-  if (skipLoadmenUpdate) return;
-
-  /* Get existing loadmen */
-  const { data: existing } = await supabase
-    .from("order_loadmen")
-    .select("employee_id")
-    .eq("order_id", orderId);
-
-  const existingIds = (existing ?? []).map(e => e.employee_id);
-
-  const toDelete = existingIds.filter(id => !newLoadmenIds.includes(id));
-  const toInsert = newLoadmenIds.filter(id => !existingIds.includes(id));
-
-  /* Delete removed loadmen */
-  if (toDelete.length > 0) {
-    await supabase
-      .from("order_loadmen")
-      .delete()
-      .eq("order_id", orderId)
-      .in("employee_id", toDelete);
-  }
-
-  /* Insert new loadmen */
-  if (toInsert.length > 0) {
-    await supabase.from("order_loadmen").insert(
-      toInsert.map(employee_id => ({
-        order_id: orderId,
-        employee_id
-      }))
-    );
-  }
+  if (error) throw error;
 }
 
 /* ------------------------------------------------------------------
@@ -805,7 +763,20 @@ export async function updateOrderWithLoadmen(
    One database transaction: marks the order delivered with its delivery
    details, deducts the bricks from stock and replaces the loadmen.
    Employees have no direct write access to orders or order_loadmen.
+   When `wages` is given, each listed loadman's wage for the delivery is
+   credited in the same transaction (complete_delivery_with_wages), so a
+   failed wage can no longer leave a delivered order with missing wages.
 -------------------------------------------------------------------*/
+
+export interface DeliveryWages {
+  /** The loadmen to pay: a subset of the delivery's loadmen. */
+  loadmenIds: string[];
+  /** What each of them earns for this delivery. */
+  amountPerLoadman: number;
+  notes?: string | null;
+  /** ISO timestamp for the ledger entries; defaults to now in the database. */
+  paymentAt?: string | null;
+}
 
 export async function completeDelivery(
   orderId: string,
@@ -814,8 +785,31 @@ export async function completeDelivery(
     | "time" | "brick_quantity" | "location" | "payment_status" | "amount_paid"
     | "gst_number" | "dc_number" | "loading_type"
   >,
-  loadmenIds: string[]
+  loadmenIds: string[],
+  wages?: DeliveryWages
 ): Promise<void> {
+  if (wages && wages.loadmenIds.length > 0) {
+    const { error } = await supabase.rpc("complete_delivery_with_wages", {
+      p_order_id: orderId,
+      p_time: delivery.time ?? null,
+      p_brick_quantity: delivery.brick_quantity,
+      p_location: delivery.location ?? null,
+      p_payment_status: delivery.payment_status,
+      p_amount_paid: delivery.amount_paid ?? 0,
+      p_gst_number: delivery.gst_number ?? null,
+      p_dc_number: delivery.dc_number ?? null,
+      p_loading_type: delivery.loading_type ?? null,
+      p_loadmen: loadmenIds,
+      p_wage_loadmen: wages.loadmenIds,
+      p_wage_amount: wages.amountPerLoadman,
+      p_wage_notes: wages.notes ?? null,
+      p_wage_payment_at: wages.paymentAt ?? null,
+    });
+
+    if (error) throw error;
+    return;
+  }
+
   const { error } = await supabase.rpc("complete_delivery", {
     p_order_id: orderId,
     p_time: delivery.time ?? null,
@@ -836,21 +830,14 @@ export async function completeDelivery(
    12b. DELETE ORDER (and associated loadmen)
 -------------------------------------------------------------------*/
 export async function deleteOrder(orderId: string): Promise<void> {
-  // Delete associated loadmen first
-  const { error: loadmenError } = await supabase
-    .from("order_loadmen")
-    .delete()
-    .eq("order_id", orderId);
-
-  if (loadmenError) throw loadmenError;
-
-  // Delete the order
-  const { error: orderError } = await supabase
+  // One statement: order_loadmen rows go with the order (ON DELETE CASCADE), so the order
+  // and its loadmen are removed together or not at all.
+  const { error } = await supabase
     .from("orders")
     .delete()
     .eq("id", orderId);
 
-  if (orderError) throw orderError;
+  if (error) throw error;
 }
 
 /* ------------------------------------------------------------------
@@ -1154,35 +1141,17 @@ export async function getCustomerOrdersWithSettlement(
 export async function createOrder(
   orderInput: CreateOrderInput,
   loadmenIds: string[],
-  createdBy: string
+  _createdBy?: string // kept for existing callers; the database records the signed-in user itself
 ): Promise<{ orderId: string }> {
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
-    .insert({
-      ...orderInput,
-      delivered: false,
-      created_by: createdBy,
-    })
-    .select("id")
-    .single();
+  // One database transaction (create_order): the order and its loadmen, or neither.
+  const { data, error } = await supabase.rpc("create_order", {
+    p_order: orderInput,
+    p_loadmen: loadmenIds,
+  });
 
-  if (orderError) throw orderError;
+  if (error) throw error;
 
-  const orderId = order.id;
-
-  if (loadmenIds.length > 0) {
-    const loadmenRows = loadmenIds.map((employee_id) => ({
-      order_id: orderId,
-      employee_id,
-    }));
-
-    const { error: loadmenError } = await supabase
-      .from("order_loadmen")
-      .insert(loadmenRows);
-
-    if (loadmenError) throw loadmenError;
-  }
-  return { orderId };
+  return { orderId: data as string };
 }
 
 /* ------------------------------------------------------------------
@@ -1231,78 +1200,23 @@ export async function getProductionEntriesFromToday(
 -------------------------------------------------------------------*/
 
 export async function createLoanWithDisbursementAndCashEntry(
-  input: CreateLoanInput,
-  // openCashLedgerDayId: string // currently OPEN cash_ledger_days.id
+  input: CreateLoanInput
 ): Promise<{ loanId: string }> {
-  /* -------------------------------------------------------------
-     1. DETERMINE PAYMENT MODE
-  --------------------------------------------------------------*/
-  const paymentMode = (await isCashAccount(input.disbursement_account_id))
-    ? "CASH"
-    : "BANK";
+  // One database transaction (create_loan): the loan, its DISBURSEMENT ledger line and the
+  // credit to the disbursement account, or none of them.
+  const { data, error } = await supabase.rpc("create_loan", {
+    p_lender_name: input.lender_name,
+    p_loan_type: input.loan_type,
+    p_principal_amount: input.principal_amount,
+    p_start_date: input.start_date,
+    p_interest_rate: input.interest_rate ?? null,
+    p_disbursement_account_id: input.disbursement_account_id ?? null,
+    p_notes: input.notes ?? null,
+  });
 
-  /* -------------------------------------------------------------
-     2. CREATE LOAN
-  --------------------------------------------------------------*/
-  const { data: loan, error: loanError } = await supabase
-    .from("loans")
-    .insert({
-      lender_name: input.lender_name,
-      loan_type: input.loan_type,
-      principal_amount: input.principal_amount,
-      interest_rate: input.interest_rate ?? null,
-      outstanding_balance: input.principal_amount,
-      disbursement_account_id: input.disbursement_account_id,
-      start_date: input.start_date,
-      status: "ACTIVE",
-      notes: input.notes ?? null,
-    })
-    .select("id")
-    .single();
+  if (error) throw error;
 
-  if (loanError) throw loanError;
-
-  const loanId = loan.id;
-
-  /* -------------------------------------------------------------
-     3. CREATE LOAN LEDGER (DISBURSEMENT)
-  --------------------------------------------------------------*/
-  const { error: loanLedgerError } = await supabase
-    .from("loan_ledger")
-    .insert({
-      loan_id: loanId,
-      transaction_type: "DISBURSEMENT",
-      amount: input.principal_amount,
-      running_balance: input.principal_amount,
-      payment_mode: paymentMode,
-      sender_account_id: input.disbursement_account_id,
-      receiver_account_info: input.lender_name,
-      transaction_date: input.start_date,
-      notes: input.notes ?? "Loan disbursement",
-    });
-
-  if (loanLedgerError) throw loanLedgerError;
-
-  /* -------------------------------------------------------------
-     4. INCREMENT DISBURSEMENT ACCOUNT BALANCE
-     Loan money flows IN to the selected account.
-  --------------------------------------------------------------*/
-  if (input.disbursement_account_id) {
-    const { error: accountError } = await supabase.rpc(
-      "increment_account_balance",
-      {
-        p_account_id: input.disbursement_account_id,
-        p_amount: input.principal_amount,
-      }
-    );
-
-    if (accountError) throw accountError;
-  }
-
-  /* -------------------------------------------------------------
-     5. RETURN LOAN ID
-  --------------------------------------------------------------*/
-  return { loanId };
+  return { loanId: data as string };
 }
 
 /* ------------------------------------------------------------------
@@ -1444,58 +1358,27 @@ export async function createAccount(input: CreateAccountInput): Promise<Account>
   return data;
 }
 
+/**
+ * One database transaction (transfer_between_accounts): both balances and the transfer
+ * record change together or not at all, so there is nothing to undo here on failure.
+ */
 export async function createAccountTransfer(
   input: CreateAccountTransferInput
 ): Promise<void> {
-  // 1️⃣ Deduct from sender
-  const { error: deductError } = await supabase.rpc("decrement_account_balance", {
-    p_account_id: input.sender_account_id,
+  const { error } = await supabase.rpc("transfer_between_accounts", {
+    p_sender_account_id: input.sender_account_id,
+    p_receiver_account_id: input.receiver_account_id,
     p_amount: input.amount,
+    p_transfer_date: input.transfer_date,
+    p_notes: input.notes ?? null,
   });
 
-  if (deductError) {
-    const msg = (deductError.message ?? "").toLowerCase();
-    if (msg.includes("insufficient") || msg.includes("balance") || msg.includes("sender")) {
+  if (error) {
+    const msg = (error.message ?? "").toLowerCase();
+    if (msg.includes("insufficient")) {
       throw new Error("Insufficient balance in the selected sender account.");
     }
-    throw deductError;
-  }
-
-  // 2️⃣ Add to receiver
-  const { error: incrementError } = await supabase.rpc("increment_account_balance", {
-    p_account_id: input.receiver_account_id,
-    p_amount: input.amount,
-  });
-
-  if (incrementError) {
-    await supabase.rpc("increment_account_balance", {
-      p_account_id: input.sender_account_id,
-      p_amount: input.amount,
-    });
-    throw incrementError;
-  }
-
-  // 3️⃣ Insert transfer record
-  const { error: insertError } = await supabase
-    .from("account_transfers")
-    .insert({
-      sender_account_id: input.sender_account_id,
-      receiver_account_id: input.receiver_account_id,
-      amount: input.amount,
-      transfer_date: input.transfer_date,
-      notes: input.notes ?? null,
-    });
-
-  if (insertError) {
-    await supabase.rpc("increment_account_balance", {
-      p_account_id: input.sender_account_id,
-      p_amount: input.amount,
-    });
-    await supabase.rpc("decrement_account_balance", {
-      p_account_id: input.receiver_account_id,
-      p_amount: input.amount,
-    });
-    throw insertError;
+    throw error;
   }
 }
 
@@ -1591,51 +1474,18 @@ export async function getAccountsForPayments() {
 export async function createCustomerPayment(
   input: CreateCustomerPaymentInput
 ) {
-  /**
-   * 1️⃣ Insert payment
-   */
-  const dbMode = mapPaymentModeToDb(input.mode);
-  const { data: payment, error: insertError } = await supabase
-    .from("customer_payments")
-    .insert({
-      customer_id: input.customer_id,
-      payment_date: input.payment_date,
-      amount: input.amount,
-      mode: dbMode, // MUST be: 'CASH' | 'UPI' | 'BANK' | 'CHEQUE'
-      sender_account_no: input.sender_account_no ?? null,
-      receiver_account_id: input.receiver_account_id,
-    })
-    .select()
-    .single();
+  // One database transaction (record_customer_payment): inserts the payment, applies the
+  // FIFO settlement to the customer's orders and credits the receiving account.
+  const { data: payment, error } = await supabase.rpc("record_customer_payment", {
+    p_customer_id: input.customer_id,
+    p_payment_date: input.payment_date,
+    p_amount: input.amount,
+    p_mode: mapPaymentModeToDb(input.mode), // MUST be: 'CASH' | 'UPI' | 'BANK' | 'CHEQUE'
+    p_receiver_account_id: input.receiver_account_id,
+    p_sender_account_no: input.sender_account_no ?? null,
+  });
 
-  if (insertError) throw insertError;
-
-  /**
-   * 2️⃣ Apply FIFO settlement
-   */
-  const { error: fifoError } = await supabase.rpc(
-    "apply_customer_payment_fifo",
-    {
-      p_customer_id: input.customer_id,
-      p_payment_id: payment.id,
-      p_amount: input.amount,
-    }
-  );
-
-  if (fifoError) throw fifoError;
-
-  /**
-   * 3️⃣ Increment account balance
-   */
-  const { error: accountError } = await supabase.rpc(
-    "increment_account_balance",
-    {
-      p_account_id: input.receiver_account_id,
-      p_amount: input.amount,
-    }
-  );
-
-  if (accountError) throw accountError;
+  if (error) throw error;
 
   return payment;
 }
@@ -1685,28 +1535,15 @@ export async function getCustomerPayments(
 export async function createCustomerWriteOff(
   input: CreateCustomerWriteOffInput
 ) {
-  const { data: writeOff, error: insertError } = await supabase
-    .from("customer_writeoffs")
-    .insert({
-      customer_id: input.customer_id,
-      amount: input.amount,
-      reason: input.reason,
-    })
-    .select()
-    .single();
+  // One database transaction (create_customer_writeoff): inserts the write-off and applies
+  // it to the customer's delivered orders oldest-first.
+  const { data: writeOff, error } = await supabase.rpc("create_customer_writeoff", {
+    p_customer_id: input.customer_id,
+    p_amount: input.amount,
+    p_reason: input.reason,
+  });
 
-  if (insertError) throw insertError;
-
-  const { error: fifoError } = await supabase.rpc(
-    "apply_customer_writeoff_fifo",
-    {
-      p_customer_id: input.customer_id,
-      p_writeoff_id: writeOff.id,
-      p_amount: input.amount,
-    }
-  );
-
-  if (fifoError) throw fifoError;
+  if (error) throw error;
 
   return writeOff;
 }
@@ -1877,110 +1714,23 @@ export async function getLoanById(loanId: string): Promise<Loan> {
 export async function createLoanLedgerTransaction(
   input: CreateLoanLedgerInput
 ): Promise<{ newBalance: number; loanStatus: "ACTIVE" | "CLOSED" }> {
-  /* -------------------------------------------------------------
-     1. FETCH CURRENT LOAN BALANCE
-  --------------------------------------------------------------*/
-  const { data: loan, error: loanError } = await supabase
-    .from("loans")
-    .select("id, outstanding_balance, status")
-    .eq("id", input.loan_id)
-    .single();
+  // One database transaction (record_loan_transaction): the loan row is locked, the new
+  // balance is worked out from its real current balance, and the ledger line, the loan
+  // update and the sender-account deduction (REPAYMENT / INTEREST) all happen together.
+  const { data, error } = await supabase.rpc("record_loan_transaction", {
+    p_loan_id: input.loan_id,
+    p_transaction_type: input.transaction_type,
+    p_amount: input.amount,
+    p_transaction_date: input.transaction_date,
+    p_payment_mode: input.payment_mode,
+    p_sender_account_id: input.sender_account_id ?? null,
+    p_receiver_account_info: input.receiver_account_info ?? null,
+    p_notes: input.notes ?? null,
+  });
 
-  if (loanError) throw loanError;
+  if (error) throw error;
 
-  if (loan.status === "CLOSED") {
-    throw new Error("Loan is already closed");
-  }
-
-  /* -------------------------------------------------------------
-     2. CALCULATE NEW RUNNING BALANCE
-  --------------------------------------------------------------*/
-  let newBalance = loan.outstanding_balance;
-
-  switch (input.transaction_type) {
-    case "DISBURSEMENT":
-      newBalance += input.amount;
-      break;
-
-    case "REPAYMENT":
-      newBalance -= input.amount;
-      break;
-
-    case "INTEREST":
-      // Interest does NOT affect principal balance
-      newBalance = loan.outstanding_balance;
-      break;
-
-    default:
-      throw new Error("Invalid loan transaction type");
-  }
-
-  if (newBalance < 0) {
-    throw new Error("Repayment amount exceeds outstanding balance");
-  }
-
-  /* -------------------------------------------------------------
-     3. INSERT LOAN LEDGER ENTRY
-  --------------------------------------------------------------*/
-  const { error: ledgerError } = await supabase
-    .from("loan_ledger")
-    .insert({
-      loan_id: input.loan_id,
-      transaction_type: input.transaction_type,
-      amount: input.amount,
-      running_balance: newBalance,
-      payment_mode: input.payment_mode,
-      sender_account_id: input.sender_account_id,
-      receiver_account_info: input.receiver_account_info ?? null,
-      transaction_date: input.transaction_date,
-      notes: input.notes ?? null,
-    });
-
-  if (ledgerError) throw ledgerError;
-
-  /* -------------------------------------------------------------
-     4. UPDATE LOAN (BALANCE + STATUS)
-  --------------------------------------------------------------*/
-  const newStatus = newBalance === 0 ? "CLOSED" : "ACTIVE";
-
-  const { error: updateError } = await supabase
-    .from("loans")
-    .update({
-      outstanding_balance: newBalance,
-      status: newStatus,
-    })
-    .eq("id", input.loan_id);
-
-  if (updateError) throw updateError;
-
-  /* -------------------------------------------------------------
-     5. DEDUCT FROM SENDER ACCOUNT (REPAYMENT + INTEREST)
-     Money flows OUT from the sender account for both repayments
-     and interest payments.
-  --------------------------------------------------------------*/
-  if (input.transaction_type === "REPAYMENT" || input.transaction_type === "INTEREST") {
-    const accountToDeduct = input.sender_account_id;
-
-    if (accountToDeduct) {
-      const { error: deductError } = await supabase.rpc(
-        "decrement_account_balance",
-        {
-          p_account_id: accountToDeduct,
-          p_amount: input.amount,
-        }
-      );
-
-      if (deductError) throw deductError;
-    }
-  }
-
-  /* -------------------------------------------------------------
-     6. RETURN RESULT
-  --------------------------------------------------------------*/
-  return {
-    newBalance,
-    loanStatus: newStatus,
-  };
+  return data as { newBalance: number; loanStatus: "ACTIVE" | "CLOSED" };
 }
 
 /* ------------------------------------------------------------------
@@ -1991,46 +1741,20 @@ export async function createVendorWithMaterials(
   vendorInput: CreateVendorInput,
   materialIds: string[]
 ): Promise<{ vendorId: string }> {
-  /* -------------------------------------------------------------
-     1. CREATE VENDOR
-  --------------------------------------------------------------*/
-  const { data: vendor, error: vendorError } = await supabase
-    .from("vendors")
-    .insert({
-      name: vendorInput.name,
-      phone: vendorInput.phone ?? null,
-      alternate_phone: vendorInput.alternate_phone ?? null,
-      gst_number: vendorInput.gst_number ?? null,
-      address: vendorInput.address ?? null,
-      notes: vendorInput.notes ?? null,
-    })
-    .select("id")
-    .single();
+  // One database transaction (create_vendor_with_materials): the vendor and its materials.
+  const { data, error } = await supabase.rpc("create_vendor_with_materials", {
+    p_name: vendorInput.name,
+    p_phone: vendorInput.phone ?? null,
+    p_alternate_phone: vendorInput.alternate_phone ?? null,
+    p_gst_number: vendorInput.gst_number ?? null,
+    p_address: vendorInput.address ?? null,
+    p_notes: vendorInput.notes ?? null,
+    p_material_ids: materialIds,
+  });
 
-  if (vendorError) throw vendorError;
+  if (error) throw error;
 
-  const vendorId = vendor.id;
-
-  /* -------------------------------------------------------------
-     2. CREATE VENDOR ↔ MATERIAL MAPPING
-  --------------------------------------------------------------*/
-  if (materialIds.length > 0) {
-    const rows = materialIds.map((material_id) => ({
-      vendor_id: vendorId,
-      material_id,
-    }));
-
-    const { error: mappingError } = await supabase
-      .from("vendor_materials")
-      .insert(rows);
-
-    if (mappingError) throw mappingError;
-  }
-
-  /* -------------------------------------------------------------
-     3. RETURN CREATED VENDOR ID
-  --------------------------------------------------------------*/
-  return { vendorId };
+  return { vendorId: data as string };
 }
 
 /* ------------------------------------------------------------------
@@ -2138,65 +1862,20 @@ export async function updateVendorWithMaterials(
   vendorInput: CreateVendorInput,
   materialIds: string[]
 ): Promise<void> {
-  /* -------------------------------------------------------------
-     1. UPDATE VENDOR
-  --------------------------------------------------------------*/
-  const { error: vendorError } = await supabase
-    .from("vendors")
-    .update({
-      name: vendorInput.name,
-      phone: vendorInput.phone ?? null,
-      alternate_phone: vendorInput.alternate_phone ?? null,
-      gst_number: vendorInput.gst_number ?? null,
-      address: vendorInput.address ?? null,
-      notes: vendorInput.notes ?? null,
-    })
-    .eq("id", vendorId);
+  // One database transaction (update_vendor_with_materials): the vendor's details and its
+  // material list change together.
+  const { error } = await supabase.rpc("update_vendor_with_materials", {
+    p_vendor_id: vendorId,
+    p_name: vendorInput.name,
+    p_phone: vendorInput.phone ?? null,
+    p_alternate_phone: vendorInput.alternate_phone ?? null,
+    p_gst_number: vendorInput.gst_number ?? null,
+    p_address: vendorInput.address ?? null,
+    p_notes: vendorInput.notes ?? null,
+    p_material_ids: materialIds,
+  });
 
-  if (vendorError) throw vendorError;
-
-  /* -------------------------------------------------------------
-     2. GET EXISTING MATERIALS
-  --------------------------------------------------------------*/
-  const { data: existingMaterials } = await supabase
-    .from("vendor_materials")
-    .select("material_id")
-    .eq("vendor_id", vendorId);
-
-  const existingIds = (existingMaterials ?? []).map((vm) => vm.material_id);
-
-  /* -------------------------------------------------------------
-     3. DETERMINE CHANGES
-  --------------------------------------------------------------*/
-  const toDelete = existingIds.filter((id) => !materialIds.includes(id));
-  const toInsert = materialIds.filter((id) => !existingIds.includes(id));
-
-  /* -------------------------------------------------------------
-     4. DELETE REMOVED MATERIALS
-  --------------------------------------------------------------*/
-  if (toDelete.length > 0) {
-    await supabase
-      .from("vendor_materials")
-      .delete()
-      .eq("vendor_id", vendorId)
-      .in("material_id", toDelete);
-  }
-
-  /* -------------------------------------------------------------
-     5. INSERT NEW MATERIALS
-  --------------------------------------------------------------*/
-  if (toInsert.length > 0) {
-    const rows = toInsert.map((material_id) => ({
-      vendor_id: vendorId,
-      material_id,
-    }));
-
-    const { error: insertError } = await supabase
-      .from("vendor_materials")
-      .insert(rows);
-
-    if (insertError) throw insertError;
-  }
+  if (error) throw error;
 }
 
 /* ------------------------------------------------------------------
@@ -2269,38 +1948,17 @@ export async function createExpense(payload: {
   sender_account_id?: string;
   comments?: string;
 }) {
-  // 1️⃣ Decide which account to deduct from
-  let accountIdToDeduct: string | undefined;
-
-  if (payload.payment_mode === "CASH") {
-    const cashAccount = await getCashAccount();
-    accountIdToDeduct = cashAccount.id;
-  } else {
-    accountIdToDeduct = payload.sender_account_id;
-  }
-
-  if (!accountIdToDeduct) {
-    throw new Error("Account not found for deduction");
-  }
-
-  // 2️⃣ Deduct balance FIRST (before inserting expense)
-  // This validates balance and throws error if insufficient
-  const { error: rpcError } = await supabase.rpc(
-    "decrement_account_balance",
-    {
-      p_account_id: accountIdToDeduct,
-      p_amount: payload.amount,
-    }
-  );
-
-  if (rpcError) throw rpcError;
-
-  // 3️⃣ Only insert expense if balance deduction was successful
-  const { data, error } = await supabase
-    .from("expenses")
-    .insert([payload])
-    .select()
-    .single();
+  // One database transaction (record_expense): picks the account (the branch's cash account
+  // for CASH), checks the balance, deducts it and inserts the expense, or does none of it.
+  const { data, error } = await supabase.rpc("record_expense", {
+    p_expense_date: payload.expense_date,
+    p_type_id: payload.type_id,
+    p_subtype_id: payload.subtype_id,
+    p_amount: payload.amount,
+    p_payment_mode: payload.payment_mode,
+    p_sender_account_id: payload.sender_account_id ?? null,
+    p_comments: payload.comments ?? null,
+  });
 
   if (error) throw error;
 
@@ -2311,44 +1969,13 @@ export async function createExpense(payload: {
    40.1 DELETE EXPENSE (Reverse account deduction + remove row)
 -------------------------------------------------------------------*/
 export async function deleteExpense(expenseId: string): Promise<void> {
-  // 1️⃣ Fetch the expense to know amount + account info
-  const { data: expense, error: fetchError } = await supabase
-    .from("expenses")
-    .select("id, amount, payment_mode, sender_account_id")
-    .eq("id", expenseId)
-    .single();
-
-  if (fetchError) throw fetchError;
-  if (!expense) throw new Error("Expense not found");
-
-  // 2️⃣ Determine which account to restore the balance to
-  let accountIdToRestore: string;
-
-  if (expense.payment_mode === "CASH") {
-    const cashAccount = await getCashAccount();
-    accountIdToRestore = cashAccount.id;
-  } else {
-    if (!expense.sender_account_id) {
-      throw new Error("Expense has no sender account to restore balance to");
-    }
-    accountIdToRestore = expense.sender_account_id;
-  }
-
-  // 3️⃣ Restore the balance to the account
-  const { error: rpcError } = await supabase.rpc("increment_account_balance", {
-    p_account_id: accountIdToRestore,
-    p_amount: expense.amount,
+  // One database transaction (delete_expense): refunds the account the expense was paid
+  // from and deletes the row, or does neither.
+  const { error } = await supabase.rpc("delete_expense", {
+    p_expense_id: expenseId,
   });
 
-  if (rpcError) throw rpcError;
-
-  // 4️⃣ Delete the expense row
-  const { error: deleteError } = await supabase
-    .from("expenses")
-    .delete()
-    .eq("id", expenseId);
-
-  if (deleteError) throw deleteError;
+  if (error) throw error;
 }
 
 /* ------------------------------------------------------------------
@@ -2581,18 +2208,6 @@ export async function getCashAccount() {
     );
   }
   return data;
-}
-
-/** Whether the given account is the branch's cash account. */
-async function isCashAccount(accountId: string): Promise<boolean> {
-  const { data, error } = await supabase
-    .from("accounts")
-    .select("is_cash")
-    .eq("id", accountId)
-    .maybeSingle();
-
-  if (error) throw error;
-  return data?.is_cash === true;
 }
 
 /* ------------------------------------------------------------------
@@ -2883,72 +2498,6 @@ export async function getUnapprovedProcurementCount(): Promise<number> {
 }
 
 /**------------------------------------------------------------------------------
- * 47.3 Update inventory stock when procurement is approved
- * Helper function to add/update material quantity in inventory_stock table
------------------------------------------------------------------------------- */
-async function updateInventoryStock(
-  materialId: string,
-  quantity: number
-): Promise<void> {
-  // First, check if the material already exists in inventory_stock
-  const { data: existingStock, error: fetchError } = await supabase
-    .from("inventory_stock")
-    .select("*")
-    .eq("material_id", materialId);
-
-  if (fetchError) {
-    throw fetchError;
-  }
-
-  if (existingStock && existingStock.length > 0) {
-    // Material exists, update the quantity
-    const currentStock = existingStock[0];
-    const { error: updateError } = await supabase
-      .from("inventory_stock")
-      .update({
-        quantity: currentStock.quantity + quantity,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("material_id", materialId);
-
-    if (updateError) throw updateError;
-  } else {
-    // Material doesn't exist, create new record
-    const { error: insertError } = await supabase
-      .from("inventory_stock")
-      .insert({
-        material_id: materialId,
-        quantity: quantity,
-        updated_at: new Date().toISOString(),
-      });
-
-    if (insertError) throw insertError;
-  }
-}
-
-/**------------------------------------------------------------------------------
- * 47.4 Convert quantity to KG based on material type
- * Handles unit conversion for different materials:
- * - Cement: Bags to KG (1 bag = 50 kg)
- * - Crusher Powder: Units to KG (1 unit = 4500 kg)
- * - Others (Wet Ash, Marble, Fly Ash): Tons to KG (1 ton = 1000 kg)
------------------------------------------------------------------------------- */
-function convertToKg(materialName: string, quantity: number): number {
-  const name = materialName.toLowerCase();
-  
-  if (name.includes('cement')) {
-    // 1 bag = 50 kg
-    return quantity * 50;
-  } else if (name.includes('crusher')) {
-    // 1 unit = 4500 kg
-    return quantity * 4500;
-  }
-  // Wet Ash, Marble Powder, Fly Ash are in tons, convert to kg
-  // 1 ton = 1000 kg
-  return quantity * 1000;
-}
-
-/**------------------------------------------------------------------------------
  * 47.5 Approve procurement
  * Update procurement approval status, rate, and total price
  * Automatically converts quantity to KG and updates inventory_stock
@@ -2958,37 +2507,15 @@ export async function approveProcurement(
   ratePerUnit: number,
   totalPrice: number
 ): Promise<void> {
-  // First, get the procurement details to access material_id, quantity, and material name
-  const { data: procurement, error: fetchError } = await supabase
-    .from("procurements")
-    .select("material_id, quantity, materials(name)")
-    .eq("id", procurementId)
-    .single();
+  // One database transaction (approve_procurement): the procurement is locked, approved
+  // once, and its quantity (converted to kg) is added to the material's stock.
+  const { error } = await supabase.rpc("approve_procurement", {
+    p_procurement_id: procurementId,
+    p_rate_per_unit: ratePerUnit,
+    p_total_price: totalPrice,
+  });
 
-  if (fetchError) throw fetchError;
-  if (!procurement) throw new Error("Procurement not found");
-
-  // Update procurement approval status
-  const { error: updateError } = await supabase
-    .from("procurements")
-    .update({
-      approved: true,
-      rate_per_unit: ratePerUnit,
-      total_price: totalPrice,
-    })
-    .eq("id", procurementId);
-
-  if (updateError) throw updateError;
-
-  // Convert quantity to KG based on material type
-  const material = Array.isArray(procurement.materials) 
-    ? procurement.materials[0] 
-    : procurement.materials;
-  const materialName = material?.name || '';
-  const quantityInKg = convertToKg(materialName, procurement.quantity);
-
-  // Update inventory stock for the material (store in KG)
-  await updateInventoryStock(procurement.material_id, quantityInKg);
+  if (error) throw error;
 }
 
 /**------------------------------------------------------------------------------
@@ -3172,183 +2699,6 @@ export async function getProductInventory(): Promise<any> {
 }
 
 /**------------------------------------------------------------------------------
- * 48.1 Update product inventory (Bricks)
- * When an employee submits a production entry, update the product_inventory table
- * Increments the quantity of bricks and updates the updated_at timestamp
- * Used in ProductionEntry form submission
- ------------------------------------------------------------------------------*/
-export async function updateProductInventory(quantity: number): Promise<void> {
-  try {
-    // First, try to fetch the existing BRICKS record
-    const { data: existingData, error: fetchError } = await supabase
-      .from("product_inventory")
-      .select("id, quantity")
-      .eq("product_type", "BRICKS")
-      .single();
-
-    if (fetchError && fetchError.code !== "PGRST116") {
-      // PGRST116 is "no rows returned" error, which is okay
-      throw fetchError;
-    }
-
-    if (existingData) {
-      // Update existing record
-      const { error: updateError } = await supabase
-        .from("product_inventory")
-        .update({
-          quantity: existingData.quantity + quantity,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existingData.id);
-
-      if (updateError) throw updateError;
-    } else {
-      // Insert new record if it doesn't exist
-      const { error: insertError } = await supabase
-        .from("product_inventory")
-        .insert({
-          product_type: "BRICKS",
-          quantity: quantity,
-          updated_at: new Date().toISOString(),
-        });
-
-      if (insertError) throw insertError;
-    }
-  } catch (error) {
-    console.error("Error updating product inventory:", error);
-    throw error;
-  }
-}
-
-/**------------------------------------------------------------------------------
- * 48.1.1 Deduct product inventory (Bricks) on Delivery
- * When an order is delivered, reduce the bricks quantity in product_inventory
- * Used in delivery entry submission (updateOrderWithLoadmen)
- ------------------------------------------------------------------------------*/
-export async function deductProductInventory(quantity: number): Promise<void> {
-  try {
-    const { data: existingData, error: fetchError } = await supabase
-      .from("product_inventory")
-      .select("id, quantity")
-      .eq("product_type", "BRICKS")
-      .single();
-
-    if (fetchError) throw fetchError;
-
-    if (!existingData) {
-      throw new Error("No bricks inventory record found");
-    }
-
-    // Allow negative to tally correctly when inventory is updated later
-    const newQuantity = existingData.quantity - quantity;
-
-    const { error: updateError } = await supabase
-      .from("product_inventory")
-      .update({
-        quantity: newQuantity,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", existingData.id);
-
-    if (updateError) throw updateError;
-  } catch (error) {
-    console.error("Error deducting product inventory:", error);
-    throw error;
-  }
-}
-
-/**------------------------------------------------------------------------------
- * 48.2 Reduce inventory stock for raw materials used in production
- * When an employee submits a production entry, reduce the used materials from inventory_stock
- * Cement: converted from bags to KG (1 bag = 50 kg)
- * Other materials: already in KG
- * Used in ProductionEntry form submission
- ------------------------------------------------------------------------------*/
-export async function reduceInventoryStock(
-  wetAshKg: number,
-  marblePowderKg: number,
-  crusherPowderKg: number,
-  flyAshKg: number,
-  cementBags: number,
-  round: number
-): Promise<void> {
-  try {
-    // Convert cement from bags to KG (1 bag = 50 kg)
-    const cementKg = cementBags * 50;
-
-    // Get all materials to find their IDs
-    const materials = await getMaterials();
-
-    // Find material IDs by name
-    const wetAshMaterial = materials.find(m => m.name.toLowerCase().includes('wet ash'));
-    const marbleMaterial = materials.find(m => m.name.toLowerCase().includes('marble'));
-    const crusherMaterial = materials.find(m => m.name.toLowerCase().includes('crusher'));
-    const flyAshMaterial = materials.find(m => m.name.toLowerCase().includes('fly ash'));
-    const cementMaterial = materials.find(m => m.name.toLowerCase().includes('cement'));
-
-    // Array of material reductions to process
-    const reductions = [
-      { materialId: wetAshMaterial?.id, quantity: wetAshKg*round, name: 'Wet Ash' },
-      { materialId: marbleMaterial?.id, quantity: marblePowderKg*round, name: 'Marble Powder' },
-      { materialId: crusherMaterial?.id, quantity: crusherPowderKg*round, name: 'Crusher Powder' },
-      { materialId: flyAshMaterial?.id, quantity: flyAshKg*round, name: 'Fly Ash' },
-      { materialId: cementMaterial?.id, quantity: cementKg, name: 'Cement' },
-    ];
-
-    // Process each material reduction
-    for (const reduction of reductions) {
-      if (!reduction.materialId || reduction.quantity <= 0) continue;
-
-      // Fetch current stock
-      const { data: currentStock, error: fetchError } = await supabase
-        .from("inventory_stock")
-        .select("quantity")
-        .eq("material_id", reduction.materialId)
-        .single();
-
-      if (fetchError && fetchError.code !== "PGRST116") {
-        console.error(`Error fetching ${reduction.name} stock:`, fetchError);
-        throw fetchError;
-      }
-
-      if (currentStock) {
-        // Reduce the quantity (allow negative to tally when unapproved procurements are approved later)
-        const newQuantity = currentStock.quantity - reduction.quantity;
-        const { error: updateError } = await supabase
-          .from("inventory_stock")
-          .update({
-            quantity: newQuantity,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("material_id", reduction.materialId);
-
-        if (updateError) {
-          console.error(`Error updating ${reduction.name} stock:`, updateError);
-          throw updateError;
-        }
-      } else {
-        // If no stock exists, create a negative entry so it tallies when procurement is approved
-        const { error: insertError } = await supabase
-          .from("inventory_stock")
-          .insert({
-            material_id: reduction.materialId,
-            quantity: -reduction.quantity,
-            updated_at: new Date().toISOString(),
-          });
-
-        if (insertError) {
-          console.error(`Error inserting negative stock for ${reduction.name}:`, insertError);
-          throw insertError;
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Error reducing inventory stock:", error);
-    throw error;
-  }
-}
-
-/**------------------------------------------------------------------------------
  * 48.3 Get all inventory adjustments
  * Fetch all adjustment records from inventory_adjustments table
  * Used in InventoryManagementScreen - Adjustments tab
@@ -3408,134 +2758,28 @@ export async function createAdjustment(
   adjusted_fly_ash_kg: number,
   adjusted_cement_bags: number,
   reason: string | null,
-  userId: string
+  _userId?: string // kept for existing callers; the database records the signed-in user itself
 ): Promise<void> {
-  try {
-    // Step 1: Insert adjustment record into inventory_adjustments table
-    const { error: insertError } = await supabase
-      .from("inventory_adjustments")
-      .insert({
-        adjustment_date,
-        actual_bricks,
-        actual_wet_ash_kg,
-        actual_marble_powder_kg,
-        actual_crusher_powder_kg,
-        actual_fly_ash_kg,
-        actual_cement_bags,
-        adjusted_bricks,
-        adjusted_wet_ash_kg,
-        adjusted_marble_powder_kg,
-        adjusted_crusher_powder_kg,
-        adjusted_fly_ash_kg,
-        adjusted_cement_bags,
-        reason,
-        created_by: userId,
-      });
+  // One database transaction (create_inventory_adjustment): the adjustment record and the
+  // new product / material stock figures, or none of them.
+  const { error } = await supabase.rpc("create_inventory_adjustment", {
+    p_adjustment_date: adjustment_date,
+    p_actual_bricks: actual_bricks,
+    p_actual_wet_ash_kg: actual_wet_ash_kg,
+    p_actual_marble_powder_kg: actual_marble_powder_kg,
+    p_actual_crusher_powder_kg: actual_crusher_powder_kg,
+    p_actual_fly_ash_kg: actual_fly_ash_kg,
+    p_actual_cement_bags: actual_cement_bags,
+    p_adjusted_bricks: adjusted_bricks,
+    p_adjusted_wet_ash_kg: adjusted_wet_ash_kg,
+    p_adjusted_marble_powder_kg: adjusted_marble_powder_kg,
+    p_adjusted_crusher_powder_kg: adjusted_crusher_powder_kg,
+    p_adjusted_fly_ash_kg: adjusted_fly_ash_kg,
+    p_adjusted_cement_bags: adjusted_cement_bags,
+    p_reason: reason,
+  });
 
-    if (insertError) throw insertError;
-
-    // Step 2: Update product_inventory for bricks
-    const { data: existingBricks, error: fetchBricksError } = await supabase
-      .from("product_inventory")
-      .select("id, quantity")
-      .eq("product_type", "BRICKS")
-      .single();
-
-    if (fetchBricksError && fetchBricksError.code !== "PGRST116") {
-      throw fetchBricksError;
-    }
-
-    if (existingBricks) {
-      const { error: updateBricksError } = await supabase
-        .from("product_inventory")
-        .update({
-          quantity: adjusted_bricks,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existingBricks.id);
-
-      if (updateBricksError) throw updateBricksError;
-    } else {
-      const { error: insertBricksError } = await supabase
-        .from("product_inventory")
-        .insert({
-          product_type: "BRICKS",
-          quantity: adjusted_bricks,
-          updated_at: new Date().toISOString(),
-        });
-
-      if (insertBricksError) throw insertBricksError;
-    }
-
-    // Step 3: Get all materials to find their IDs
-    const materials = await getMaterials();
-
-    // Step 4: Update inventory_stock for each raw material
-    const wetAshMaterial = materials.find(m => m.name.toLowerCase().includes('wet ash'));
-    const marbleMaterial = materials.find(m => m.name.toLowerCase().includes('marble'));
-    const crusherMaterial = materials.find(m => m.name.toLowerCase().includes('crusher'));
-    const flyAshMaterial = materials.find(m => m.name.toLowerCase().includes('fly ash'));
-    const cementMaterial = materials.find(m => m.name.toLowerCase().includes('cement'));
-
-    // Array of material updates to process
-    const materialUpdates = [
-      { materialId: wetAshMaterial?.id, quantity: adjusted_wet_ash_kg, name: 'Wet Ash' },
-      { materialId: marbleMaterial?.id, quantity: adjusted_marble_powder_kg, name: 'Marble Powder' },
-      { materialId: crusherMaterial?.id, quantity: adjusted_crusher_powder_kg, name: 'Crusher Powder' },
-      { materialId: flyAshMaterial?.id, quantity: adjusted_fly_ash_kg, name: 'Fly Ash' },
-      { materialId: cementMaterial?.id, quantity: adjusted_cement_bags * 50, name: 'Cement' }, // Convert bags to KG
-    ];
-
-    // Process each material update
-    for (const update of materialUpdates) {
-      if (!update.materialId) continue;
-
-      // Fetch current stock (using material_id as primary key)
-      const { data: currentStock, error: fetchError } = await supabase
-        .from("inventory_stock")
-        .select("material_id, quantity")
-        .eq("material_id", update.materialId)
-        .single();
-
-      if (fetchError && fetchError.code !== "PGRST116") {
-        console.error(`Error fetching ${update.name} stock:`, fetchError);
-        throw fetchError;
-      }
-
-      if (currentStock) {
-        // Update the quantity to adjusted value
-        const { error: updateError } = await supabase
-          .from("inventory_stock")
-          .update({
-            quantity: update.quantity,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("material_id", currentStock.material_id);
-
-        if (updateError) {
-          console.error(`Error updating ${update.name} stock:`, updateError);
-          throw updateError;
-        }
-      } else {
-        // If no stock exists, create new record
-        const { error: insertError } = await supabase
-          .from("inventory_stock")
-          .insert({
-            material_id: update.materialId,
-            quantity: update.quantity,
-            updated_at: new Date().toISOString(),
-          });
-
-        if (insertError) {
-          console.error(`Error inserting ${update.name} stock:`, insertError);
-          throw insertError;
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Error creating adjustment:", error);
-    throw error;
-  }
+  if (error) throw error;
 }
 /* ------------------------------------------------------------------
   Create Vendor Payment
@@ -3548,44 +2792,18 @@ export async function createVendorPayment(input: {
   sender_account_id: string
   receiver_account_info?: string
 }) {
-  // 1️⃣ Deduct account balance FIRST (validates sufficient funds)
-  const { error: accountError } = await supabase.rpc(
-    "decrement_account_balance",
-    {
-      p_account_id: input.sender_account_id,
-      p_amount: input.amount
-    }
-  )
-
-  if (accountError) throw accountError
-
-  // 2️⃣ Insert payment (only if balance deduction succeeded)
-  const { data: payment, error } = await supabase
-    .from("vendor_payments")
-    .insert({
-      vendor_id: input.vendor_id,
-      payment_date: input.payment_date,
-      amount: input.amount,
-      mode: input.mode,
-      sender_account_id: input.sender_account_id,
-      receiver_account_info: input.receiver_account_info ?? null
-    })
-    .select()
-    .single()
+  // One database transaction (record_vendor_payment): deducts the sender account, inserts
+  // the payment and settles the vendor's procurements oldest-first, or does none of it.
+  const { data: payment, error } = await supabase.rpc("record_vendor_payment", {
+    p_vendor_id: input.vendor_id,
+    p_payment_date: input.payment_date,
+    p_amount: input.amount,
+    p_mode: input.mode,
+    p_sender_account_id: input.sender_account_id,
+    p_receiver_account_info: input.receiver_account_info ?? null
+  })
 
   if (error) throw error
-
-  // 3️⃣ Apply FIFO settlement
-  const { error: fifoError } = await supabase.rpc(
-    "apply_vendor_payment_fifo",
-    {
-      p_vendor_id: input.vendor_id,
-      p_payment_id: payment.id,
-      p_amount: input.amount
-    }
-  )
-
-  if (fifoError) throw fifoError
 
   return payment
 }
@@ -4105,6 +3323,36 @@ export async function saveAttendance(
 }
 
 /* ------------------------------------------------------------------
+  Save a day's attendance together with the salary entries it produces
+  - One database transaction (save_attendance_with_salary): the attendance rows, the
+    wage credits (SALARY_AUTO_ENTRY) and the deductions (DEDUCTION) are written
+    together or not at all.
+  - A day can be saved once; saving it again is refused.
+---------------------------------------------------------------------*/
+export interface AttendanceSalaryEntry {
+  employee_id: string;
+  entry_type: "SALARY_AUTO_ENTRY" | "DEDUCTION";
+  amount: number;
+  notes?: string | null;
+  /** ISO timestamp the entry is dated at. */
+  payment_at?: string | null;
+}
+
+export async function saveAttendanceWithSalary(
+  date: string, // YYYY-MM-DD
+  records: { employee_id: string; status: SaveAttendanceInput["status"] }[],
+  entries: AttendanceSalaryEntry[]
+): Promise<void> {
+  const { error } = await supabase.rpc("save_attendance_with_salary", {
+    p_date: date,
+    p_attendance: records,
+    p_entries: entries,
+  });
+
+  if (error) throw error;
+}
+
+/* ------------------------------------------------------------------
   Search Employees
 ---------------------------------------------------------------------*/
 
@@ -4203,116 +3451,27 @@ export async function createSalaryLedgerEntry(
     return data as SalaryLedger;
   }
 
-  const isPayment = input.entry_type !== "AUTO" && input.entry_type !== "SALARY_AUTO_ENTRY" && input.entry_type !== "SALARY_MANUAL_ENTRY";
-
-  /* -------------------------------------------------------------
-     1. DEDUCT FROM ACCOUNT FIRST (payments only)
-     Validates sufficient balance and deducts atomically.
-     If this fails the ledger entry is never created.
-  --------------------------------------------------------------*/
-
-  if (isPayment) {
-    let accountIdToDeduct: string | undefined;
-
-    if (input.payment_mode === "CASH") {
-      const cashAccount = await getCashAccount();
-      accountIdToDeduct = cashAccount.id;
-    } else {
-      accountIdToDeduct = input.sender_account_id ?? undefined;
-    }
-
-    if (accountIdToDeduct) {
-      const { error: rpcError } = await supabase.rpc(
-        "decrement_account_balance",
-        {
-          p_account_id: accountIdToDeduct,
-          p_amount: input.amount,
-        }
-      );
-
-      if (rpcError) {
-        // Surface a user-friendly message for insufficient balance
-        const msg = (rpcError.message ?? "").toLowerCase();
-        if (msg.includes("insufficient balance")) {
-          throw new Error(
-            "Insufficient balance in the selected account. Please choose a different account or reduce the amount."
-          );
-        }
-        throw rpcError;
-      }
-    }
-  }
-
-  /* -------------------------------------------------------------
-     2. GET CURRENT RUNNING BALANCE
-  --------------------------------------------------------------*/
-  const { data: lastEntry, error: balanceError } = await supabase
-    .from("salary_ledger")
-    .select("running_balance")
-    .eq("employee_id", input.employee_id)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (balanceError) throw balanceError;
-
-  const currentBalance = lastEntry?.running_balance ?? 0;
-
-  /* -------------------------------------------------------------
-     3. CALCULATE NEW BALANCE
-  --------------------------------------------------------------*/
-
-  let newBalance = currentBalance;
-
-  if (input.entry_type === "AUTO" || input.entry_type === "SALARY_AUTO_ENTRY" || input.entry_type === "SALARY_MANUAL_ENTRY") {
-    newBalance += input.amount;
-  } else {
-    newBalance -= input.amount;
-  }
-
-  /* -------------------------------------------------------------
-     4. INSERT LEDGER ENTRY
-  --------------------------------------------------------------*/
-
-  const { data, error } = await supabase
-    .from("salary_ledger")
-    .insert({
-      employee_id: input.employee_id,
-      entry_type: input.entry_type,
-      amount: input.amount,
-      running_balance: newBalance,
-      payment_mode: input.payment_mode ?? null,
-      sender_account_id: input.sender_account_id ?? null,
-      receiver_account: input.receiver_account ?? null,
-      notes: input.notes ?? null,
-      payment_at: input.payment_at ?? new Date().toISOString(),
-    })
-    .select("*")
-    .single();
+  // Everything else is one database transaction (record_salary_ledger_entry): the employee
+  // row is locked, a payment is deducted from the right account (the cash account for CASH),
+  // and the ledger line is written on top of the latest running balance, or nothing happens.
+  const { data, error } = await supabase.rpc("record_salary_ledger_entry", {
+    p_employee_id: input.employee_id,
+    p_entry_type: input.entry_type,
+    p_amount: input.amount,
+    p_payment_at: input.payment_at ?? null,
+    p_payment_mode: input.payment_mode ?? null,
+    p_sender_account_id: input.sender_account_id ?? null,
+    p_receiver_account: input.receiver_account ?? null,
+    p_notes: input.notes ?? null,
+  });
 
   if (error) {
-    // Ledger insert failed but account was already deducted — attempt to
-    // restore the account balance so we don't lose money silently.
-    if (isPayment) {
-      let accountIdToRestore: string | undefined;
-      if (input.payment_mode === "CASH") {
-        try {
-          const cashAccount = await getCashAccount();
-          accountIdToRestore = cashAccount.id;
-        } catch { /* best effort */ }
-      } else {
-        accountIdToRestore = input.sender_account_id ?? undefined;
-      }
-
-      if (accountIdToRestore) {
-        const { error: restoreErr } = await supabase.rpc("increment_account_balance", {
-          p_account_id: accountIdToRestore,
-          p_amount: input.amount,
-        });
-        if (restoreErr) {
-          console.error("CRITICAL: Failed to restore account balance after ledger insert failure:", restoreErr);
-        }
-      }
+    // Surface a user-friendly message for insufficient balance
+    const msg = (error.message ?? "").toLowerCase();
+    if (msg.includes("insufficient balance")) {
+      throw new Error(
+        "Insufficient balance in the selected account. Please choose a different account or reduce the amount."
+      );
     }
     throw error;
   }
@@ -4482,41 +3641,22 @@ export async function getTotalWithdrawalsAmount(): Promise<number> {
 export async function createWithdrawal(
   input: CreateWithdrawalInput
 ): Promise<void> {
-  // 1. Deduct account balance first
-  const { error: deductError } = await supabase.rpc(
-    "decrement_account_balance",
-    {
-      p_account_id: input.account_id,
-      p_amount: input.amount,
-    }
-  );
+  // One database transaction (record_withdrawal): deducts the balance and records the
+  // withdrawal, or does neither.
+  const { error } = await supabase.rpc("record_withdrawal", {
+    p_account_id: input.account_id,
+    p_date: input.date,
+    p_amount: input.amount,
+    p_notes: input.notes ?? null,
+  });
 
-  if (deductError) {
-    const msg = (deductError.message ?? "").toLowerCase();
+  if (error) {
+    const msg = (error.message ?? "").toLowerCase();
     if (msg.includes("insufficient balance")) {
       throw new Error(
         "Insufficient balance in the selected account."
       );
     }
-    throw deductError;
-  }
-
-  // 2. Insert withdrawal record
-  const { error: insertError } = await supabase
-    .from("withdrawals")
-    .insert({
-      date: input.date,
-      amount: input.amount,
-      notes: input.notes ?? null,
-      account_id: input.account_id,
-    });
-
-  if (insertError) {
-    // Attempt to restore balance if insert fails
-    await supabase.rpc("increment_account_balance", {
-      p_account_id: input.account_id,
-      p_amount: input.amount,
-    });
-    throw insertError;
+    throw error;
   }
 }
