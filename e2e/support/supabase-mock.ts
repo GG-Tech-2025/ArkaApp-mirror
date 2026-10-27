@@ -22,7 +22,99 @@ export interface MockOptions {
   listsFail?: boolean;
   /** Make recording a production entry fail with a server error. */
   productionFails?: boolean;
+  /** The undelivered orders the Orders screen lists; defaults to ORDERS. */
+  orders?: Array<Record<string, unknown>>;
+  /** Make the orders list fail to load. */
+  ordersFail?: boolean;
+  /** Make loading one order (the delivery screen) fail. */
+  orderFails?: boolean;
+  /** Make completing a delivery fail with a server error. */
+  deliveryFails?: boolean;
+  /** The LOADING_AND_UNLOADING_PRICE_PER_BRICK app setting: a value, or "missing". */
+  pricePerBrick?: string | 'missing';
+  /** Make the sign-out endpoint fail with a server error. */
+  logoutFails?: boolean;
 }
+
+function order(overrides: Record<string, unknown>) {
+  return {
+    customer_id: 'cust-1',
+    order_date: '2026-10-10',
+    delivery_date: '2026-10-15',
+    price_per_brick: 8,
+    paper_price: 0,
+    payment_status: 'NOT_PAID',
+    loading_type: 'LOADING_UNLOADING',
+    amount_paid: 0,
+    gst_number: null,
+    dc_number: null,
+    delivered: false,
+    created_by: 'user-1',
+    created_at: '2026-10-10T08:00:00Z',
+    time: null,
+    order_loadmen: [],
+    ...overrides,
+  };
+}
+
+export const ORDERS = [
+  order({
+    id: 'ord-1001',
+    brick_quantity: 5000,
+    final_price: 40000,
+    location: '12 MG Road, Coimbatore',
+    customers: { name: 'Rajesh Kumar', phone: '9876543210' },
+  }),
+  order({
+    id: 'ord-1002',
+    brick_quantity: 3000,
+    final_price: 24000,
+    location: '45 Brigade Road, Erode',
+    gst_number: '33ABCDE1234F1Z5',
+    customers: { name: 'Priya Sharma', phone: '9876543211' },
+  }),
+];
+
+/** Served only when asked for by id, as the read-only view of an order already delivered. */
+export const DELIVERED_ORDER = order({
+  id: 'ord-0999',
+  brick_quantity: 2000,
+  final_price: 16000,
+  location: '9 Market Street, Salem',
+  payment_status: 'FULLY_PAID',
+  amount_paid: 16000,
+  dc_number: 'DC-77',
+  time: '10:00 AM',
+  loading_type: 'LOADING_ONLY',
+  delivered: true,
+  order_loadmen: [{ employee_id: 'emp-ravi' }],
+  customers: { name: 'Anita Rao', phone: '9876543299' },
+});
+
+/** Served only when asked for by id: part-paid, but with no amount recorded as paid. */
+export const PART_PAID_NO_AMOUNT_ORDER = order({
+  id: 'ord-0777',
+  brick_quantity: 4000,
+  final_price: 32000,
+  location: '3 Lake View, Tiruppur',
+  payment_status: 'PARTIALLY_PAID',
+  amount_paid: 0,
+  customers: { name: 'Meena Iyer', phone: '9876543288' },
+});
+
+const role = (name: string, noLoadingSalary: boolean) => ({
+  id: `role-${name.toLowerCase()}`,
+  name,
+  category: 'DAILY',
+  salary_value: 500,
+  no_loading_salary: noLoadingSalary,
+});
+
+export const LOADMEN = [
+  { id: 'emp-ravi', name: 'Ravi', phone: '9000000011', role_id: 'role-loader', roles: role('Loader', false) },
+  { id: 'emp-kumar', name: 'Kumar', phone: '9000000012', role_id: 'role-loader', roles: role('Loader', false) },
+  { id: 'emp-ram', name: 'Operator Ram', phone: '9000000013', role_id: 'role-operator', roles: role('Operator', true) },
+];
 
 export const MATERIALS = [
   { id: 'mat-cement', name: 'Cement', unit: 'bags' },
@@ -46,6 +138,10 @@ export interface SupabaseMock {
   procurements: Array<Record<string, unknown>>;
   /** The argument objects sent to the record_production_entry function. */
   productionEntries: Array<Record<string, unknown>>;
+  /** The query strings of every request that listed orders (to check the filters used). */
+  orderListQueries: string[];
+  /** Every delivery completed: which function was called and the arguments it got. */
+  deliveries: Array<{ fn: string; args: Record<string, unknown> }>;
 }
 
 const CORS = {
@@ -105,8 +201,8 @@ function rows(route: Route, request: Request, data: unknown[]) {
  * need no real project, no network and no real credentials.
  */
 export async function mockSupabase(page: Page, options: MockOptions = {}): Promise<SupabaseMock> {
-  const { role = 'EMPLOYEE', activeEmployee = true, procurementFails = false, listsFail = false, productionFails = false } = options;
-  const mock: SupabaseMock = { requests: [], signInAttempts: [], unexpected: [], procurements: [], productionEntries: [] };
+  const { role = 'EMPLOYEE', activeEmployee = true, procurementFails = false, listsFail = false, productionFails = false, orders = ORDERS, ordersFail = false, orderFails = false, deliveryFails = false, pricePerBrick = '2', logoutFails = false } = options;
+  const mock: SupabaseMock = { requests: [], signInAttempts: [], unexpected: [], procurements: [], productionEntries: [], orderListQueries: [], deliveries: [] };
 
   await page.route(`${FAKE_SUPABASE_URL}/**`, async (route) => {
     const request = route.request();
@@ -135,7 +231,10 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
       });
     }
     if (pathname === '/auth/v1/user') return json(route, 200, authUser());
-    if (pathname === '/auth/v1/logout') return route.fulfill({ status: 204, headers: CORS });
+    if (pathname === '/auth/v1/logout') {
+      if (logoutFails) return json(route, 500, { msg: 'Internal error' });
+      return route.fulfill({ status: 204, headers: CORS });
+    }
 
     if (pathname === '/rest/v1/profiles') {
       return rows(route, request, [
@@ -172,6 +271,36 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
       if (procurementFails) return json(route, 500, { message: 'insert failed' });
       mock.procurements.push(request.postDataJSON() as Record<string, unknown>);
       return route.fulfill({ status: 201, headers: CORS });
+    }
+    if (pathname === '/rest/v1/orders') {
+      const query = new URL(request.url()).searchParams;
+      const id = query.get('id')?.replace('eq.', '');
+      if (id) {
+        if (orderFails) return json(route, 500, { message: 'order failed' });
+        const found = [...orders, DELIVERED_ORDER, PART_PAID_NO_AMOUNT_ORDER].find((o) => o.id === id);
+        return found ? rows(route, request, [found]) : json(route, 406, { message: 'not found' });
+      }
+      mock.orderListQueries.push(request.url().split('?')[1] ?? '');
+      if (ordersFail) return json(route, 500, { message: 'orders failed' });
+      return rows(route, request, orders);
+    }
+    if (pathname === '/rest/v1/rpc/get_delivery_staff') return json(route, 200, LOADMEN);
+    if (pathname === '/rest/v1/app_settings') {
+      return rows(
+        route,
+        request,
+        pricePerBrick === 'missing'
+          ? []
+          : [{ key: 'LOADING_AND_UNLOADING_PRICE_PER_BRICK', value: pricePerBrick }],
+      );
+    }
+    if (pathname === '/rest/v1/rpc/complete_delivery' || pathname === '/rest/v1/rpc/complete_delivery_with_wages') {
+      if (deliveryFails) return json(route, 500, { message: 'rpc failed' });
+      mock.deliveries.push({
+        fn: pathname.split('/').pop() as string,
+        args: request.postDataJSON() as Record<string, unknown>,
+      });
+      return json(route, 200, null);
     }
     if (pathname === '/rest/v1/rpc/record_production_entry') {
       if (productionFails) return json(route, 500, { message: 'rpc failed' });
