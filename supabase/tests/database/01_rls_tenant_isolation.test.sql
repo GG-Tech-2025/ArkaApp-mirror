@@ -267,7 +267,9 @@ reset role;
 set local request.jwt.claims = '';
 set local role anon;
 
-select is((select count(*) from public.customers), 0::bigint, 'anon sees no business data');
+-- anon holds no table privileges at all (security_hardening), so this is refused outright
+-- rather than returning an empty result.
+select throws_ok($$select count(*) from public.customers$$, '42501', null, 'anon cannot read business data');
 reset role;
 
 -- ------------------------------------------------------------------
