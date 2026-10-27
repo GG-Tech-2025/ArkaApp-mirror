@@ -200,6 +200,71 @@ describe('Employee HomeScreen', () => {
     });
   });
 
+  describe('logging out: further possibilities', () => {
+    it('can be done from the keyboard', async () => {
+      const user = userEvent.setup();
+      renderHome();
+
+      logoutButton().focus();
+      await user.keyboard('{Enter}');
+
+      expect(await screen.findByText('Logout Successful')).toBeInTheDocument();
+      expect(mocked.logout).toHaveBeenCalledTimes(1);
+    });
+
+    it('is a button with the accessible name Logout, whatever the screen width', () => {
+      renderHome();
+
+      expect(screen.getByRole('button', { name: 'Logout' })).toHaveAttribute('aria-label', 'Logout');
+    });
+
+    it('is not triggered by merely using the dashboard', async () => {
+      const user = userEvent.setup();
+      renderHome();
+
+      await user.click(screen.getByRole('button', { name: /Production Entry/ }));
+
+      expect(mocked.logout).not.toHaveBeenCalled();
+    });
+
+    it('does not sign out again when the confirmation is acknowledged', async () => {
+      const user = userEvent.setup();
+      renderHome();
+      await user.click(logoutButton());
+      await screen.findByText('Logout Successful');
+
+      await user.click(screen.getByRole('button', { name: 'OK' }));
+
+      expect(mocked.logout).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows the failure popup, not the success one, when the sign-out request is rejected', async () => {
+      const user = userEvent.setup();
+      mocked.logout.mockRejectedValue(new Error('500'));
+      renderHome();
+
+      await user.click(logoutButton());
+
+      expect(await screen.findByText('Something Went Wrong')).toBeInTheDocument();
+      expect(screen.queryByText('Logout Successful')).not.toBeInTheDocument();
+      expect(screen.queryByText('Session Expired')).not.toBeInTheDocument();
+    });
+
+    it('can fail, succeed, and then be acknowledged to leave', async () => {
+      const user = userEvent.setup();
+      mocked.logout.mockRejectedValueOnce(new Error('500'));
+      renderHome();
+      await user.click(logoutButton());
+      await user.click(await screen.findByRole('button', { name: 'OK' }));
+
+      await user.click(logoutButton());
+      await screen.findByText('Logout Successful');
+      await user.click(screen.getByRole('button', { name: 'OK' }));
+
+      expect(screen.getByTestId('path').textContent).toBe('/employee');
+    });
+  });
+
   describe('session ended elsewhere', () => {
     it('listens for auth events and stops listening when it closes', () => {
       const { unmount } = renderHome();

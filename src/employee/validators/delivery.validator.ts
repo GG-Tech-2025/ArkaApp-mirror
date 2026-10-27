@@ -11,7 +11,8 @@ export function validateDelivery(input: DeliveryInput) {
 
   if (input.paymentStatus === "PARTIALLY_PAID") {
     if (!input.paidAmount || input.paidAmount <= 0) {
-      errors.paidAmount = "Paid amount is required";
+      errors.paidAmount =
+        "Paid amount is required for a part-paid order. Please ask an administrator to record it.";
     }
   }
 

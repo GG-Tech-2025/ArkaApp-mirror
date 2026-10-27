@@ -22,7 +22,145 @@ export interface MockOptions {
   listsFail?: boolean;
   /** Make recording a production entry fail with a server error. */
   productionFails?: boolean;
+  /** The undelivered orders the Orders screen lists; defaults to ORDERS. */
+  orders?: Array<Record<string, unknown>>;
+  /** Make the orders list fail to load. */
+  ordersFail?: boolean;
+  /** Make loading one order (the delivery screen) fail. */
+  orderFails?: boolean;
+  /** Make completing a delivery fail with a server error. */
+  deliveryFails?: boolean;
+  /** The LOADING_AND_UNLOADING_PRICE_PER_BRICK app setting: a value, or "missing". */
+  pricePerBrick?: string | 'missing';
+  /** Make the sign-out endpoint fail with a server error. */
+  logoutFails?: boolean;
+  /** Make the delivery staff list fail to load. */
+  staffFails?: boolean;
+  /** Hold the answer to completing a delivery for this many milliseconds. */
+  deliveryDelayMs?: number;
 }
+
+function order(overrides: Record<string, unknown>) {
+  return {
+    customer_id: 'cust-1',
+    order_date: '2026-10-10',
+    delivery_date: '2026-10-15',
+    price_per_brick: 8,
+    paper_price: 0,
+    payment_status: 'NOT_PAID',
+    loading_type: 'LOADING_UNLOADING',
+    amount_paid: 0,
+    gst_number: null,
+    dc_number: null,
+    delivered: false,
+    created_by: 'user-1',
+    created_at: '2026-10-10T08:00:00Z',
+    time: null,
+    order_loadmen: [],
+    ...overrides,
+  };
+}
+
+export const ORDERS = [
+  order({
+    id: 'ord-1001',
+    brick_quantity: 5000,
+    final_price: 40000,
+    location: '12 MG Road, Coimbatore',
+    customers: { name: 'Rajesh Kumar', phone: '9876543210' },
+  }),
+  order({
+    id: 'ord-1002',
+    brick_quantity: 3000,
+    final_price: 24000,
+    location: '45 Brigade Road, Erode',
+    gst_number: '33ABCDE1234F1Z5',
+    customers: { name: 'Priya Sharma', phone: '9876543211' },
+  }),
+];
+
+/** Served only when asked for by id, as the read-only view of an order already delivered. */
+export const DELIVERED_ORDER = order({
+  id: 'ord-0999',
+  brick_quantity: 2000,
+  final_price: 16000,
+  location: '9 Market Street, Salem',
+  payment_status: 'FULLY_PAID',
+  amount_paid: 16000,
+  dc_number: 'DC-77',
+  time: '10:00 AM',
+  loading_type: 'LOADING_ONLY',
+  delivered: true,
+  order_loadmen: [{ employee_id: 'emp-ravi' }],
+  customers: { name: 'Anita Rao', phone: '9876543299' },
+});
+
+/** Served only when asked for by id: part-paid, but with no amount recorded as paid. */
+export const PART_PAID_NO_AMOUNT_ORDER = order({
+  id: 'ord-0777',
+  brick_quantity: 4000,
+  final_price: 32000,
+  location: '3 Lake View, Tiruppur',
+  payment_status: 'PARTIALLY_PAID',
+  amount_paid: 0,
+  customers: { name: 'Meena Iyer', phone: '9876543288' },
+});
+
+/** Orders served only by id, each set up for one scenario on the delivery screen. */
+export const FULLY_PAID_ORDER = order({
+  id: 'ord-0888',
+  brick_quantity: 3000,
+  final_price: 24000,
+  location: '8 Park Lane, Karur',
+  payment_status: 'FULLY_PAID',
+  amount_paid: 24000,
+  customers: { name: 'Suresh Babu', phone: '9876543277' },
+});
+
+export const PART_PAID_ORDER = order({
+  id: 'ord-0889',
+  brick_quantity: 3000,
+  final_price: 24000,
+  location: '9 Park Lane, Karur',
+  payment_status: 'PARTIALLY_PAID',
+  amount_paid: 9000,
+  customers: { name: 'Lakshmi Devi', phone: '9876543266' },
+});
+
+/** Already has delivery details and an assigned load man, but is not yet delivered. */
+export const PREFILLED_ORDER = order({
+  id: 'ord-0555',
+  brick_quantity: 2500,
+  final_price: 20000,
+  location: '5 Temple Street, Madurai',
+  time: '02:00 PM',
+  dc_number: 'DC-5',
+  loading_type: 'LOADING_ONLY',
+  order_loadmen: [{ employee_id: 'emp-kumar' }],
+  customers: { name: 'Karthik Raja', phone: '9876543255' },
+});
+
+export const NO_QUANTITY_ORDER = order({
+  id: 'ord-0666',
+  brick_quantity: 0,
+  final_price: 0,
+  location: '6 Mill Road, Theni',
+  customers: { name: 'Divya Nair', phone: '9876543244' },
+});
+
+const role = (name: string, noLoadingSalary: boolean) => ({
+  id: `role-${name.toLowerCase()}`,
+  name,
+  category: 'DAILY',
+  salary_value: 500,
+  no_loading_salary: noLoadingSalary,
+});
+
+export const LOADMEN = [
+  { id: 'emp-ravi', name: 'Ravi', phone: '9000000011', role_id: 'role-loader', roles: role('Loader', false) },
+  { id: 'emp-kumar', name: 'Kumar', phone: '9000000012', role_id: 'role-loader', roles: role('Loader', false) },
+  { id: 'emp-ram', name: 'Operator Ram', phone: '9000000013', role_id: 'role-operator', roles: role('Operator', true) },
+];
 
 export const MATERIALS = [
   { id: 'mat-cement', name: 'Cement', unit: 'bags' },
@@ -46,6 +184,10 @@ export interface SupabaseMock {
   procurements: Array<Record<string, unknown>>;
   /** The argument objects sent to the record_production_entry function. */
   productionEntries: Array<Record<string, unknown>>;
+  /** The query strings of every request that listed orders (to check the filters used). */
+  orderListQueries: string[];
+  /** Every delivery completed: which function was called and the arguments it got. */
+  deliveries: Array<{ fn: string; args: Record<string, unknown> }>;
 }
 
 const CORS = {
@@ -105,8 +247,11 @@ function rows(route: Route, request: Request, data: unknown[]) {
  * need no real project, no network and no real credentials.
  */
 export async function mockSupabase(page: Page, options: MockOptions = {}): Promise<SupabaseMock> {
-  const { role = 'EMPLOYEE', activeEmployee = true, procurementFails = false, listsFail = false, productionFails = false } = options;
-  const mock: SupabaseMock = { requests: [], signInAttempts: [], unexpected: [], procurements: [], productionEntries: [] };
+  const { role = 'EMPLOYEE', activeEmployee = true, procurementFails = false, listsFail = false, productionFails = false, orders = ORDERS, ordersFail = false, orderFails = false, deliveryFails = false, pricePerBrick = '2', logoutFails = false, staffFails = false, deliveryDelayMs = 0 } = options;
+  // Like the real backend: an order that has been delivered leaves the undelivered list, and
+  // opening it again shows what was recorded.
+  const delivered = new Map<string, Record<string, unknown>>();
+  const mock: SupabaseMock = { requests: [], signInAttempts: [], unexpected: [], procurements: [], productionEntries: [], orderListQueries: [], deliveries: [] };
 
   await page.route(`${FAKE_SUPABASE_URL}/**`, async (route) => {
     const request = route.request();
@@ -135,7 +280,10 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
       });
     }
     if (pathname === '/auth/v1/user') return json(route, 200, authUser());
-    if (pathname === '/auth/v1/logout') return route.fulfill({ status: 204, headers: CORS });
+    if (pathname === '/auth/v1/logout') {
+      if (logoutFails) return json(route, 500, { msg: 'Internal error' });
+      return route.fulfill({ status: 204, headers: CORS });
+    }
 
     if (pathname === '/rest/v1/profiles') {
       return rows(route, request, [
@@ -172,6 +320,59 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
       if (procurementFails) return json(route, 500, { message: 'insert failed' });
       mock.procurements.push(request.postDataJSON() as Record<string, unknown>);
       return route.fulfill({ status: 201, headers: CORS });
+    }
+    if (pathname === '/rest/v1/orders') {
+      const query = new URL(request.url()).searchParams;
+      const id = query.get('id')?.replace('eq.', '');
+      if (id) {
+        if (orderFails) return json(route, 500, { message: 'order failed' });
+        const found = [
+          ...orders,
+          DELIVERED_ORDER,
+          PART_PAID_NO_AMOUNT_ORDER,
+          FULLY_PAID_ORDER,
+          PART_PAID_ORDER,
+          PREFILLED_ORDER,
+          NO_QUANTITY_ORDER,
+        ].find((o) => o.id === id);
+        if (!found) return json(route, 406, { message: 'not found' });
+        return rows(route, request, [delivered.has(id) ? { ...found, ...delivered.get(id) } : found]);
+      }
+      mock.orderListQueries.push(request.url().split('?')[1] ?? '');
+      if (ordersFail) return json(route, 500, { message: 'orders failed' });
+      return rows(route, request, orders.filter((o) => !delivered.has(o.id as string)));
+    }
+    if (pathname === '/rest/v1/rpc/get_delivery_staff') {
+      if (staffFails) return json(route, 500, { message: 'staff failed' });
+      return json(route, 200, LOADMEN);
+    }
+    if (pathname === '/rest/v1/app_settings') {
+      return rows(
+        route,
+        request,
+        pricePerBrick === 'missing'
+          ? []
+          : [{ key: 'LOADING_AND_UNLOADING_PRICE_PER_BRICK', value: pricePerBrick }],
+      );
+    }
+    if (pathname === '/rest/v1/rpc/complete_delivery' || pathname === '/rest/v1/rpc/complete_delivery_with_wages') {
+      if (deliveryDelayMs) await new Promise((resolve) => setTimeout(resolve, deliveryDelayMs));
+      if (deliveryFails) return json(route, 500, { message: 'rpc failed' });
+      const args = request.postDataJSON() as Record<string, unknown>;
+      mock.deliveries.push({ fn: pathname.split('/').pop() as string, args });
+      delivered.set(args.p_order_id as string, {
+        delivered: true,
+        time: args.p_time,
+        brick_quantity: args.p_brick_quantity,
+        location: args.p_location,
+        payment_status: args.p_payment_status,
+        amount_paid: args.p_amount_paid,
+        gst_number: args.p_gst_number,
+        dc_number: args.p_dc_number,
+        loading_type: args.p_loading_type,
+        order_loadmen: (args.p_loadmen as string[]).map((id) => ({ employee_id: id })),
+      });
+      return json(route, 200, null);
     }
     if (pathname === '/rest/v1/rpc/record_production_entry') {
       if (productionFails) return json(route, 500, { message: 'rpc failed' });
