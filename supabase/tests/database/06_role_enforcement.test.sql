@@ -8,7 +8,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(40);
+select plan(49);
 
 -- ------------------------------------------------------------------
 -- Fixtures (run as the table owner, so RLS does not apply)
@@ -134,11 +134,15 @@ select lives_ok($$select public.complete_delivery('e5000000-0000-0000-0000-00000
   'employee records a delivery');
 select throws_ok($$select public.complete_delivery('e5000000-0000-0000-0000-0000000000e1', '10:00', 90, 'Site', 'PARTIALLY_PAID', 100, null, 'DC1', 'LOADING_UNLOADING', array[]::uuid[])$$,
   '22023', 'This order is already delivered', 'a delivered order cannot be delivered twice');
-select lives_ok($$update public.product_inventory set quantity = 900$$, 'employee moves product stock');
-select lives_ok($$insert into public.production_entries (production_date, bricks, round) values (current_date, 100, 1)$$,
-  'employee records a production entry');
-select lives_ok($$insert into public.procurements (material_id, quantity, rate_per_unit, total_price, date, approved)
-                   values ('ea000000-0000-0000-0000-0000000000e1', 10, 0, 0, current_date, false)$$,
+-- production goes through the function (employees cannot write the stock tables directly)
+select lives_ok($$select public.record_production_entry(current_date, 2, 100, 0, 0, 0, 5, 0)$$,
+  'employee records a production entry through the function');
+select is((select quantity from public.product_inventory), 1010,
+  'the production entry added its bricks to stock (1000 - 90 delivered + 100)');
+select is((select quantity from public.inventory_stock), -10::numeric,
+  'the production entry took the raw material it used out of stock (5 kg fly ash x 2 rounds)');
+select lives_ok($$insert into public.procurements (material_id, quantity, rate_per_unit, total_price, date, approved, created_by)
+                   values ('ea000000-0000-0000-0000-0000000000e1', 10, 0, 0, current_date, false, (select auth.uid()))$$,
   'employee records a material purchase');
 select is((select (public.record_loader_wage('e3000000-0000-0000-0000-0000000000e1', 20, 'delivery')).running_balance),
   370::numeric, 'employee credits a loader wage');
@@ -166,6 +170,32 @@ select throws_ok($$select public.increment_account_balance('e6000000-0000-0000-0
 select throws_ok($$insert into public.salary_ledger (employee_id, entry_type, amount, running_balance)
                     values ('e3000000-0000-0000-0000-0000000000e1', 'SALARY_AUTO_ENTRY', 1, 1)$$,
   '42501', null, 'employee cannot write salary_ledger directly');
+
+-- stock can only change through record_production_entry (security_hardening)
+update public.product_inventory set quantity = 1;
+update public.inventory_stock set quantity = 1;
+reset role;
+select is((select quantity from public.product_inventory), 1010,
+  'employee cannot change product stock directly (the update matches no rows)');
+select is((select quantity from public.inventory_stock), -10::numeric,
+  'employee cannot change material stock directly (the update matches no rows)');
+set local role authenticated;
+select throws_ok($$insert into public.production_entries (production_date, bricks, round) values (current_date, 100, 1)$$,
+  '42501', null, 'employee cannot write production entries directly');
+select throws_ok($$insert into public.inventory_stock (material_id, quantity) values ('ea000000-0000-0000-0000-0000000000e1', 5)$$,
+  '42501', null, 'employee cannot insert stock rows directly');
+select throws_ok($$insert into public.procurements (material_id, quantity, rate_per_unit, total_price, date, approved, created_by, total_paid, payment_status)
+                    values ('ea000000-0000-0000-0000-0000000000e1', 10, 0, 0, current_date, false, (select auth.uid()), 999, 'PAID')$$,
+  '42501', null, 'employee cannot submit a procurement that already looks paid');
+reset role;
+select is(
+  (select count(*) from pg_policies
+   where schemaname = 'public' and tablename in ('inventory_stock', 'product_inventory', 'production_entries')
+     and policyname in ('employee_insert', 'employee_update')),
+  0::bigint, 'employees have no write policies on the stock tables');
+select is(has_table_privilege('anon', 'public.accounts', 'TRUNCATE'), false, 'anon cannot truncate tables');
+select is(has_table_privilege('authenticated', 'public.accounts', 'TRUNCATE'), false, 'signed-in users cannot truncate tables');
+set local role authenticated;
 
 -- ------------------------------------------------------------------
 -- uOld: employee row deactivated, token still valid
