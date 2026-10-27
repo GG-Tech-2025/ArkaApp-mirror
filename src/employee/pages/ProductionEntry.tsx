@@ -131,9 +131,9 @@ export function ProductionEntry() {
                 value={round}
                 onChange={(e) => { setRound(e.target.value); setErrors((prev) => ({ ...prev, round: "" })); }}
                 onWheel={(e) => e.currentTarget.blur()}
-                placeholder="Enter round number (max 99)"
+                placeholder="Enter round number (1 to 99)"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                min="0"
+                min="1"
                 max="99"
               />
               {errors.round && (
@@ -150,7 +150,7 @@ export function ProductionEntry() {
                 id="bricks"
                 type="number"
                 value={bricks}
-                onChange={(e) => setBricks(e.target.value)}
+                onChange={(e) => { setBricks(e.target.value); setErrors((prev) => ({ ...prev, bricks: "" })); }}
                 onWheel={(e) => e.currentTarget.blur()}
                 placeholder="Enter number of bricks"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
@@ -170,7 +170,7 @@ export function ProductionEntry() {
                 id="wetAsh"
                 type="number"
                 value={wetAsh}
-                onChange={(e) => setWetAsh(e.target.value)}
+                onChange={(e) => { setWetAsh(e.target.value); setErrors((prev) => ({ ...prev, wetAsh: "" })); }}
                 onWheel={(e) => e.currentTarget.blur()}
                 placeholder="Enter wet ash in Kg"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
@@ -194,7 +194,7 @@ export function ProductionEntry() {
                 id="marblePowder"
                 type="number"
                 value={marblePowder}
-                onChange={(e) => setMarblePowder(e.target.value)}
+                onChange={(e) => { setMarblePowder(e.target.value); setErrors((prev) => ({ ...prev, marblePowder: "" })); }}
                 onWheel={(e) => e.currentTarget.blur()}
                 placeholder="Enter marble powder in Kg"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
@@ -220,7 +220,7 @@ export function ProductionEntry() {
                 id="crusherPowder"
                 type="number"
                 value={crusherPowder}
-                onChange={(e) => setCrusherPowder(e.target.value)}
+                onChange={(e) => { setCrusherPowder(e.target.value); setErrors((prev) => ({ ...prev, crusherPowder: "" })); }}
                 onWheel={(e) => e.currentTarget.blur()}
                 placeholder="Enter crusher powder in Kg"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
@@ -243,7 +243,7 @@ export function ProductionEntry() {
                 id="flyAsh"
                 type="number"
                 value={flyAsh}
-                onChange={(e) => setFlyAsh(e.target.value)}
+                onChange={(e) => { setFlyAsh(e.target.value); setErrors((prev) => ({ ...prev, flyAsh: "" })); }}
                 onWheel={(e) => e.currentTarget.blur()}
                 placeholder="Enter fly ash in Kg"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
@@ -264,7 +264,7 @@ export function ProductionEntry() {
                 id="cement"
                 type="number"
                 value={cement}
-                onChange={(e) => setCement(e.target.value)}
+                onChange={(e) => { setCement(e.target.value); setErrors((prev) => ({ ...prev, cement: "" })); }}
                 onWheel={(e) => e.currentTarget.blur()}
                 placeholder="Enter cement in Bags"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"

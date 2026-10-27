@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Navigate, Outlet, useNavigate } from "react-router-dom";
+import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   validateSession,
   getUserProfile,
@@ -23,11 +23,26 @@ function Verifying() {
   );
 }
 
+/** Screens that tell the employee themselves when their session ends, so the guard waits for them. */
+const SCREENS_THAT_EXPLAIN_SESSION_END = ["/employee/home"];
+
 export function EmployeeGuard() {
   const [authState, setAuthState] = useState<AuthState>("checking");
   const tenant = useTenant();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const hasBeenReady = useRef(false);
+  const explainsSessionEnd = SCREENS_THAT_EXPLAIN_SESSION_END.includes(pathname);
+  const onExplainingScreen = useRef(explainsSessionEnd);
+  onExplainingScreen.current = explainsSessionEnd;
+
+  // If the session ended while on an explaining screen and the employee then moves to any
+  // other screen, there is nothing left to wait for: send them to login.
+  useEffect(() => {
+    if (authState === "authenticated" && tenant.status === "signed-out" && !explainsSessionEnd) {
+      setAuthState("unauthenticated");
+    }
+  }, [authState, tenant.status, explainsSessionEnd]);
 
   useEffect(() => {
     // Wait for the branch to be known: the "is this employee active" lookup
@@ -36,15 +51,28 @@ export function EmployeeGuard() {
     if (tenant.status === "loading") return;
 
     let cancelled = false;
-    const update = (next: AuthState) => {
-      if (!cancelled) setAuthState(next);
+    const update = (
+      next: AuthState,
+      options: { keepIfAuthenticatedOnExplainingScreen?: boolean } = {},
+    ) => {
+      if (cancelled) return;
+      setAuthState((current) =>
+        options.keepIfAuthenticatedOnExplainingScreen &&
+        current === "authenticated" &&
+        onExplainingScreen.current
+          ? current
+          : next,
+      );
     };
 
     async function verify() {
       try {
         const user = await validateSession();
         if (!user) {
-          update("unauthenticated");
+          // A session that ends while the employee is on a screen that explains it (the
+          // Home screen shows "Logout Successful" or "Session Expired") must not be
+          // redirected away yet, or that popup would never be seen.
+          update("unauthenticated", { keepIfAuthenticatedOnExplainingScreen: true });
           return;
         }
 

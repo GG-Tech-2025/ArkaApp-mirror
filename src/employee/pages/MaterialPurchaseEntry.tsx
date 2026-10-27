@@ -112,6 +112,7 @@ export function MaterialPurchaseEntry() {
                 Vendor <span className="text-red-600">*</span>
               </label>
               <select
+                id="vendor"
                 value={vendor}
                 onChange={(e) => { setVendor(e.target.value); setErrors((prev) => ({ ...prev, vendor: "" })); }}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg"
