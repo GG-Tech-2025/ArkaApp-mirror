@@ -126,6 +126,93 @@ test.describe('Employee Home screen', () => {
     });
   });
 
+  test.describe('logging out: further possibilities', () => {
+    test('can be done from the keyboard', async ({ page }) => {
+      await mockSupabase(page);
+      await signInAsEmployee(page);
+
+      await page.getByRole('button', { name: 'Logout' }).focus();
+      await page.keyboard.press('Enter');
+
+      await expect(page.getByText('Logout Successful')).toBeVisible();
+    });
+
+    test('works after the employee has visited another screen and come back', async ({ page }) => {
+      await mockSupabase(page);
+      await signInAsEmployee(page);
+      await page.getByRole('button', { name: /Delivery Entry/ }).click();
+      await expect(page).toHaveURL(/\/employee\/orders$/);
+      await page.getByRole('button', { name: /Back to Home/ }).click();
+
+      await page.getByRole('button', { name: 'Logout' }).click();
+
+      await expect(page.getByText('Logout Successful')).toBeVisible();
+      await page.getByRole('button', { name: 'OK' }).click();
+      await expect(page).toHaveURL(/\/employee\/login$/);
+    });
+
+    test('removes the saved session from the browser', async ({ page }) => {
+      await mockSupabase(page);
+      await signInAsEmployee(page);
+      const tokens = () => page.evaluate(() => Object.keys(localStorage).filter((k) => k.includes('auth-token')).length);
+      expect(await tokens()).toBeGreaterThan(0);
+
+      await page.getByRole('button', { name: 'Logout' }).click();
+      await expect(page.getByText('Logout Successful')).toBeVisible();
+
+      expect(await tokens()).toBe(0);
+    });
+
+    test('the employee can sign in again straight after logging out', async ({ page }) => {
+      await mockSupabase(page);
+      await signInAsEmployee(page);
+      await page.getByRole('button', { name: 'Logout' }).click();
+      await page.getByRole('button', { name: 'OK' }).click();
+      await expect(page).toHaveURL(/\/employee\/login$/);
+
+      await signInAsEmployee(page);
+
+      await expect(page).toHaveURL(/\/employee\/home$/);
+    });
+
+    test('a rejected sign-out request is reported, and the session is already gone on reload', async ({ page }) => {
+      await mockSupabase(page, { logoutFails: true });
+      await signInAsEmployee(page);
+
+      await page.getByRole('button', { name: 'Logout' }).click();
+
+      await expect(page.getByText('Something Went Wrong')).toBeVisible();
+      await expect(page.getByText('Unable to logout. Please try again.')).toBeVisible();
+      await expect(page.getByText('Logout Successful')).toBeHidden();
+
+      await page.reload();
+
+      await expect(page).toHaveURL(/\/employee\/login$/);
+    });
+  });
+
+  test.describe('on a phone', () => {
+    test('the Logout button keeps its accessible name at phone width, where its text is hidden', async ({ page }) => {
+      await page.setViewportSize({ width: 375, height: 812 });
+      await mockSupabase(page);
+      await signInAsEmployee(page);
+
+      await expect(page.getByRole('button', { name: 'Logout' })).toBeVisible();
+    });
+
+    test('logging out works at phone width', async ({ page }) => {
+      await page.setViewportSize({ width: 375, height: 812 });
+      await mockSupabase(page);
+      await signInAsEmployee(page);
+
+      await page.getByRole('button', { name: 'Logout' }).click();
+
+      await expect(page.getByText('Logout Successful')).toBeVisible();
+      await page.getByRole('button', { name: 'OK' }).click();
+      await expect(page).toHaveURL(/\/employee\/login$/);
+    });
+  });
+
   test.describe('session ended elsewhere', () => {
     test('signing out in another tab warns "Session Expired" here, and OK goes to login', async ({ page, context }) => {
       await mockSupabase(page);
