@@ -20,6 +20,8 @@ export function DeliveryEntry() {
     updateDelivery, 
     loading, 
     error, 
+    orderLoadError,
+    staffLoadError,
     loadmen, 
     order,
     deliveryInput,
@@ -38,6 +40,21 @@ export function DeliveryEntry() {
 
   // Get today's date in YYYY-MM-DD format for max attribute
   const today = new Date().toISOString().split("T")[0];
+
+  // Editing a field clears its own error straight away, as on the other entry screens.
+  const changeField = (field: keyof DeliveryInput, value: string, ...clears: string[]) => {
+    updateDeliveryInput(field, value);
+    setErrors((prev) => {
+      const next = { ...prev };
+      for (const key of [field, ...clears]) delete next[key];
+      return next;
+    });
+  };
+
+  const toggleLoadMan = (id: string) => {
+    handleLoadManToggle(id);
+    setErrors((prev) => ({ ...prev, loadMen: "" }));
+  };
 
   const handleSubmit = async () => {
     console.log("Submitting delivery:", deliveryInput);
@@ -75,7 +92,14 @@ export function DeliveryEntry() {
           <p className="text-gray-600 mt-1">{isDelivered ? 'View delivery information' : 'Enter the delivery details'}</p>
         </div>
 
+        {orderLoadError && (
+          <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+            {orderLoadError}. Please go back and try again.
+          </div>
+        )}
+
         {/* Form */}
+        {!orderLoadError && (
         <div className="bg-white rounded-lg shadow-lg p-6 sm:p-8">
           <div className="space-y-6">
             {/* Delivered badge */}
@@ -169,7 +193,7 @@ export function DeliveryEntry() {
               <select
                 id="time"
                 value={deliveryInput?.time || ""}
-                onChange={(e) => updateDeliveryInput("time", e.target.value)}
+                onChange={(e) => changeField("time", e.target.value)}
                 disabled={isDelivered}
                 className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''}`}
               >
@@ -208,7 +232,7 @@ export function DeliveryEntry() {
                 id="location"
                 type="text"
                 value={deliveryInput?.location || ""}
-                onChange={(e) => updateDeliveryInput("location", e.target.value)}
+                onChange={(e) => changeField("location", e.target.value)}
                 placeholder="Enter location"
                 disabled={isDelivered}
                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
@@ -263,7 +287,7 @@ export function DeliveryEntry() {
                 id="deliveryChallanNumber"
                 type="text"
                 value={deliveryInput?.deliveryChallanNumber || ""}
-                onChange={(e) => updateDeliveryInput("deliveryChallanNumber", e.target.value)}
+                onChange={(e) => changeField("deliveryChallanNumber", e.target.value)}
                 placeholder="Enter delivery challan number"
                 disabled={isDelivered}
                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
@@ -287,7 +311,7 @@ export function DeliveryEntry() {
               <select
               id="loadingType"
               value={deliveryInput?.loadingType}
-              onChange={(e) => updateDeliveryInput("loadingType", e.target.value)}
+              onChange={(e) => changeField("loadingType", e.target.value, "loadMen")}
               disabled={isDelivered}
               className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
                 errors.loadingType ? "border-red-500" : "border-gray-300"
@@ -318,7 +342,7 @@ export function DeliveryEntry() {
                       <input
                         type="checkbox"
                         checked={selectedLoadmen.some(loadman => loadman.id === loadMan.id)}
-                        onChange={() => !isDelivered && handleLoadManToggle(loadMan.id)}
+                        onChange={() => !isDelivered && toggleLoadMan(loadMan.id)}
                         disabled={isDelivered}
                         className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 shrink-0"
                       />
@@ -339,6 +363,16 @@ export function DeliveryEntry() {
               )}
             </div>)}
 
+            {staffLoadError && (
+              <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                {staffLoadError}, so none can be selected. Go back and try again.
+              </div>
+            )}
+
+            {/* Problems with details the employee cannot edit here (they come from the order) */}
+            {errors.paidAmount && <p className="text-red-600 text-sm">{errors.paidAmount}</p>}
+            {errors.quantity && <p className="text-red-600 text-sm">{errors.quantity}</p>}
+
             {/* Submit Button - hidden for delivered orders */}
             {!isDelivered && (
               <button
@@ -353,6 +387,7 @@ export function DeliveryEntry() {
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* Success Popup */}

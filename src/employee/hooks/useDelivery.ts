@@ -8,6 +8,10 @@ import { EmployeeWithCategory, OrderWithLoadmen, Order } from "../../services/ty
 export function useDelivery(orderId: string) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Problems loading what the screen is built from: shown on the screen itself, apart from
+  // `error`, which belongs to saving.
+  const [orderLoadError, setOrderLoadError] = useState<string | null>(null);
+  const [staffLoadError, setStaffLoadError] = useState<string | null>(null);
   const [order, setOrder] = useState<OrderWithLoadmen | null>(null);
   const [loadmen, setLoadmen] = useState<EmployeeWithCategory[]>([]);
   const [deliveryInput, setDeliveryInput] = useState<DeliveryInput>({
@@ -91,8 +95,8 @@ export function useDelivery(orderId: string) {
       }));
     }
     catch (error) {
-      setError("Failed to load order details");
-    } 
+      setOrderLoadError("Failed to load order details");
+    }
   }
 
   async function getLoadmenData() {
@@ -102,7 +106,7 @@ export function useDelivery(orderId: string) {
       setLoadmen(loadmenData);
     }
     catch (error) {
-      setError("Failed to load loadmen details");
+      setStaffLoadError("Failed to load the delivery staff");
     }
   }
 
@@ -168,10 +172,18 @@ export function useDelivery(orderId: string) {
         loading_type: deliveryInput.loadingType
       };
 
+      // When the customer loads for themselves nobody is assigned and nobody is paid, even if
+      // load men were ticked before the loading type was switched (their ticks are only kept
+      // so they come back if the type is switched back).
+      const customerSelf = deliveryInput.loadingType === 'CUSTOMER_SELF';
+      const loadmenIds = customerSelf ? [] : deliveryInput.loadMen;
+
       // Exclude employees whose role is flagged as no_loading_salary (they get wages via attendance only)
-      const eligibleLoadmen = selectedLoadmen.filter(
-        (l) => !l.roles?.no_loading_salary && deliveryInput.loadMen.includes(l.id)
-      );
+      const eligibleLoadmen = customerSelf
+        ? []
+        : selectedLoadmen.filter(
+            (l) => !l.roles?.no_loading_salary && deliveryInput.loadMen.includes(l.id)
+          );
 
       // Work out the wages BEFORE completing the delivery, so a missing price setting stops
       // the whole thing instead of leaving a delivered order with no wages.
@@ -206,7 +218,7 @@ export function useDelivery(orderId: string) {
       }
 
       // One database transaction: the delivery and every loadman's wage, or nothing.
-      await completeDelivery(orderId, orderUpdate, deliveryInput.loadMen, wages);
+      await completeDelivery(orderId, orderUpdate, loadmenIds, wages);
 
       return { success: true };
     } catch (err) {
@@ -220,6 +232,8 @@ export function useDelivery(orderId: string) {
   return {
     loading,
     error,
+    orderLoadError,
+    staffLoadError,
     order,
     loadmen,
     deliveryInput,
