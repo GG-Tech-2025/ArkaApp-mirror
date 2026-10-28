@@ -113,8 +113,9 @@ export function AttendanceScreen() {
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <div className="flex flex-col gap-4">
             <div>
-              <label className="block text-gray-700 mb-2">Select Date</label>
+              <label htmlFor="attendanceDate" className="block text-gray-700 mb-2">Select Date</label>
               <input
+                id="attendanceDate"
                 type="date"
                 value={selectedDate}
                 onChange={(e) => handleDateChange(e.target.value)}

@@ -139,8 +139,9 @@ export function SalaryLedgerDetailScreen() {
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
-              <label className="block text-gray-700 text-sm mb-2">Sort Order</label>
+              <label htmlFor="ledgerSortOrder" className="block text-gray-700 text-sm mb-2">Sort Order</label>
               <select
+                id="ledgerSortOrder"
                 value={stagedSortOrder}
                 onChange={(e) => setStagedSortOrder(e.target.value as 'newest' | 'oldest')}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -150,8 +151,9 @@ export function SalaryLedgerDetailScreen() {
               </select>
             </div>
             <div className="flex-1">
-              <label className="block text-gray-700 text-sm mb-2">From Date</label>
+              <label htmlFor="ledgerFromDate" className="block text-gray-700 text-sm mb-2">From Date</label>
               <input
+                id="ledgerFromDate"
                 type="date"
                 value={stagedFromDate}
                 onChange={(e) => setStagedFromDate(e.target.value)}
@@ -159,8 +161,9 @@ export function SalaryLedgerDetailScreen() {
               />
             </div>
             <div className="flex-1">
-              <label className="block text-gray-700 text-sm mb-2">To Date</label>
+              <label htmlFor="ledgerToDate" className="block text-gray-700 text-sm mb-2">To Date</label>
               <input
+                id="ledgerToDate"
                 type="date"
                 value={stagedToDate}
                 onChange={(e) => setStagedToDate(e.target.value)}

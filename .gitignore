@@ -5,3 +5,4 @@ build
 dist
 test-results
 playwright-report
+build-e2e
