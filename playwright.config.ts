@@ -24,8 +24,11 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `npx vite --port ${PORT} --strictPort --open false`,
+    // A production build served by `vite preview`: pages load far faster and more evenly than
+    // from the dev server, which stalled when many tests started at once.
+    command: `npx vite build --outDir build-e2e && npx vite preview --outDir build-e2e --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}`,
+    timeout: 120_000,
     reuseExistingServer: !process.env.CI,
     env: {
       VITE_SUPABASE_URL: FAKE_SUPABASE_URL,
