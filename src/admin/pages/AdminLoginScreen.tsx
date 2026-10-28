@@ -99,10 +99,11 @@ export function AdminLoginScreen() {
 
           <div className="space-y-6">
             <div>
-              <label className="block text-gray-700 mb-2">
+              <label htmlFor="email" className="block text-gray-700 mb-2">
                 Email Address
               </label>
               <input
+                id="email"
                 type="email"
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); setError(""); }}
@@ -113,10 +114,11 @@ export function AdminLoginScreen() {
             </div>
 
             <div>
-              <label className="block text-gray-700 mb-2">
+              <label htmlFor="password" className="block text-gray-700 mb-2">
                 Password
               </label>
               <input
+                id="password"
                 type="password"
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); setError(""); }}
