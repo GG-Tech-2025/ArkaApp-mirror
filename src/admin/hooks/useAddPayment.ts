@@ -5,7 +5,6 @@ import {
   getAccounts,
   getEmployeeLedger,
   createSalaryLedgerEntry,
-  CASH_ACCOUNT_ID,
 } from '../../services/middleware.service';
 import {
   validateAddPayment,
@@ -22,12 +21,12 @@ const ENTRY_TYPE_TO_DB: Record<Exclude<PaymentEntryTypeLabel, ''>, SalaryLedgerE
   'Daily / Ad-hoc Payment': 'DAILY',
   'Partial Settlement': 'PARTIAL_SETTLEMENT',
   'Full Settlement': 'FULL_SETTLEMENT',
+  'Manual Salary Entry': 'SALARY_MANUAL_ENTRY',
 };
 
 const PAYMENT_MODE_TO_DB: Record<PaymentModeLabel, string> = {
   UPI: 'UPI',
   'Bank Transfer': 'BANK',
-  Cheque: 'CHEQUE',
   Cash: 'CASH',
 };
 
@@ -80,6 +79,15 @@ export function useAddPayment() {
     const runningBalance = employee?.running_balance ?? 0;
     if (type === 'Full Settlement') {
       setFormInput((prev) => ({ ...prev, entryType: type, amount: runningBalance.toString() }));
+    } else if (type === 'Manual Salary Entry') {
+      setFormInput((prev) => ({
+        ...prev,
+        entryType: type,
+        amount: prev.entryType === 'Full Settlement' ? '' : prev.amount,
+        modeOfPayment: 'UPI',
+        senderAccountId: '',
+        receiverAccountInfo: '',
+      }));
     } else {
       setFormInput((prev) => ({
         ...prev,
@@ -91,6 +99,9 @@ export function useAddPayment() {
       const next = { ...prev };
       delete next.entryType;
       delete next.amount;
+      delete next.modeOfPayment;
+      delete next.senderAccountId;
+      delete next.receiverAccountInfo;
       return next;
     });
   }
@@ -116,8 +127,9 @@ export function useAddPayment() {
    * - Other modes → selected sender account balance
    */
   function getSelectedAccountBalance(): number | null {
+    if (formInput.entryType === 'Manual Salary Entry') return null;
     if (formInput.modeOfPayment === 'Cash') {
-      const cashAccount = accounts.find((a) => a.id === CASH_ACCOUNT_ID);
+      const cashAccount = accounts.find((a) => a.is_cash);
       return cashAccount?.balance ?? null;
     }
     if (formInput.senderAccountId) {
@@ -133,13 +145,7 @@ export function useAddPayment() {
     if (!employeeId) return;
 
     const runningBalance = employee?.running_balance ?? 0;
-    const newErrors = validateAddPayment(formInput, runningBalance);
-
-    // Validate amount against account balance
-    const amount = Number(formInput.amount);
-    if (amount > 0 && selectedAccountBalance !== null && amount > selectedAccountBalance) {
-      newErrors.amount = `Amount exceeds available account balance (₹${selectedAccountBalance.toLocaleString()})`;
-    }
+    const newErrors = validateAddPayment(formInput, runningBalance, selectedAccountBalance);
 
     setErrors(newErrors);
     if (Object.keys(newErrors).length > 0) return;
@@ -151,13 +157,14 @@ export function useAddPayment() {
         employee_id: employeeId,
         entry_type: ENTRY_TYPE_TO_DB[formInput.entryType as Exclude<PaymentEntryTypeLabel, ''>],
         amount: Number(formInput.amount),
-        payment_mode: PAYMENT_MODE_TO_DB[formInput.modeOfPayment],
+        payment_mode: formInput.entryType === 'Manual Salary Entry' ? null : PAYMENT_MODE_TO_DB[formInput.modeOfPayment],
         sender_account_id:
-          formInput.modeOfPayment !== 'Cash' ? formInput.senderAccountId : null,
+          formInput.entryType === 'Manual Salary Entry' || formInput.modeOfPayment === 'Cash' ? null : formInput.senderAccountId,
         receiver_account:
-          formInput.modeOfPayment !== 'Cash' ? formInput.receiverAccountInfo.trim() : null,
+          formInput.entryType === 'Manual Salary Entry' || formInput.modeOfPayment === 'Cash' ? null : formInput.receiverAccountInfo.trim(),
         notes: formInput.notes.trim() || null,
-        created_at: new Date(formInput.dateTime).toISOString(),
+        // created_at: new Date(formInput.dateTime).toISOString(),
+        payment_at: new Date(formInput.dateTime).toISOString(),
       });
       setShowSuccessPopup(true);
     } catch (err) {
@@ -183,9 +190,12 @@ export function useAddPayment() {
 
   const isAmountDisabled = formInput.entryType === 'Full Settlement';
 
+  // Filter out the Cash account for the SAI dropdown (non-Cash payment modes)
+  const nonCashAccounts = accounts.filter((a) => !a.is_cash);
+
   return {
     employee,
-    accounts,
+    accounts: nonCashAccounts,
     loadingData,
     loading,
     formInput,

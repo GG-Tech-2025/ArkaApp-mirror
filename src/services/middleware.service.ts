@@ -1,8 +1,19 @@
-import { Session, User } from "@supabase/supabase-js";
+import { FunctionsHttpError, Session, User } from "@supabase/supabase-js";
 import supabase from "../lib/supabaseClient"
 import {
   EmployeeCategory,
   Profile,
+  SessionClaims,
+  Branch,
+  PlatformOrganization,
+  PlatformBranch,
+  PlatformBranchRow,
+  PlatformOrganizationDetail,
+  BranchBillingEvent,
+  OrganizationAdmin,
+  RecordPaymentInput,
+  ProvisionOrganizationInput,
+  ProvisionOrganizationResult,
   Material,
   Vendor,
   CreateVendorInput,
@@ -17,7 +28,10 @@ import {
   CreateLoanInput,
   Account,
   CreateAccountInput,
+  CreateAccountTransferInput,
+  AccountTransfer,
   CreateCustomerPaymentInput,
+  CreateCustomerWriteOffInput,
   CreateOrderInput,
   ProductionEntry,
   Loan,
@@ -43,11 +57,69 @@ import {
   DailyCashSummaryResponse,
   CashLedgerForDate,
   SalaryEmployee,
+  Withdrawal,
+  CreateWithdrawalInput,
 } from './types'
 import { MaterialPurchaseInput, ProductionInput } from "../employee/types";
 import { getRange, getRangeForProductionStatistics, PAGE_SIZE , mapPaymentModeToDb } from "../utils/reusables";
 
-export const CASH_ACCOUNT_ID = "04f194f4-af1f-4ac0-98be-a5b7f81b449f";
+/* ------------------------------------------------------------------
+   APP SETTINGS
+-------------------------------------------------------------------*/
+
+export async function getAppSettings(): Promise<import('./types').AppSetting[]> {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('*')
+    .order('key', { ascending: true });
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function updateAppSetting(key: string, value: string): Promise<void> {
+  const { error } = await supabase
+    .from('app_settings')
+    .update({ value })
+    .eq('key', key);
+
+  if (error) throw error;
+}
+
+/**
+ * Returns the year the app started, derived from the APP_START_DATE setting.
+ * Falls back to the current year if the setting is missing or malformed.
+ * Use this anywhere a "start year" is needed for filters/dropdowns.
+ */
+export async function getAppStartYear(): Promise<number> {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'APP_START_DATE')
+    .single();
+
+  if (error || !data?.value) return new Date().getFullYear();
+
+  const year = new Date(data.value).getFullYear();
+  return isNaN(year) ? new Date().getFullYear() : year;
+}
+
+/**
+ * Returns the full app start date string (YYYY-MM-DD) from APP_START_DATE setting.
+ * Falls back to the first day of the current year if missing or malformed.
+ */
+export async function getAppStartDate(): Promise<string> {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'APP_START_DATE')
+    .single();
+
+  if (error || !data?.value) return `${new Date().getFullYear()}-01-01`;
+  // Validate it's a parseable date
+  const d = new Date(data.value);
+  return isNaN(d.getTime()) ? `${new Date().getFullYear()}-01-01` : data.value;
+}
 
 /* ------------------------------------------------------------------
    1. LOGIN 
@@ -76,6 +148,341 @@ export async function validateSession(): Promise<User | null> {
   return data.user;
 }
 
+/**
+ * Decodes the JWT payload without verifying the signature — safe here since
+ * the token comes straight from supabase-js's own session, not an
+ * externally supplied value.
+ */
+function decodeJwtPayload(jwt: string): Record<string, unknown> {
+  const base64Url = jwt.split(".")[1];
+  const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+  return JSON.parse(atob(padded));
+}
+
+/**
+ * Reads the tenancy claims (organization_id, default_branch_id,
+ * is_super_admin) that custom_access_token_hook injects into the JWT on
+ * sign-in/refresh — avoids a separate profiles query for data that's
+ * already on the session's access token.
+ */
+export async function getSessionClaims(): Promise<SessionClaims | null> {
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data.session) return null;
+
+  const payload = decodeJwtPayload(data.session.access_token);
+  return {
+    organizationId: (payload.organization_id as string | null) ?? null,
+    defaultBranchId: (payload.default_branch_id as string | null) ?? null,
+    isSuperAdmin: Boolean(payload.is_super_admin),
+  };
+}
+
+/** Branches the signed-in user may work in (RLS limits this to their own). */
+export async function getAccessibleBranches(): Promise<Branch[]> {
+  const { data, error } = await supabase
+    .from("branches")
+    .select("id, name, code, status, renewal_date, last_payment_date")
+    .order("name");
+
+  if (error) throw error;
+  return (data ?? []).map((b) => ({
+    id: b.id,
+    name: b.name,
+    code: b.code,
+    status: b.status,
+    renewalDate: b.renewal_date,
+    lastPaymentDate: b.last_payment_date,
+  }));
+}
+
+/* ------------------------------------------------------------------
+   PLATFORM (Phase 5): only a super-admin can see or do any of this.
+   The database enforces it (read-only policies on the platform tables,
+   and the Edge Function checks the caller); the screens just ask.
+-------------------------------------------------------------------*/
+
+/** Every client organization with its branch counts, next renewal and admin phone numbers. */
+export async function getPlatformOrganizations(): Promise<PlatformOrganization[]> {
+  const [orgs, branches, admins] = await Promise.all([
+    supabase
+      .from("organizations")
+      .select("id, name, slug, status, created_at, contact_email")
+      .order("created_at", { ascending: false }),
+    supabase.from("branches").select("id, organization_id, status, renewal_date"),
+    supabase
+      .from("profiles")
+      .select("organization_id, phone")
+      .eq("role", "ADMIN")
+      .not("organization_id", "is", null),
+  ]);
+
+  if (orgs.error) throw orgs.error;
+  if (branches.error) throw branches.error;
+  if (admins.error) throw admins.error;
+
+  return (orgs.data ?? []).map((o) => {
+    const mine = (branches.data ?? []).filter((b) => b.organization_id === o.id);
+    const renewals = mine.map((b) => b.renewal_date as string | null).filter((d): d is string => !!d).sort();
+    return {
+      id: o.id,
+      name: o.name,
+      slug: o.slug,
+      status: o.status,
+      createdAt: o.created_at,
+      contactEmail: o.contact_email,
+      branchCount: mine.length,
+      branchesPaused: mine.filter((b) => b.status !== "ACTIVE").length,
+      nextRenewalDate: renewals[0] ?? null,
+      adminPhones: (admins.data ?? [])
+        .filter((a) => a.organization_id === o.id)
+        .map((a) => a.phone),
+    };
+  });
+}
+
+/** The branches of one client organization (read through the super-admin policy). */
+export async function getOrganizationBranches(organizationId: string): Promise<PlatformBranch[]> {
+  const { data, error } = await supabase
+    .from("branches")
+    .select("id, name, code, status, last_payment_date, renewal_date")
+    .eq("organization_id", organizationId)
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []).map((b) => ({
+    id: b.id,
+    name: b.name,
+    code: b.code,
+    status: b.status,
+    lastPaymentDate: b.last_payment_date,
+    renewalDate: b.renewal_date,
+  }));
+}
+
+/**
+ * Adds a branch to an existing client organization. One database transaction
+ * creates it, gives it its defaults (cash account, settings, materials) and
+ * lets every admin of that organization use it. Super-admins only: the
+ * function checks that itself.
+ */
+export async function addBranchToOrganization(input: {
+  organizationId: string;
+  name: string;
+  code: string;
+  /** The new branch's first renewal date, YYYY-MM-DD. */
+  renewalDate: string;
+}): Promise<{ branchId: string; adminsGranted: number }> {
+  const { data, error } = await supabase.rpc("provision_branch", {
+    p_organization_id: input.organizationId,
+    p_name: input.name,
+    p_code: input.code,
+    p_renewal_date: input.renewalDate,
+  });
+
+  if (error) {
+    if (error.code === "23505") {
+      throw new Error("That branch code is already used in this organization.");
+    }
+    throw new Error(error.message || "Could not add the branch. Please try again.");
+  }
+
+  return { branchId: data.branch_id, adminsGranted: data.admins_granted };
+}
+
+/** Every branch of every client, with its client's name and status (platform overview). */
+export async function getPlatformBranches(): Promise<PlatformBranchRow[]> {
+  const [branches, orgs] = await Promise.all([
+    supabase
+      .from("branches")
+      .select("id, organization_id, name, code, status, last_payment_date, renewal_date"),
+    supabase.from("organizations").select("id, name, status"),
+  ]);
+  if (branches.error) throw branches.error;
+  if (orgs.error) throw orgs.error;
+
+  const byId = new Map((orgs.data ?? []).map((o) => [o.id, o]));
+  return (branches.data ?? []).map((b) => ({
+    id: b.id,
+    organizationId: b.organization_id,
+    organizationName: byId.get(b.organization_id)?.name ?? "Unknown",
+    organizationStatus: byId.get(b.organization_id)?.status ?? "ACTIVE",
+    name: b.name,
+    code: b.code,
+    status: b.status,
+    lastPaymentDate: b.last_payment_date,
+    renewalDate: b.renewal_date,
+  }));
+}
+
+export async function getPlatformOrganization(organizationId: string): Promise<PlatformOrganizationDetail | null> {
+  const { data, error } = await supabase
+    .from("organizations")
+    .select("id, name, slug, status, contact_email, contact_phone, created_at")
+    .eq("id", organizationId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return {
+    id: data.id,
+    name: data.name,
+    slug: data.slug,
+    status: data.status,
+    contactEmail: data.contact_email,
+    contactPhone: data.contact_phone,
+    createdAt: data.created_at,
+  };
+}
+
+/** A client's admins with their email and last sign-in (super-admin only; checked in the database). */
+export async function getOrganizationAdmins(organizationId: string): Promise<OrganizationAdmin[]> {
+  const { data, error } = await supabase.rpc("platform_list_org_admins", { p_organization_id: organizationId });
+  if (error) throw error;
+  return (data ?? []).map(
+    (r: { user_id: string; phone: string; email: string; last_sign_in_at: string | null; created_at: string }) => ({
+      userId: r.user_id,
+      phone: r.phone,
+      email: r.email,
+      lastSignInAt: r.last_sign_in_at,
+      createdAt: r.created_at,
+    })
+  );
+}
+
+/** The billing history of one client, newest first. */
+export async function getBillingEvents(organizationId: string, limit = 100): Promise<BranchBillingEvent[]> {
+  const { data, error } = await supabase
+    .from("branch_billing_events")
+    .select("id, branch_id, event_type, happened_on, amount, reference, note, renewal_date_after, actor_id, created_at")
+    .eq("organization_id", organizationId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  // A payment and the resume it triggers are written in one transaction, so they share a
+  // timestamp: keep the resume after the payment (so it sits above it, newest first).
+  const rank: Record<string, number> = { RESUMED: 2, PAYMENT: 1 };
+  const ordered = [...(data ?? [])].sort(
+    (a, b) =>
+      String(b.created_at).localeCompare(String(a.created_at)) ||
+      (rank[b.event_type] ?? 0) - (rank[a.event_type] ?? 0)
+  );
+  return ordered.map((e) => ({
+    id: e.id,
+    branchId: e.branch_id,
+    eventType: e.event_type,
+    happenedOn: e.happened_on,
+    amount: e.amount === null ? null : Number(e.amount),
+    reference: e.reference,
+    note: e.note,
+    renewalDateAfter: e.renewal_date_after,
+    actorId: e.actor_id,
+    createdAt: e.created_at,
+  }));
+}
+
+/** The database's own message for a refused platform action (they are written for the operator). */
+function platformActionError(error: { message?: string } | null, fallback: string): Error {
+  return new Error(error?.message || fallback);
+}
+
+/** Pause (active = false) or resume a branch. Takes effect for its users immediately. */
+export async function setBranchActive(branchId: string, active: boolean, note?: string): Promise<void> {
+  const { error } = await supabase.rpc("platform_set_branch_status", {
+    p_branch_id: branchId,
+    p_active: active,
+    p_note: note?.trim() || null,
+  });
+  if (error) throw platformActionError(error, "Could not change the branch. Please try again.");
+}
+
+/** Records a payment, moves the renewal date and (by default) resumes a paused branch. */
+export async function recordBranchPayment(input: RecordPaymentInput): Promise<void> {
+  const { error } = await supabase.rpc("platform_record_payment", {
+    p_branch_id: input.branchId,
+    p_paid_on: input.paidOn,
+    p_renewal_date: input.renewalDate,
+    p_amount: input.amount ?? null,
+    p_reference: input.reference?.trim() || null,
+    p_note: input.note?.trim() || null,
+    p_resume: input.resume,
+  });
+  if (error) throw platformActionError(error, "Could not record the payment. Please try again.");
+}
+
+export async function setBranchRenewalDate(branchId: string, renewalDate: string, note?: string): Promise<void> {
+  const { error } = await supabase.rpc("platform_set_renewal_date", {
+    p_branch_id: branchId,
+    p_renewal_date: renewalDate,
+    p_note: note?.trim() || null,
+  });
+  if (error) throw platformActionError(error, "Could not change the renewal date. Please try again.");
+}
+
+/** Suspend (active = false) or resume a whole client, every branch at once. */
+export async function setOrganizationActive(organizationId: string, active: boolean, note?: string): Promise<void> {
+  const { error } = await supabase.rpc("platform_set_org_status", {
+    p_organization_id: organizationId,
+    p_active: active,
+    p_note: note?.trim() || null,
+  });
+  if (error) throw platformActionError(error, "Could not change the client. Please try again.");
+}
+
+/**
+ * Creates a client organization, its first branch and its first admin's login
+ * (via the provision-organization Edge Function). The temporary password in
+ * the result is shown once and cannot be fetched again.
+ */
+export async function provisionOrganization(
+  input: ProvisionOrganizationInput
+): Promise<ProvisionOrganizationResult> {
+  const { data, error } = await supabase.functions.invoke("provision-organization", {
+    body: input,
+  });
+
+  if (error) {
+    let message = "Could not create the organization. Please try again.";
+    if (error instanceof FunctionsHttpError) {
+      try {
+        const body = await error.context.json();
+        if (typeof body?.error === "string") message = body.error;
+      } catch {
+        /* keep the generic message */
+      }
+    }
+    throw new Error(message);
+  }
+
+  return data as ProvisionOrganizationResult;
+}
+
+/** The signed-in user's organization: its name and whether it is ACTIVE (RLS exposes only their own). */
+export async function getMyOrganization(): Promise<{ name: string | null; status: string | null }> {
+  const { data, error } = await supabase
+    .from("organizations")
+    .select("name, status")
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return { name: data?.name ?? null, status: data?.status ?? null };
+}
+
+/**
+ * Makes `branchId` the user's active branch. The database saves it, then the
+ * session is refreshed so the new access token carries it — until that
+ * refresh the old token still points at the old branch.
+ */
+export async function switchActiveBranch(branchId: string): Promise<void> {
+  const { error } = await supabase.rpc("set_active_branch", {
+    p_branch_id: branchId,
+  });
+  if (error) throw error;
+
+  const { error: refreshError } = await supabase.auth.refreshSession();
+  if (refreshError) throw refreshError;
+}
+
 /* ------------------------------------------------------------------
    3. GET USER PROFILE
 -------------------------------------------------------------------*/
@@ -89,6 +496,25 @@ export async function getUserProfile(userId: string): Promise<Profile> {
 
   if (error) throw error;
   return data;
+}
+
+/** True while the signed-in user is still on the temporary password they were given. */
+export function mustChangePassword(user: User | null | undefined): boolean {
+  return user?.app_metadata?.must_change_password === true;
+}
+
+/**
+ * Sets a new password for the signed-in user and refreshes the session so the
+ * token no longer carries the "must change password" mark. The mark itself is
+ * cleared by a database trigger when the password really changes, so it
+ * cannot be dodged by skipping this call.
+ */
+export async function changeMyPassword(newPassword: string): Promise<void> {
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
+
+  const { error: refreshError } = await supabase.auth.refreshSession();
+  if (refreshError) throw refreshError;
 }
 
 /* ------------------------------------------------------------------
@@ -190,33 +616,25 @@ export async function createProcurement(
 
 export async function createProductionEntry(
   input: ProductionInput,
-  createdBy: string
+  _createdBy?: string // kept for existing callers; the database records the signed-in user itself
 ): Promise<void> {
-  const { error } = await supabase.from("production_entries").insert({
-    production_date: input.date,
-    round: input.round,
-    bricks: input.bricks,
-    wet_ash_kg: input.wetAsh,
-    marble_powder_kg: input.marblePowder,
-    crusher_powder_kg: input.crusherPowder,
-    fly_ash_kg: input.flyAsh,
-    cement_bags: input.cement,
-    created_by: createdBy
+  // One database transaction (record_production_entry): saves the entry, adds the bricks to
+  // product stock and takes the raw materials used out of material stock. Stock changes are
+  // done in the database (quantity = quantity +/- x), so two submissions cannot overwrite
+  // each other.
+  const { error } = await supabase.rpc("record_production_entry", {
+    p_production_date: input.date.split("T")[0],
+    p_round: input.round,
+    p_bricks: input.bricks,
+    p_wet_ash_kg: input.wetAsh,
+    p_marble_powder_kg: input.marblePowder,
+    p_crusher_powder_kg: input.crusherPowder,
+    p_fly_ash_kg: input.flyAsh,
+    p_cement_bags: input.cement,
+    p_notes: input.notes ?? null,
   });
 
   if (error) throw error;
-
-  // Update product inventory with the bricks quantity
-  await updateProductInventory(input.bricks);
-
-  // Reduce raw materials from inventory stock
-  await reduceInventoryStock(
-    input.wetAsh,
-    input.marblePowder,
-    input.crusherPowder,
-    input.flyAsh,
-    input.cement
-  );
 }
 
 /* ------------------------------------------------------------------
@@ -264,6 +682,31 @@ export async function getLoadmen(): Promise<EmployeeWithCategory[]> {
 }
 
 /* ------------------------------------------------------------------
+   GET ALL EMPLOYEES (optionally filter by active)
+-------------------------------------------------------------------*/
+export async function getAllEmployees(isActive?: boolean): Promise<EmployeeWithCategory[]> {
+  let query: any = supabase
+    .from("employees")
+    .select(`
+      id,
+      name,
+      phone,
+      role_id,
+      roles!inner ( id, name, category, salary_value, no_loading_salary )
+    `);
+
+  if (isActive !== undefined) {
+    query = query.eq("active", isActive);
+  }
+
+  query = query.order("name");
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as unknown as EmployeeWithCategory[];
+}
+
+/* ------------------------------------------------------------------
    11. GET ORDER WITH LOADMEN
 -------------------------------------------------------------------*/
 
@@ -275,25 +718,20 @@ export async function getOrderWithLoadmen(
     .select(`
       *,
       customers ( name, phone ),
-      order_loadmen (
-        employees (
-          id,
-          name,
-          phone,
-          role_id
-        )
-      )
+      order_loadmen ( employee_id )
     `)
     .eq("id", orderId)
     .single();
 
   if (error) throw error;
 
+  // Only the ids are needed: callers match them against the staff list
+  // (employees are not readable by the employee app, so no embed here).
   return {
     ...data,
     loadmen: data.order_loadmen.map(
-      (ol: any) => ol.employees
-    )
+      (ol: any) => ({ id: ol.employee_id })
+    ) as Employee[]
   };
 }
 
@@ -304,50 +742,102 @@ export async function getOrderWithLoadmen(
 export async function updateOrderWithLoadmen(
   orderId: string,
   orderUpdate: Partial<Order>,
-  newLoadmenIds: string[]
+  newLoadmenIds: string[],
+  skipLoadmenUpdate: boolean = false
 ): Promise<void> {
-  /* Update order */
-  const { error: orderError } = await supabase
+  // One database transaction (update_order_with_loadmen): updates only the columns present
+  // in orderUpdate, takes the bricks off stock if the order becomes delivered, and replaces
+  // the loadmen unless skipLoadmenUpdate is set.
+  const { error } = await supabase.rpc("update_order_with_loadmen", {
+    p_order_id: orderId,
+    p_update: orderUpdate,
+    p_loadmen: newLoadmenIds,
+    p_skip_loadmen: skipLoadmenUpdate,
+  });
+
+  if (error) throw error;
+}
+
+/* ------------------------------------------------------------------
+   12a. COMPLETE DELIVERY (employee delivery screen)
+   One database transaction: marks the order delivered with its delivery
+   details, deducts the bricks from stock and replaces the loadmen.
+   Employees have no direct write access to orders or order_loadmen.
+   When `wages` is given, each listed loadman's wage for the delivery is
+   credited in the same transaction (complete_delivery_with_wages), so a
+   failed wage can no longer leave a delivered order with missing wages.
+-------------------------------------------------------------------*/
+
+export interface DeliveryWages {
+  /** The loadmen to pay: a subset of the delivery's loadmen. */
+  loadmenIds: string[];
+  /** What each of them earns for this delivery. */
+  amountPerLoadman: number;
+  notes?: string | null;
+  /** ISO timestamp for the ledger entries; defaults to now in the database. */
+  paymentAt?: string | null;
+}
+
+export async function completeDelivery(
+  orderId: string,
+  delivery: Pick<
+    Order,
+    | "time" | "brick_quantity" | "location" | "payment_status" | "amount_paid"
+    | "gst_number" | "dc_number" | "loading_type"
+  >,
+  loadmenIds: string[],
+  wages?: DeliveryWages
+): Promise<void> {
+  if (wages && wages.loadmenIds.length > 0) {
+    const { error } = await supabase.rpc("complete_delivery_with_wages", {
+      p_order_id: orderId,
+      p_time: delivery.time ?? null,
+      p_brick_quantity: delivery.brick_quantity,
+      p_location: delivery.location ?? null,
+      p_payment_status: delivery.payment_status,
+      p_amount_paid: delivery.amount_paid ?? 0,
+      p_gst_number: delivery.gst_number ?? null,
+      p_dc_number: delivery.dc_number ?? null,
+      p_loading_type: delivery.loading_type ?? null,
+      p_loadmen: loadmenIds,
+      p_wage_loadmen: wages.loadmenIds,
+      p_wage_amount: wages.amountPerLoadman,
+      p_wage_notes: wages.notes ?? null,
+      p_wage_payment_at: wages.paymentAt ?? null,
+    });
+
+    if (error) throw error;
+    return;
+  }
+
+  const { error } = await supabase.rpc("complete_delivery", {
+    p_order_id: orderId,
+    p_time: delivery.time ?? null,
+    p_brick_quantity: delivery.brick_quantity,
+    p_location: delivery.location ?? null,
+    p_payment_status: delivery.payment_status,
+    p_amount_paid: delivery.amount_paid ?? 0,
+    p_gst_number: delivery.gst_number ?? null,
+    p_dc_number: delivery.dc_number ?? null,
+    p_loading_type: delivery.loading_type ?? null,
+    p_loadmen: loadmenIds,
+  });
+
+  if (error) throw error;
+}
+
+/* ------------------------------------------------------------------
+   12b. DELETE ORDER (and associated loadmen)
+-------------------------------------------------------------------*/
+export async function deleteOrder(orderId: string): Promise<void> {
+  // One statement: order_loadmen rows go with the order (ON DELETE CASCADE), so the order
+  // and its loadmen are removed together or not at all.
+  const { error } = await supabase
     .from("orders")
-    .update(orderUpdate)
+    .delete()
     .eq("id", orderId);
 
-  if (orderError) throw orderError;
-
-  /* Deduct bricks from product inventory when order is marked as delivered */
-  if (orderUpdate.delivered === true && orderUpdate.brick_quantity) {
-    await deductProductInventory(orderUpdate.brick_quantity);
-  }
-
-  /* Get existing loadmen */
-  const { data: existing } = await supabase
-    .from("order_loadmen")
-    .select("employee_id")
-    .eq("order_id", orderId);
-
-  const existingIds = (existing ?? []).map(e => e.employee_id);
-
-  const toDelete = existingIds.filter(id => !newLoadmenIds.includes(id));
-  const toInsert = newLoadmenIds.filter(id => !existingIds.includes(id));
-
-  /* Delete removed loadmen */
-  if (toDelete.length > 0) {
-    await supabase
-      .from("order_loadmen")
-      .delete()
-      .eq("order_id", orderId)
-      .in("employee_id", toDelete);
-  }
-
-  /* Insert new loadmen */
-  if (toInsert.length > 0) {
-    await supabase.from("order_loadmen").insert(
-      toInsert.map(employee_id => ({
-        order_id: orderId,
-        employee_id
-      }))
-    );
-  }
+  if (error) throw error;
 }
 
 /* ------------------------------------------------------------------
@@ -554,7 +1044,7 @@ export async function getCustomerFinancialById(customerId: string) {
   // 2️⃣ Fetch financials from the view separately
   const { data: financials, error: financialsError } = await supabase
     .from("customer_financials")
-    .select("total_sales, outstanding_amount")
+    .select("total_sales, outstanding_amount, total_written_off")
     .eq("customer_id", customerId)
     .maybeSingle();
 
@@ -568,6 +1058,7 @@ export async function getCustomerFinancialById(customerId: string) {
     gst_number: customer.gst_number ?? null,
     total_sales: financials?.total_sales ?? 0,
     outstanding_amount: financials?.outstanding_amount ?? 0,
+    total_written_off: financials?.total_written_off ?? 0,
   };
 }
 
@@ -624,7 +1115,9 @@ export async function getCustomerOrdersWithSettlement(
         total_paid,
         remaining_balance,
         payment_status,
-        delivered
+        delivered,
+        written_off_amount,
+        location
       `,
       { count: "exact" }
     )
@@ -648,35 +1141,17 @@ export async function getCustomerOrdersWithSettlement(
 export async function createOrder(
   orderInput: CreateOrderInput,
   loadmenIds: string[],
-  createdBy: string
+  _createdBy?: string // kept for existing callers; the database records the signed-in user itself
 ): Promise<{ orderId: string }> {
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
-    .insert({
-      ...orderInput,
-      delivered: false,
-      created_by: createdBy,
-    })
-    .select("id")
-    .single();
+  // One database transaction (create_order): the order and its loadmen, or neither.
+  const { data, error } = await supabase.rpc("create_order", {
+    p_order: orderInput,
+    p_loadmen: loadmenIds,
+  });
 
-  if (orderError) throw orderError;
+  if (error) throw error;
 
-  const orderId = order.id;
-
-  if (loadmenIds.length > 0) {
-    const loadmenRows = loadmenIds.map((employee_id) => ({
-      order_id: orderId,
-      employee_id,
-    }));
-
-    const { error: loadmenError } = await supabase
-      .from("order_loadmen")
-      .insert(loadmenRows);
-
-    if (loadmenError) throw loadmenError;
-  }
-  return { orderId };
+  return { orderId: data as string };
 }
 
 /* ------------------------------------------------------------------
@@ -725,79 +1200,23 @@ export async function getProductionEntriesFromToday(
 -------------------------------------------------------------------*/
 
 export async function createLoanWithDisbursementAndCashEntry(
-  input: CreateLoanInput,
-  // openCashLedgerDayId: string // currently OPEN cash_ledger_days.id
+  input: CreateLoanInput
 ): Promise<{ loanId: string }> {
-  /* -------------------------------------------------------------
-     1. DETERMINE PAYMENT MODE
-  --------------------------------------------------------------*/
-  const paymentMode =
-    input.disbursement_account_id === CASH_ACCOUNT_ID
-      ? "CASH"
-      : "BANK";
+  // One database transaction (create_loan): the loan, its DISBURSEMENT ledger line and the
+  // credit to the disbursement account, or none of them.
+  const { data, error } = await supabase.rpc("create_loan", {
+    p_lender_name: input.lender_name,
+    p_loan_type: input.loan_type,
+    p_principal_amount: input.principal_amount,
+    p_start_date: input.start_date,
+    p_interest_rate: input.interest_rate ?? null,
+    p_disbursement_account_id: input.disbursement_account_id ?? null,
+    p_notes: input.notes ?? null,
+  });
 
-  /* -------------------------------------------------------------
-     2. CREATE LOAN
-  --------------------------------------------------------------*/
-  const { data: loan, error: loanError } = await supabase
-    .from("loans")
-    .insert({
-      lender_name: input.lender_name,
-      loan_type: input.loan_type,
-      principal_amount: input.principal_amount,
-      interest_rate: input.interest_rate ?? null,
-      outstanding_balance: input.principal_amount,
-      disbursement_account_id: input.disbursement_account_id,
-      start_date: input.start_date,
-      status: "ACTIVE",
-      notes: input.notes ?? null,
-    })
-    .select("id")
-    .single();
+  if (error) throw error;
 
-  if (loanError) throw loanError;
-
-  const loanId = loan.id;
-
-  /* -------------------------------------------------------------
-     3. CREATE LOAN LEDGER (DISBURSEMENT)
-  --------------------------------------------------------------*/
-  const { error: loanLedgerError } = await supabase
-    .from("loan_ledger")
-    .insert({
-      loan_id: loanId,
-      transaction_type: "DISBURSEMENT",
-      amount: input.principal_amount,
-      running_balance: input.principal_amount,
-      payment_mode: paymentMode,
-      sender_account_id: input.disbursement_account_id,
-      receiver_account_info: input.lender_name,
-      transaction_date: input.start_date,
-      notes: input.notes ?? "Loan disbursement",
-    });
-
-  if (loanLedgerError) throw loanLedgerError;
-
-  /* -------------------------------------------------------------
-     4. INCREMENT DISBURSEMENT ACCOUNT BALANCE
-     Loan money flows IN to the selected account.
-  --------------------------------------------------------------*/
-  if (input.disbursement_account_id) {
-    const { error: accountError } = await supabase.rpc(
-      "increment_account_balance",
-      {
-        p_account_id: input.disbursement_account_id,
-        p_amount: input.principal_amount,
-      }
-    );
-
-    if (accountError) throw accountError;
-  }
-
-  /* -------------------------------------------------------------
-     5. RETURN LOAN ID
-  --------------------------------------------------------------*/
-  return { loanId };
+  return { loanId: data as string };
 }
 
 /* ------------------------------------------------------------------
@@ -910,7 +1329,8 @@ export async function getAccounts(): Promise<Account[]> {
       account_number,
       opening_balance,
       balance,
-      created_at
+      created_at,
+      is_cash
     `)
     .order("created_at", { ascending: true });
 
@@ -936,6 +1356,65 @@ export async function createAccount(input: CreateAccountInput): Promise<Account>
 
   if (error) throw error;
   return data;
+}
+
+/**
+ * One database transaction (transfer_between_accounts): both balances and the transfer
+ * record change together or not at all, so there is nothing to undo here on failure.
+ */
+export async function createAccountTransfer(
+  input: CreateAccountTransferInput
+): Promise<void> {
+  const { error } = await supabase.rpc("transfer_between_accounts", {
+    p_sender_account_id: input.sender_account_id,
+    p_receiver_account_id: input.receiver_account_id,
+    p_amount: input.amount,
+    p_transfer_date: input.transfer_date,
+    p_notes: input.notes ?? null,
+  });
+
+  if (error) {
+    const msg = (error.message ?? "").toLowerCase();
+    if (msg.includes("insufficient")) {
+      throw new Error("Insufficient balance in the selected sender account.");
+    }
+    throw error;
+  }
+}
+
+export async function getAccountTransfers(
+  page: number,
+  pageSize: number = 20
+): Promise<PaginatedResult<AccountTransfer>> {
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+
+  const { data, count, error } = await supabase
+    .from("account_transfers")
+    .select(
+      `
+      id,
+      sender_account_id,
+      receiver_account_id,
+      amount,
+      transfer_date,
+      notes,
+      created_at,
+      sender_account:accounts!account_transfers_sender_account_id_branch_fkey(account_number),
+      receiver_account:accounts!account_transfers_receiver_account_id_branch_fkey(account_number)
+      `,
+      { count: "exact" }
+    )
+    .order("transfer_date", { ascending: false })
+    .range(from, to);
+
+  if (error) throw error;
+
+  return {
+    data: (data ?? []) as unknown as AccountTransfer[],
+    total: count ?? 0,
+    hasMore: from + pageSize < (count ?? 0),
+  };
 }
 
 export async function getFinancialSummary(): Promise<FinancialSummary> {
@@ -982,7 +1461,7 @@ export async function updateCustomer(
 export async function getAccountsForPayments() {
   const { data, error } = await supabase
     .from("accounts")
-    .select("id, account_number");
+    .select("id, account_number, is_cash");
 
   if (error) throw error;
   return data ?? [];
@@ -995,51 +1474,18 @@ export async function getAccountsForPayments() {
 export async function createCustomerPayment(
   input: CreateCustomerPaymentInput
 ) {
-  /**
-   * 1️⃣ Insert payment
-   */
-  const dbMode = mapPaymentModeToDb(input.mode);
-  const { data: payment, error: insertError } = await supabase
-    .from("customer_payments")
-    .insert({
-      customer_id: input.customer_id,
-      payment_date: input.payment_date,
-      amount: input.amount,
-      mode: dbMode, // MUST be: 'CASH' | 'UPI' | 'BANK' | 'CHEQUE'
-      sender_account_no: input.sender_account_no ?? null,
-      receiver_account_id: input.receiver_account_id,
-    })
-    .select()
-    .single();
+  // One database transaction (record_customer_payment): inserts the payment, applies the
+  // FIFO settlement to the customer's orders and credits the receiving account.
+  const { data: payment, error } = await supabase.rpc("record_customer_payment", {
+    p_customer_id: input.customer_id,
+    p_payment_date: input.payment_date,
+    p_amount: input.amount,
+    p_mode: mapPaymentModeToDb(input.mode), // MUST be: 'CASH' | 'UPI' | 'BANK' | 'CHEQUE'
+    p_receiver_account_id: input.receiver_account_id,
+    p_sender_account_no: input.sender_account_no ?? null,
+  });
 
-  if (insertError) throw insertError;
-
-  /**
-   * 2️⃣ Apply FIFO settlement
-   */
-  const { error: fifoError } = await supabase.rpc(
-    "apply_customer_payment_fifo",
-    {
-      p_customer_id: input.customer_id,
-      p_payment_id: payment.id,
-      p_amount: input.amount,
-    }
-  );
-
-  if (fifoError) throw fifoError;
-
-  /**
-   * 3️⃣ Increment account balance
-   */
-  const { error: accountError } = await supabase.rpc(
-    "increment_account_balance",
-    {
-      p_account_id: input.receiver_account_id,
-      p_amount: input.amount,
-    }
-  );
-
-  if (accountError) throw accountError;
+  if (error) throw error;
 
   return payment;
 }
@@ -1080,6 +1526,86 @@ export async function getCustomerPayments(
     data: data ?? [],
     hasMore: count ? to < count - 1 : false,
   };
+}
+
+/* ------------------------------------------------------------------
+   28a. CREATE CUSTOMER WRITE-OFF (Apply FIFO, no cash movement)
+-------------------------------------------------------------------*/
+
+export async function createCustomerWriteOff(
+  input: CreateCustomerWriteOffInput
+) {
+  // One database transaction (create_customer_writeoff): inserts the write-off and applies
+  // it to the customer's delivered orders oldest-first.
+  const { data: writeOff, error } = await supabase.rpc("create_customer_writeoff", {
+    p_customer_id: input.customer_id,
+    p_amount: input.amount,
+    p_reason: input.reason,
+  });
+
+  if (error) throw error;
+
+  return writeOff;
+}
+
+/* ------------------------------------------------------------------
+   28b. DELETE CUSTOMER WRITE-OFF (Reverse FIFO — no account rollback needed)
+-------------------------------------------------------------------*/
+
+export async function deleteCustomerWriteOff(writeOffId: string): Promise<void> {
+  const { error } = await supabase.rpc("reverse_customer_writeoff", {
+    p_writeoff_id: writeOffId,
+  });
+
+  if (error) throw error;
+}
+
+/* ------------------------------------------------------------------
+   28c. GET CUSTOMER WRITE-OFFS
+-------------------------------------------------------------------*/
+
+export async function getCustomerWriteOffs(
+  customerId: string,
+  page = 1
+) {
+  const PAGE_SIZE = 20;
+  const from = (page - 1) * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+
+  const { data, count, error } = await supabase
+    .from("customer_writeoffs_view")
+    .select("*", { count: "exact" })
+    .eq("customer_id", customerId)
+    .range(from, to);
+
+  if (error) throw error;
+
+  return {
+    data: data ?? [],
+    hasMore: count ? to < count - 1 : false,
+  };
+}
+
+/* ------------------------------------------------------------------
+   28d. GET CUSTOMER WRITE-OFFS FOR EXPORT (date-filtered by write_off_date)
+-------------------------------------------------------------------*/
+
+export async function getCustomerWriteOffsForExport(
+  customerId: string,
+  fromDate: string,
+  toDate: string
+) {
+  const { data, error } = await supabase
+    .from("customer_writeoffs_view")
+    .select("*")
+    .eq("customer_id", customerId)
+    .gte("write_off_date", fromDate)
+    .lte("write_off_date", toDate)
+    .order("write_off_date", { ascending: true });
+
+  if (error) throw error;
+
+  return data ?? [];
 }
 
 /* ------------------------------------------------------------------
@@ -1188,110 +1714,23 @@ export async function getLoanById(loanId: string): Promise<Loan> {
 export async function createLoanLedgerTransaction(
   input: CreateLoanLedgerInput
 ): Promise<{ newBalance: number; loanStatus: "ACTIVE" | "CLOSED" }> {
-  /* -------------------------------------------------------------
-     1. FETCH CURRENT LOAN BALANCE
-  --------------------------------------------------------------*/
-  const { data: loan, error: loanError } = await supabase
-    .from("loans")
-    .select("id, outstanding_balance, status")
-    .eq("id", input.loan_id)
-    .single();
+  // One database transaction (record_loan_transaction): the loan row is locked, the new
+  // balance is worked out from its real current balance, and the ledger line, the loan
+  // update and the sender-account deduction (REPAYMENT / INTEREST) all happen together.
+  const { data, error } = await supabase.rpc("record_loan_transaction", {
+    p_loan_id: input.loan_id,
+    p_transaction_type: input.transaction_type,
+    p_amount: input.amount,
+    p_transaction_date: input.transaction_date,
+    p_payment_mode: input.payment_mode,
+    p_sender_account_id: input.sender_account_id ?? null,
+    p_receiver_account_info: input.receiver_account_info ?? null,
+    p_notes: input.notes ?? null,
+  });
 
-  if (loanError) throw loanError;
+  if (error) throw error;
 
-  if (loan.status === "CLOSED") {
-    throw new Error("Loan is already closed");
-  }
-
-  /* -------------------------------------------------------------
-     2. CALCULATE NEW RUNNING BALANCE
-  --------------------------------------------------------------*/
-  let newBalance = loan.outstanding_balance;
-
-  switch (input.transaction_type) {
-    case "DISBURSEMENT":
-      newBalance += input.amount;
-      break;
-
-    case "REPAYMENT":
-      newBalance -= input.amount;
-      break;
-
-    case "INTEREST":
-      // Interest does NOT affect principal balance
-      newBalance = loan.outstanding_balance;
-      break;
-
-    default:
-      throw new Error("Invalid loan transaction type");
-  }
-
-  if (newBalance < 0) {
-    throw new Error("Repayment amount exceeds outstanding balance");
-  }
-
-  /* -------------------------------------------------------------
-     3. INSERT LOAN LEDGER ENTRY
-  --------------------------------------------------------------*/
-  const { error: ledgerError } = await supabase
-    .from("loan_ledger")
-    .insert({
-      loan_id: input.loan_id,
-      transaction_type: input.transaction_type,
-      amount: input.amount,
-      running_balance: newBalance,
-      payment_mode: input.payment_mode,
-      sender_account_id: input.sender_account_id,
-      receiver_account_info: input.receiver_account_info ?? null,
-      transaction_date: input.transaction_date,
-      notes: input.notes ?? null,
-    });
-
-  if (ledgerError) throw ledgerError;
-
-  /* -------------------------------------------------------------
-     4. UPDATE LOAN (BALANCE + STATUS)
-  --------------------------------------------------------------*/
-  const newStatus = newBalance === 0 ? "CLOSED" : "ACTIVE";
-
-  const { error: updateError } = await supabase
-    .from("loans")
-    .update({
-      outstanding_balance: newBalance,
-      status: newStatus,
-    })
-    .eq("id", input.loan_id);
-
-  if (updateError) throw updateError;
-
-  /* -------------------------------------------------------------
-     5. DEDUCT FROM SENDER ACCOUNT (REPAYMENT + INTEREST)
-     Money flows OUT from the sender account for both repayments
-     and interest payments.
-  --------------------------------------------------------------*/
-  if (input.transaction_type === "REPAYMENT" || input.transaction_type === "INTEREST") {
-    const accountToDeduct = input.sender_account_id;
-
-    if (accountToDeduct) {
-      const { error: deductError } = await supabase.rpc(
-        "decrement_account_balance",
-        {
-          p_account_id: accountToDeduct,
-          p_amount: input.amount,
-        }
-      );
-
-      if (deductError) throw deductError;
-    }
-  }
-
-  /* -------------------------------------------------------------
-     6. RETURN RESULT
-  --------------------------------------------------------------*/
-  return {
-    newBalance,
-    loanStatus: newStatus,
-  };
+  return data as { newBalance: number; loanStatus: "ACTIVE" | "CLOSED" };
 }
 
 /* ------------------------------------------------------------------
@@ -1302,46 +1741,20 @@ export async function createVendorWithMaterials(
   vendorInput: CreateVendorInput,
   materialIds: string[]
 ): Promise<{ vendorId: string }> {
-  /* -------------------------------------------------------------
-     1. CREATE VENDOR
-  --------------------------------------------------------------*/
-  const { data: vendor, error: vendorError } = await supabase
-    .from("vendors")
-    .insert({
-      name: vendorInput.name,
-      phone: vendorInput.phone ?? null,
-      alternate_phone: vendorInput.alternate_phone ?? null,
-      gst_number: vendorInput.gst_number ?? null,
-      address: vendorInput.address ?? null,
-      notes: vendorInput.notes ?? null,
-    })
-    .select("id")
-    .single();
+  // One database transaction (create_vendor_with_materials): the vendor and its materials.
+  const { data, error } = await supabase.rpc("create_vendor_with_materials", {
+    p_name: vendorInput.name,
+    p_phone: vendorInput.phone ?? null,
+    p_alternate_phone: vendorInput.alternate_phone ?? null,
+    p_gst_number: vendorInput.gst_number ?? null,
+    p_address: vendorInput.address ?? null,
+    p_notes: vendorInput.notes ?? null,
+    p_material_ids: materialIds,
+  });
 
-  if (vendorError) throw vendorError;
+  if (error) throw error;
 
-  const vendorId = vendor.id;
-
-  /* -------------------------------------------------------------
-     2. CREATE VENDOR ↔ MATERIAL MAPPING
-  --------------------------------------------------------------*/
-  if (materialIds.length > 0) {
-    const rows = materialIds.map((material_id) => ({
-      vendor_id: vendorId,
-      material_id,
-    }));
-
-    const { error: mappingError } = await supabase
-      .from("vendor_materials")
-      .insert(rows);
-
-    if (mappingError) throw mappingError;
-  }
-
-  /* -------------------------------------------------------------
-     3. RETURN CREATED VENDOR ID
-  --------------------------------------------------------------*/
-  return { vendorId };
+  return { vendorId: data as string };
 }
 
 /* ------------------------------------------------------------------
@@ -1449,65 +1862,20 @@ export async function updateVendorWithMaterials(
   vendorInput: CreateVendorInput,
   materialIds: string[]
 ): Promise<void> {
-  /* -------------------------------------------------------------
-     1. UPDATE VENDOR
-  --------------------------------------------------------------*/
-  const { error: vendorError } = await supabase
-    .from("vendors")
-    .update({
-      name: vendorInput.name,
-      phone: vendorInput.phone ?? null,
-      alternate_phone: vendorInput.alternate_phone ?? null,
-      gst_number: vendorInput.gst_number ?? null,
-      address: vendorInput.address ?? null,
-      notes: vendorInput.notes ?? null,
-    })
-    .eq("id", vendorId);
+  // One database transaction (update_vendor_with_materials): the vendor's details and its
+  // material list change together.
+  const { error } = await supabase.rpc("update_vendor_with_materials", {
+    p_vendor_id: vendorId,
+    p_name: vendorInput.name,
+    p_phone: vendorInput.phone ?? null,
+    p_alternate_phone: vendorInput.alternate_phone ?? null,
+    p_gst_number: vendorInput.gst_number ?? null,
+    p_address: vendorInput.address ?? null,
+    p_notes: vendorInput.notes ?? null,
+    p_material_ids: materialIds,
+  });
 
-  if (vendorError) throw vendorError;
-
-  /* -------------------------------------------------------------
-     2. GET EXISTING MATERIALS
-  --------------------------------------------------------------*/
-  const { data: existingMaterials } = await supabase
-    .from("vendor_materials")
-    .select("material_id")
-    .eq("vendor_id", vendorId);
-
-  const existingIds = (existingMaterials ?? []).map((vm) => vm.material_id);
-
-  /* -------------------------------------------------------------
-     3. DETERMINE CHANGES
-  --------------------------------------------------------------*/
-  const toDelete = existingIds.filter((id) => !materialIds.includes(id));
-  const toInsert = materialIds.filter((id) => !existingIds.includes(id));
-
-  /* -------------------------------------------------------------
-     4. DELETE REMOVED MATERIALS
-  --------------------------------------------------------------*/
-  if (toDelete.length > 0) {
-    await supabase
-      .from("vendor_materials")
-      .delete()
-      .eq("vendor_id", vendorId)
-      .in("material_id", toDelete);
-  }
-
-  /* -------------------------------------------------------------
-     5. INSERT NEW MATERIALS
-  --------------------------------------------------------------*/
-  if (toInsert.length > 0) {
-    const rows = toInsert.map((material_id) => ({
-      vendor_id: vendorId,
-      material_id,
-    }));
-
-    const { error: insertError } = await supabase
-      .from("vendor_materials")
-      .insert(rows);
-
-    if (insertError) throw insertError;
-  }
+  if (error) throw error;
 }
 
 /* ------------------------------------------------------------------
@@ -1580,42 +1948,34 @@ export async function createExpense(payload: {
   sender_account_id?: string;
   comments?: string;
 }) {
-  // 1️⃣ Decide which account to deduct from
-  let accountIdToDeduct: string | undefined;
-
-  if (payload.payment_mode === "CASH") {
-    const cashAccount = await getCashAccount();
-    accountIdToDeduct = cashAccount.id;
-  } else {
-    accountIdToDeduct = payload.sender_account_id;
-  }
-
-  if (!accountIdToDeduct) {
-    throw new Error("Account not found for deduction");
-  }
-
-  // 2️⃣ Deduct balance FIRST (before inserting expense)
-  // This validates balance and throws error if insufficient
-  const { error: rpcError } = await supabase.rpc(
-    "decrement_account_balance",
-    {
-      p_account_id: accountIdToDeduct,
-      p_amount: payload.amount,
-    }
-  );
-
-  if (rpcError) throw rpcError;
-
-  // 3️⃣ Only insert expense if balance deduction was successful
-  const { data, error } = await supabase
-    .from("expenses")
-    .insert([payload])
-    .select()
-    .single();
+  // One database transaction (record_expense): picks the account (the branch's cash account
+  // for CASH), checks the balance, deducts it and inserts the expense, or does none of it.
+  const { data, error } = await supabase.rpc("record_expense", {
+    p_expense_date: payload.expense_date,
+    p_type_id: payload.type_id,
+    p_subtype_id: payload.subtype_id,
+    p_amount: payload.amount,
+    p_payment_mode: payload.payment_mode,
+    p_sender_account_id: payload.sender_account_id ?? null,
+    p_comments: payload.comments ?? null,
+  });
 
   if (error) throw error;
 
   return data;
+}
+
+/* ------------------------------------------------------------------
+   40.1 DELETE EXPENSE (Reverse account deduction + remove row)
+-------------------------------------------------------------------*/
+export async function deleteExpense(expenseId: string): Promise<void> {
+  // One database transaction (delete_expense): refunds the account the expense was paid
+  // from and deletes the row, or does neither.
+  const { error } = await supabase.rpc("delete_expense", {
+    p_expense_id: expenseId,
+  });
+
+  if (error) throw error;
 }
 
 /* ------------------------------------------------------------------
@@ -1830,14 +2190,23 @@ export async function getProcurementsByDateRange(
 /* ------------------------------------------------------------------
    43. GET CASH ACCOUNT SAI
 -------------------------------------------------------------------*/
+/**
+ * The active branch's cash account (the row flagged is_cash; the database
+ * allows at most one per branch).
+ */
 export async function getCashAccount() {
   const { data, error } = await supabase
     .from("accounts")
     .select("id")
-    .ilike("account_number", "Cash")
-    .single();
+    .eq("is_cash", true)
+    .maybeSingle();
 
   if (error) throw error;
+  if (!data) {
+    throw new Error(
+      "This branch has no cash account set up. Please contact your administrator."
+    );
+  }
   return data;
 }
 
@@ -1958,7 +2327,7 @@ export async function updateEmployeeStatus(
 export async function getRoles(): Promise<RoleWithCategory[]> {
   const { data, error } = await supabase
     .from("roles")
-    .select("id, name, category")
+    .select("id, name, category, no_loading_salary")
     .eq("active", true)
     .order("name");
 
@@ -2100,8 +2469,8 @@ export async function getUnapprovedProcurements(): Promise<ProcurementWithDetail
       approved,
       created_by,
       created_at,
-      materials!material_id(id, name, unit),
-      vendors!vendor_id(id, name, phone)
+      materials(id, name, unit),
+      vendors(id, name, phone)
     `)
     .eq("approved", false)
     .order("date", { ascending: false });
@@ -2129,72 +2498,6 @@ export async function getUnapprovedProcurementCount(): Promise<number> {
 }
 
 /**------------------------------------------------------------------------------
- * 47.3 Update inventory stock when procurement is approved
- * Helper function to add/update material quantity in inventory_stock table
------------------------------------------------------------------------------- */
-async function updateInventoryStock(
-  materialId: string,
-  quantity: number
-): Promise<void> {
-  // First, check if the material already exists in inventory_stock
-  const { data: existingStock, error: fetchError } = await supabase
-    .from("inventory_stock")
-    .select("*")
-    .eq("material_id", materialId);
-
-  if (fetchError) {
-    throw fetchError;
-  }
-
-  if (existingStock && existingStock.length > 0) {
-    // Material exists, update the quantity
-    const currentStock = existingStock[0];
-    const { error: updateError } = await supabase
-      .from("inventory_stock")
-      .update({
-        quantity: currentStock.quantity + quantity,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("material_id", materialId);
-
-    if (updateError) throw updateError;
-  } else {
-    // Material doesn't exist, create new record
-    const { error: insertError } = await supabase
-      .from("inventory_stock")
-      .insert({
-        material_id: materialId,
-        quantity: quantity,
-        updated_at: new Date().toISOString(),
-      });
-
-    if (insertError) throw insertError;
-  }
-}
-
-/**------------------------------------------------------------------------------
- * 47.4 Convert quantity to KG based on material type
- * Handles unit conversion for different materials:
- * - Cement: Bags to KG (1 bag = 50 kg)
- * - Crusher Powder: Units to KG (1 unit = 4500 kg)
- * - Others (Wet Ash, Marble, Fly Ash): Tons to KG (1 ton = 1000 kg)
------------------------------------------------------------------------------- */
-function convertToKg(materialName: string, quantity: number): number {
-  const name = materialName.toLowerCase();
-  
-  if (name.includes('cement')) {
-    // 1 bag = 50 kg
-    return quantity * 50;
-  } else if (name.includes('crusher')) {
-    // 1 unit = 4500 kg
-    return quantity * 4500;
-  }
-  // Wet Ash, Marble Powder, Fly Ash are in tons, convert to kg
-  // 1 ton = 1000 kg
-  return quantity * 1000;
-}
-
-/**------------------------------------------------------------------------------
  * 47.5 Approve procurement
  * Update procurement approval status, rate, and total price
  * Automatically converts quantity to KG and updates inventory_stock
@@ -2204,37 +2507,28 @@ export async function approveProcurement(
   ratePerUnit: number,
   totalPrice: number
 ): Promise<void> {
-  // First, get the procurement details to access material_id, quantity, and material name
-  const { data: procurement, error: fetchError } = await supabase
-    .from("procurements")
-    .select("material_id, quantity, materials!material_id(name)")
-    .eq("id", procurementId)
-    .single();
+  // One database transaction (approve_procurement): the procurement is locked, approved
+  // once, and its quantity (converted to kg) is added to the material's stock.
+  const { error } = await supabase.rpc("approve_procurement", {
+    p_procurement_id: procurementId,
+    p_rate_per_unit: ratePerUnit,
+    p_total_price: totalPrice,
+  });
 
-  if (fetchError) throw fetchError;
-  if (!procurement) throw new Error("Procurement not found");
+  if (error) throw error;
+}
 
-  // Update procurement approval status
-  const { error: updateError } = await supabase
+/**------------------------------------------------------------------------------
+ * 47.5 DELETE PROCUREMENT (Reject)
+ * Deletes a procurement record when rejected
+------------------------------------------------------------------------------ */
+export async function deleteProcurement(procurementId: string): Promise<void> {
+  const { error } = await supabase
     .from("procurements")
-    .update({
-      approved: true,
-      rate_per_unit: ratePerUnit,
-      total_price: totalPrice,
-    })
+    .delete()
     .eq("id", procurementId);
 
-  if (updateError) throw updateError;
-
-  // Convert quantity to KG based on material type
-  const material = Array.isArray(procurement.materials) 
-    ? procurement.materials[0] 
-    : procurement.materials;
-  const materialName = material?.name || '';
-  const quantityInKg = convertToKg(materialName, procurement.quantity);
-
-  // Update inventory stock for the material (store in KG)
-  await updateInventoryStock(procurement.material_id, quantityInKg);
+  if (error) throw error;
 }
 
 /**------------------------------------------------------------------------------
@@ -2248,7 +2542,7 @@ export async function getInventoryStock(materialId?: string): Promise<any[]> {
       material_id,
       quantity,
       updated_at,
-      materials!material_id(id, name, unit)
+      materials(id, name, unit)
     `)
     .order("updated_at", { ascending: false });
 
@@ -2273,7 +2567,7 @@ export async function getInventoryStockForMaterial(materialId: string): Promise<
       material_id,
       quantity,
       updated_at,
-      materials!material_id(id, name, unit)
+      materials(id, name, unit)
     `)
     .eq("material_id", materialId)
     .single();
@@ -2304,8 +2598,8 @@ export async function getProcurements(): Promise<any[]> {
       approved,
       created_by,
       created_at,
-      materials!material_id(id, name, unit),
-      vendors!vendor_id(id, name, phone)
+      materials(id, name, unit),
+      vendors(id, name, phone)
     `)
     .eq("approved", true)
     .order("date", { ascending: false });
@@ -2405,182 +2699,6 @@ export async function getProductInventory(): Promise<any> {
 }
 
 /**------------------------------------------------------------------------------
- * 48.1 Update product inventory (Bricks)
- * When an employee submits a production entry, update the product_inventory table
- * Increments the quantity of bricks and updates the updated_at timestamp
- * Used in ProductionEntry form submission
- ------------------------------------------------------------------------------*/
-export async function updateProductInventory(quantity: number): Promise<void> {
-  try {
-    // First, try to fetch the existing BRICKS record
-    const { data: existingData, error: fetchError } = await supabase
-      .from("product_inventory")
-      .select("id, quantity")
-      .eq("product_type", "BRICKS")
-      .single();
-
-    if (fetchError && fetchError.code !== "PGRST116") {
-      // PGRST116 is "no rows returned" error, which is okay
-      throw fetchError;
-    }
-
-    if (existingData) {
-      // Update existing record
-      const { error: updateError } = await supabase
-        .from("product_inventory")
-        .update({
-          quantity: existingData.quantity + quantity,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existingData.id);
-
-      if (updateError) throw updateError;
-    } else {
-      // Insert new record if it doesn't exist
-      const { error: insertError } = await supabase
-        .from("product_inventory")
-        .insert({
-          product_type: "BRICKS",
-          quantity: quantity,
-          updated_at: new Date().toISOString(),
-        });
-
-      if (insertError) throw insertError;
-    }
-  } catch (error) {
-    console.error("Error updating product inventory:", error);
-    throw error;
-  }
-}
-
-/**------------------------------------------------------------------------------
- * 48.1.1 Deduct product inventory (Bricks) on Delivery
- * When an order is delivered, reduce the bricks quantity in product_inventory
- * Used in delivery entry submission (updateOrderWithLoadmen)
- ------------------------------------------------------------------------------*/
-export async function deductProductInventory(quantity: number): Promise<void> {
-  try {
-    const { data: existingData, error: fetchError } = await supabase
-      .from("product_inventory")
-      .select("id, quantity")
-      .eq("product_type", "BRICKS")
-      .single();
-
-    if (fetchError) throw fetchError;
-
-    if (!existingData) {
-      throw new Error("No bricks inventory record found");
-    }
-
-    // Allow negative to tally correctly when inventory is updated later
-    const newQuantity = existingData.quantity - quantity;
-
-    const { error: updateError } = await supabase
-      .from("product_inventory")
-      .update({
-        quantity: newQuantity,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", existingData.id);
-
-    if (updateError) throw updateError;
-  } catch (error) {
-    console.error("Error deducting product inventory:", error);
-    throw error;
-  }
-}
-
-/**------------------------------------------------------------------------------
- * 48.2 Reduce inventory stock for raw materials used in production
- * When an employee submits a production entry, reduce the used materials from inventory_stock
- * Cement: converted from bags to KG (1 bag = 50 kg)
- * Other materials: already in KG
- * Used in ProductionEntry form submission
- ------------------------------------------------------------------------------*/
-export async function reduceInventoryStock(
-  wetAshKg: number,
-  marblePowderKg: number,
-  crusherPowderKg: number,
-  flyAshKg: number,
-  cementBags: number
-): Promise<void> {
-  try {
-    // Convert cement from bags to KG (1 bag = 50 kg)
-    const cementKg = cementBags * 50;
-
-    // Get all materials to find their IDs
-    const materials = await getMaterials();
-
-    // Find material IDs by name
-    const wetAshMaterial = materials.find(m => m.name.toLowerCase().includes('wet ash'));
-    const marbleMaterial = materials.find(m => m.name.toLowerCase().includes('marble'));
-    const crusherMaterial = materials.find(m => m.name.toLowerCase().includes('crusher'));
-    const flyAshMaterial = materials.find(m => m.name.toLowerCase().includes('fly ash'));
-    const cementMaterial = materials.find(m => m.name.toLowerCase().includes('cement'));
-
-    // Array of material reductions to process
-    const reductions = [
-      { materialId: wetAshMaterial?.id, quantity: wetAshKg, name: 'Wet Ash' },
-      { materialId: marbleMaterial?.id, quantity: marblePowderKg, name: 'Marble Powder' },
-      { materialId: crusherMaterial?.id, quantity: crusherPowderKg, name: 'Crusher Powder' },
-      { materialId: flyAshMaterial?.id, quantity: flyAshKg, name: 'Fly Ash' },
-      { materialId: cementMaterial?.id, quantity: cementKg, name: 'Cement' },
-    ];
-
-    // Process each material reduction
-    for (const reduction of reductions) {
-      if (!reduction.materialId || reduction.quantity <= 0) continue;
-
-      // Fetch current stock
-      const { data: currentStock, error: fetchError } = await supabase
-        .from("inventory_stock")
-        .select("quantity")
-        .eq("material_id", reduction.materialId)
-        .single();
-
-      if (fetchError && fetchError.code !== "PGRST116") {
-        console.error(`Error fetching ${reduction.name} stock:`, fetchError);
-        throw fetchError;
-      }
-
-      if (currentStock) {
-        // Reduce the quantity (allow negative to tally when unapproved procurements are approved later)
-        const newQuantity = currentStock.quantity - reduction.quantity;
-        const { error: updateError } = await supabase
-          .from("inventory_stock")
-          .update({
-            quantity: newQuantity,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("material_id", reduction.materialId);
-
-        if (updateError) {
-          console.error(`Error updating ${reduction.name} stock:`, updateError);
-          throw updateError;
-        }
-      } else {
-        // If no stock exists, create a negative entry so it tallies when procurement is approved
-        const { error: insertError } = await supabase
-          .from("inventory_stock")
-          .insert({
-            material_id: reduction.materialId,
-            quantity: -reduction.quantity,
-            updated_at: new Date().toISOString(),
-          });
-
-        if (insertError) {
-          console.error(`Error inserting negative stock for ${reduction.name}:`, insertError);
-          throw insertError;
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Error reducing inventory stock:", error);
-    throw error;
-  }
-}
-
-/**------------------------------------------------------------------------------
  * 48.3 Get all inventory adjustments
  * Fetch all adjustment records from inventory_adjustments table
  * Used in InventoryManagementScreen - Adjustments tab
@@ -2640,134 +2758,28 @@ export async function createAdjustment(
   adjusted_fly_ash_kg: number,
   adjusted_cement_bags: number,
   reason: string | null,
-  userId: string
+  _userId?: string // kept for existing callers; the database records the signed-in user itself
 ): Promise<void> {
-  try {
-    // Step 1: Insert adjustment record into inventory_adjustments table
-    const { error: insertError } = await supabase
-      .from("inventory_adjustments")
-      .insert({
-        adjustment_date,
-        actual_bricks,
-        actual_wet_ash_kg,
-        actual_marble_powder_kg,
-        actual_crusher_powder_kg,
-        actual_fly_ash_kg,
-        actual_cement_bags,
-        adjusted_bricks,
-        adjusted_wet_ash_kg,
-        adjusted_marble_powder_kg,
-        adjusted_crusher_powder_kg,
-        adjusted_fly_ash_kg,
-        adjusted_cement_bags,
-        reason,
-        created_by: userId,
-      });
+  // One database transaction (create_inventory_adjustment): the adjustment record and the
+  // new product / material stock figures, or none of them.
+  const { error } = await supabase.rpc("create_inventory_adjustment", {
+    p_adjustment_date: adjustment_date,
+    p_actual_bricks: actual_bricks,
+    p_actual_wet_ash_kg: actual_wet_ash_kg,
+    p_actual_marble_powder_kg: actual_marble_powder_kg,
+    p_actual_crusher_powder_kg: actual_crusher_powder_kg,
+    p_actual_fly_ash_kg: actual_fly_ash_kg,
+    p_actual_cement_bags: actual_cement_bags,
+    p_adjusted_bricks: adjusted_bricks,
+    p_adjusted_wet_ash_kg: adjusted_wet_ash_kg,
+    p_adjusted_marble_powder_kg: adjusted_marble_powder_kg,
+    p_adjusted_crusher_powder_kg: adjusted_crusher_powder_kg,
+    p_adjusted_fly_ash_kg: adjusted_fly_ash_kg,
+    p_adjusted_cement_bags: adjusted_cement_bags,
+    p_reason: reason,
+  });
 
-    if (insertError) throw insertError;
-
-    // Step 2: Update product_inventory for bricks
-    const { data: existingBricks, error: fetchBricksError } = await supabase
-      .from("product_inventory")
-      .select("id, quantity")
-      .eq("product_type", "BRICKS")
-      .single();
-
-    if (fetchBricksError && fetchBricksError.code !== "PGRST116") {
-      throw fetchBricksError;
-    }
-
-    if (existingBricks) {
-      const { error: updateBricksError } = await supabase
-        .from("product_inventory")
-        .update({
-          quantity: adjusted_bricks,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existingBricks.id);
-
-      if (updateBricksError) throw updateBricksError;
-    } else {
-      const { error: insertBricksError } = await supabase
-        .from("product_inventory")
-        .insert({
-          product_type: "BRICKS",
-          quantity: adjusted_bricks,
-          updated_at: new Date().toISOString(),
-        });
-
-      if (insertBricksError) throw insertBricksError;
-    }
-
-    // Step 3: Get all materials to find their IDs
-    const materials = await getMaterials();
-
-    // Step 4: Update inventory_stock for each raw material
-    const wetAshMaterial = materials.find(m => m.name.toLowerCase().includes('wet ash'));
-    const marbleMaterial = materials.find(m => m.name.toLowerCase().includes('marble'));
-    const crusherMaterial = materials.find(m => m.name.toLowerCase().includes('crusher'));
-    const flyAshMaterial = materials.find(m => m.name.toLowerCase().includes('fly ash'));
-    const cementMaterial = materials.find(m => m.name.toLowerCase().includes('cement'));
-
-    // Array of material updates to process
-    const materialUpdates = [
-      { materialId: wetAshMaterial?.id, quantity: adjusted_wet_ash_kg, name: 'Wet Ash' },
-      { materialId: marbleMaterial?.id, quantity: adjusted_marble_powder_kg, name: 'Marble Powder' },
-      { materialId: crusherMaterial?.id, quantity: adjusted_crusher_powder_kg, name: 'Crusher Powder' },
-      { materialId: flyAshMaterial?.id, quantity: adjusted_fly_ash_kg, name: 'Fly Ash' },
-      { materialId: cementMaterial?.id, quantity: adjusted_cement_bags * 50, name: 'Cement' }, // Convert bags to KG
-    ];
-
-    // Process each material update
-    for (const update of materialUpdates) {
-      if (!update.materialId) continue;
-
-      // Fetch current stock (using material_id as primary key)
-      const { data: currentStock, error: fetchError } = await supabase
-        .from("inventory_stock")
-        .select("material_id, quantity")
-        .eq("material_id", update.materialId)
-        .single();
-
-      if (fetchError && fetchError.code !== "PGRST116") {
-        console.error(`Error fetching ${update.name} stock:`, fetchError);
-        throw fetchError;
-      }
-
-      if (currentStock) {
-        // Update the quantity to adjusted value
-        const { error: updateError } = await supabase
-          .from("inventory_stock")
-          .update({
-            quantity: update.quantity,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("material_id", currentStock.material_id);
-
-        if (updateError) {
-          console.error(`Error updating ${update.name} stock:`, updateError);
-          throw updateError;
-        }
-      } else {
-        // If no stock exists, create new record
-        const { error: insertError } = await supabase
-          .from("inventory_stock")
-          .insert({
-            material_id: update.materialId,
-            quantity: update.quantity,
-            updated_at: new Date().toISOString(),
-          });
-
-        if (insertError) {
-          console.error(`Error inserting ${update.name} stock:`, insertError);
-          throw insertError;
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Error creating adjustment:", error);
-    throw error;
-  }
+  if (error) throw error;
 }
 /* ------------------------------------------------------------------
   Create Vendor Payment
@@ -2780,44 +2792,18 @@ export async function createVendorPayment(input: {
   sender_account_id: string
   receiver_account_info?: string
 }) {
-  // 1️⃣ Deduct account balance FIRST (validates sufficient funds)
-  const { error: accountError } = await supabase.rpc(
-    "decrement_account_balance",
-    {
-      p_account_id: input.sender_account_id,
-      p_amount: input.amount
-    }
-  )
-
-  if (accountError) throw accountError
-
-  // 2️⃣ Insert payment (only if balance deduction succeeded)
-  const { data: payment, error } = await supabase
-    .from("vendor_payments")
-    .insert({
-      vendor_id: input.vendor_id,
-      payment_date: input.payment_date,
-      amount: input.amount,
-      mode: input.mode,
-      sender_account_id: input.sender_account_id,
-      receiver_account_info: input.receiver_account_info ?? null
-    })
-    .select()
-    .single()
+  // One database transaction (record_vendor_payment): deducts the sender account, inserts
+  // the payment and settles the vendor's procurements oldest-first, or does none of it.
+  const { data: payment, error } = await supabase.rpc("record_vendor_payment", {
+    p_vendor_id: input.vendor_id,
+    p_payment_date: input.payment_date,
+    p_amount: input.amount,
+    p_mode: input.mode,
+    p_sender_account_id: input.sender_account_id,
+    p_receiver_account_info: input.receiver_account_info ?? null
+  })
 
   if (error) throw error
-
-  // 3️⃣ Apply FIFO settlement
-  const { error: fifoError } = await supabase.rpc(
-    "apply_vendor_payment_fifo",
-    {
-      p_vendor_id: input.vendor_id,
-      p_payment_id: payment.id,
-      p_amount: input.amount
-    }
-  )
-
-  if (fifoError) throw fifoError
 
   return payment
 }
@@ -2859,7 +2845,7 @@ export async function getVendorProcurements(
       date,
       approved,
       created_at,
-      materials!material_id(id, name, unit)
+      materials(id, name, unit)
     `, { count: "exact" })
     .eq("vendor_id", vendorId)
     .eq("approved", true);
@@ -2936,6 +2922,132 @@ export async function getVendorPayments(
     hasMore: from + PAGE_SIZE < (count ?? 0),
   };
 }
+
+/* ------------------------------------------------------------------
+  Get Vendor Procurements For Export (ALL records in date range, no pagination)
+---------------------------------------------------------------------*/
+export async function getVendorProcurementsForExport(
+  vendorId: string,
+  fromDate: string,
+  toDate: string
+) {
+  const { data, error } = await supabase
+    .from("procurements")
+    .select(`
+      id,
+      vendor_id,
+      material_id,
+      quantity,
+      rate_per_unit,
+      total_price,
+      total_paid,
+      payment_status,
+      date,
+      approved,
+      created_at,
+      materials(id, name, unit)
+    `)
+    .eq("vendor_id", vendorId)
+    .eq("approved", true)
+    .gte("date", fromDate)
+    .lte("date", toDate)
+    .order("date", { ascending: true });
+
+  if (error) throw error;
+
+  return data ?? [];
+}
+
+/* ------------------------------------------------------------------
+  Get Vendor Payments For Export (ALL records in date range, no pagination)
+---------------------------------------------------------------------*/
+export async function getVendorPaymentsForExport(
+  vendorId: string,
+  fromDate: string,
+  toDate: string
+) {
+  const { data, error } = await supabase
+    .from("vendor_payments")
+    .select(`
+      id,
+      vendor_id,
+      payment_date,
+      amount,
+      mode,
+      sender_account_id,
+      receiver_account_info,
+      created_at,
+      accounts (
+        account_number
+      )
+    `)
+    .eq("vendor_id", vendorId)
+    .gte("payment_date", fromDate)
+    .lte("payment_date", toDate)
+    .order("payment_date", { ascending: true });
+
+  if (error) throw error;
+
+  return data ?? [];
+}
+
+/* ------------------------------------------------------------------
+  Get Customer Orders For Export (ALL delivered orders in date range, no pagination)
+---------------------------------------------------------------------*/
+export async function getCustomerOrdersForExport(
+  customerId: string,
+  fromDate: string,
+  toDate: string
+) {
+  const { data, error } = await supabase
+    .from("customer_order_settlement")
+    .select(`
+      order_id,
+      customer_id,
+      order_date,
+      delivery_date,
+      brick_quantity,
+      final_price,
+      gst_number,
+      dc_number,
+      total_paid,
+      remaining_balance,
+      payment_status,
+      delivered,
+      location
+    `)
+    .eq("customer_id", customerId)
+    .eq("delivered", true)
+    .gte("delivery_date", fromDate)
+    .lte("delivery_date", toDate)
+    .order("order_date", { ascending: true });
+
+  if (error) throw error;
+
+  return data ?? [];
+}
+
+/* ------------------------------------------------------------------
+  Get Customer Payments For Export (ALL records in date range, no pagination)
+---------------------------------------------------------------------*/
+export async function getCustomerPaymentsForExport(
+  customerId: string,
+  fromDate: string,
+  toDate: string
+) {
+  const { data, error } = await supabase
+    .from("customer_payments_view")
+    .select("*")
+    .eq("customer_id", customerId)
+    .gte("payment_date", fromDate)
+    .lte("payment_date", toDate)
+    .order("payment_date", { ascending: true });
+
+  if (error) throw error;
+
+  return data ?? [];
+}
+
 /* ------------------------------------------------------------------
   Get Vendor Financials
 ---------------------------------------------------------------------*/
@@ -2944,7 +3056,7 @@ export async function getVendorFinancials(vendorId: string) {
     .from("vendor_financials")
     .select("*")
     .eq("vendor_id", vendorId)
-    .single();
+    .maybeSingle();
 
   if (error) throw error;
   return data;
@@ -2964,6 +3076,7 @@ export async function createRole(
       category: input.category,
       salary_value: input.salary_value,
       minimum_requirement: input.minimum_requirement ?? null,
+      no_loading_salary: input.no_loading_salary ?? false,
       active: input.active ?? true,
     })
     .select(`
@@ -2972,6 +3085,7 @@ export async function createRole(
       category,
       salary_value,
       minimum_requirement,
+      no_loading_salary,
       active
     `)
     .single();
@@ -2994,6 +3108,7 @@ export async function getRoleById(roleId: string): Promise<Role> {
       category,
       salary_value,
       minimum_requirement,
+      no_loading_salary,
       active
     `)
     .eq("id", roleId)
@@ -3019,6 +3134,7 @@ export async function updateRole(
       category: input.category,
       salary_value: input.salary_value,
       minimum_requirement: input.minimum_requirement ?? null,
+      no_loading_salary: input.no_loading_salary ?? false,
       active: input.active ?? true,
     })
     .eq("id", roleId)
@@ -3028,6 +3144,7 @@ export async function updateRole(
       category,
       salary_value,
       minimum_requirement,
+      no_loading_salary,
       active
     `)
     .single();
@@ -3054,6 +3171,7 @@ export async function getActiveRoles(
       category,
       salary_value,
       minimum_requirement,
+      no_loading_salary,
       active
       `,
       { count: "exact" }
@@ -3088,6 +3206,7 @@ export async function getInactiveRoles(
       category,
       salary_value,
       minimum_requirement,
+      no_loading_salary,
       active
       `,
       { count: "exact" }
@@ -3159,6 +3278,27 @@ export async function getAttendanceForDate(
 }
 
 /* ------------------------------------------------------------------
+  Get Attendance Records For a Month (for Attendance View Screen)
+---------------------------------------------------------------------*/
+export async function getAttendanceForMonth(
+  year: number,
+  month: number // 1-based
+): Promise<AttendanceRecord[]> {
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+  const { data, error } = await supabase
+    .from("attendance")
+    .select("employee_id, date, status")
+    .gte("date", startDate)
+    .lte("date", endDate);
+
+  if (error) throw error;
+  return (data ?? []) as AttendanceRecord[];
+}
+
+/* ------------------------------------------------------------------
   Save (Upsert) Attendance For a Date
   - If a record already exists for the employee+date → update
   - Otherwise → insert
@@ -3178,6 +3318,36 @@ export async function saveAttendance(
       })),
       { onConflict: "employee_id,date" }
     );
+
+  if (error) throw error;
+}
+
+/* ------------------------------------------------------------------
+  Save a day's attendance together with the salary entries it produces
+  - One database transaction (save_attendance_with_salary): the attendance rows, the
+    wage credits (SALARY_AUTO_ENTRY) and the deductions (DEDUCTION) are written
+    together or not at all.
+  - A day can be saved once; saving it again is refused.
+---------------------------------------------------------------------*/
+export interface AttendanceSalaryEntry {
+  employee_id: string;
+  entry_type: "SALARY_AUTO_ENTRY" | "DEDUCTION";
+  amount: number;
+  notes?: string | null;
+  /** ISO timestamp the entry is dated at. */
+  payment_at?: string | null;
+}
+
+export async function saveAttendanceWithSalary(
+  date: string, // YYYY-MM-DD
+  records: { employee_id: string; status: SaveAttendanceInput["status"] }[],
+  entries: AttendanceSalaryEntry[]
+): Promise<void> {
+  const { error } = await supabase.rpc("save_attendance_with_salary", {
+    p_date: date,
+    p_attendance: records,
+    p_entries: entries,
+  });
 
   if (error) throw error;
 }
@@ -3267,104 +3437,74 @@ export async function createSalaryLedgerEntry(
   input: CreateSalaryLedgerInput
 ): Promise<SalaryLedger> {
 
-  /* -------------------------------------------------------------
-     1. GET CURRENT RUNNING BALANCE
-  --------------------------------------------------------------*/
-  const { data: lastEntry, error: balanceError } = await supabase
-    .from("salary_ledger")
-    .select("running_balance")
-    .eq("employee_id", input.employee_id)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (balanceError) throw balanceError;
-
-  const currentBalance = lastEntry?.running_balance ?? 0;
-
-  /* -------------------------------------------------------------
-     2. CALCULATE NEW BALANCE
-  --------------------------------------------------------------*/
-
-  let newBalance = currentBalance;
-
-  if (input.entry_type === "AUTO" || input.entry_type === "SALARY_AUTO_ENTRY") {
-    newBalance += input.amount;
-  } else {
-    newBalance -= input.amount;
+  // Loader wages / auto entries are credited by the database, which computes the
+  // running balance under a lock. The delivery screen runs as an employee, who has
+  // no direct access to salary_ledger.
+  if (input.entry_type === "SALARY_AUTO_ENTRY") {
+    const { data, error } = await supabase.rpc("record_loader_wage", {
+      p_employee_id: input.employee_id,
+      p_amount: input.amount,
+      p_notes: input.notes ?? null,
+      p_payment_at: input.payment_at ?? null,
+    });
+    if (error) throw error;
+    return data as SalaryLedger;
   }
 
-  /* -------------------------------------------------------------
-     3. DEDUCT FROM ACCOUNT / CASH BALANCE (payments only)
-  --------------------------------------------------------------*/
+  // Everything else is one database transaction (record_salary_ledger_entry): the employee
+  // row is locked, a payment is deducted from the right account (the cash account for CASH),
+  // and the ledger line is written on top of the latest running balance, or nothing happens.
+  const { data, error } = await supabase.rpc("record_salary_ledger_entry", {
+    p_employee_id: input.employee_id,
+    p_entry_type: input.entry_type,
+    p_amount: input.amount,
+    p_payment_at: input.payment_at ?? null,
+    p_payment_mode: input.payment_mode ?? null,
+    p_sender_account_id: input.sender_account_id ?? null,
+    p_receiver_account: input.receiver_account ?? null,
+    p_notes: input.notes ?? null,
+  });
 
-  const isPayment = input.entry_type !== "AUTO" && input.entry_type !== "SALARY_AUTO_ENTRY" && input.entry_type !== "DEDUCTION";
-
-  if (isPayment) {
-    let accountIdToDeduct: string | undefined;
-
-    if (input.payment_mode === "CASH") {
-      const cashAccount = await getCashAccount();
-      accountIdToDeduct = cashAccount.id;
-    } else {
-      accountIdToDeduct = input.sender_account_id ?? undefined;
+  if (error) {
+    // Surface a user-friendly message for insufficient balance
+    const msg = (error.message ?? "").toLowerCase();
+    if (msg.includes("insufficient balance")) {
+      throw new Error(
+        "Insufficient balance in the selected account. Please choose a different account or reduce the amount."
+      );
     }
-
-    if (!accountIdToDeduct) {
-      throw new Error("Account not found for deduction");
-    }
-
-    const { error: rpcError } = await supabase.rpc(
-      "decrement_account_balance",
-      {
-        p_account_id: accountIdToDeduct,
-        p_amount: input.amount,
-      }
-    );
-
-    if (rpcError) throw rpcError;
+    throw error;
   }
-
-  /* -------------------------------------------------------------
-     4. INSERT LEDGER ENTRY
-  --------------------------------------------------------------*/
-
-  const { data, error } = await supabase
-    .from("salary_ledger")
-    .insert({
-      employee_id: input.employee_id,
-      entry_type: input.entry_type,
-      amount: input.amount,
-      running_balance: newBalance,
-      payment_mode: input.payment_mode ?? null,
-      sender_account_id: input.sender_account_id ?? null,
-      receiver_account: input.receiver_account ?? null,
-      notes: input.notes ?? null,
-      ...(input.created_at ? { created_at: input.created_at } : {}),
-    })
-    .select("*")
-    .single();
-
-  if (error) throw error;
 
   return data as SalaryLedger;
 }
 
 /* ------------------------------------------------------------------
   Check Employee Is Active
-  - Looks up the employees table by phone number
-  - Returns true if the employee record exists and active = true
+  - Asks the database whether the signed-in user's employee record
+    (matched by phone) exists, is active and is in the active branch.
+    Employees cannot read the employees table directly (it holds
+    aadhar, addresses, deductions), hence the RPC.
   - Used by EmployeeGuard to block deactivated employees
 ---------------------------------------------------------------------*/
-export async function checkEmployeeIsActive(phone: string): Promise<boolean> {
-  const { data, error } = await supabase
-    .from("employees")
-    .select("active")
-    .eq("phone", phone)
-    .maybeSingle();
+export async function checkEmployeeIsActive(): Promise<boolean> {
+  const { data, error } = await supabase.rpc("am_i_active_employee");
 
-  if (error || !data) return false;
-  return data.active === true;
+  if (error) return false;
+  return data === true;
+}
+
+/* ------------------------------------------------------------------
+  Get Delivery Staff
+  - Active employees with the role fields the delivery screen needs to
+    split loader wages, and nothing else. Same shape getAllEmployees(true)
+    returns, but callable by employees.
+---------------------------------------------------------------------*/
+export async function getDeliveryStaff(): Promise<EmployeeWithCategory[]> {
+  const { data, error } = await supabase.rpc("get_delivery_staff");
+
+  if (error) throw error;
+  return (data ?? []) as unknown as EmployeeWithCategory[];
 }
 
 /* ------------------------------------------------------------------
@@ -3443,4 +3583,80 @@ export async function generateSalaryRPC(
   if (error) throw error;
 
   return data;
+}
+
+/* ------------------------------------------------------------------
+   GET WITHDRAWALS (Paginated)
+-------------------------------------------------------------------*/
+export async function getWithdrawals(
+  page: number,
+  pageSize: number = 20
+): Promise<PaginatedResult<Withdrawal>> {
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+
+  const { data, count, error } = await supabase
+    .from("withdrawals")
+    .select(
+      `
+      id,
+      date,
+      amount,
+      notes,
+      created_at,
+      account_id,
+      accounts ( account_number )
+      `,
+      { count: "exact" }
+    )
+    .order("date", { ascending: false })
+    .range(from, to);
+
+  if (error) throw error;
+
+  return {
+    data: (data ?? []) as unknown as Withdrawal[],
+    total: count ?? 0,
+    hasMore: from + pageSize < (count ?? 0),
+  };
+}
+
+/* ------------------------------------------------------------------
+   GET TOTAL WITHDRAWALS AMOUNT
+-------------------------------------------------------------------*/
+export async function getTotalWithdrawalsAmount(): Promise<number> {
+  const { data, error } = await supabase
+    .from("total_withdrawals_view")
+    .select("total_withdrawals")
+    .single();
+
+  if (error) throw error;
+
+  return Number((data as { total_withdrawals: number | string | null } | null)?.total_withdrawals ?? 0);
+}
+
+/* ------------------------------------------------------------------
+   CREATE WITHDRAWAL (deducts from account balance)
+-------------------------------------------------------------------*/
+export async function createWithdrawal(
+  input: CreateWithdrawalInput
+): Promise<void> {
+  // One database transaction (record_withdrawal): deducts the balance and records the
+  // withdrawal, or does neither.
+  const { error } = await supabase.rpc("record_withdrawal", {
+    p_account_id: input.account_id,
+    p_date: input.date,
+    p_amount: input.amount,
+    p_notes: input.notes ?? null,
+  });
+
+  if (error) {
+    const msg = (error.message ?? "").toLowerCase();
+    if (msg.includes("insufficient balance")) {
+      throw new Error(
+        "Insufficient balance in the selected account."
+      );
+    }
+    throw error;
+  }
 }

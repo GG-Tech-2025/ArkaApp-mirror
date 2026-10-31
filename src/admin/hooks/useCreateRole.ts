@@ -20,6 +20,7 @@ export function useCreateRole() {
     monthlySalary: '',
     ratePerLoad: '',
     minimumLoadRequirement: '',
+    no_loading_salary: false,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -27,7 +28,7 @@ export function useCreateRole() {
   const [showFailurePopup, setShowFailurePopup] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  function updateCreateRoleInput(field: keyof CreateRoleFormInput, value: string | RoleCategoryLabel) {
+  function updateCreateRoleInput(field: keyof CreateRoleFormInput, value: string | boolean | RoleCategoryLabel) {
     setCreateRoleInput(prev => ({ ...prev, [field]: value }));
   }
 
@@ -78,6 +79,7 @@ export function useCreateRole() {
           createRoleInput.category === 'Loadmen' && createRoleInput.minimumLoadRequirement.trim()
             ? Number(createRoleInput.minimumLoadRequirement)
             : null,
+        no_loading_salary: createRoleInput.no_loading_salary,
         active: true,
       });
       setShowSuccessPopup(true);

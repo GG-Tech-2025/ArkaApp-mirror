@@ -19,6 +19,7 @@ const productionDate = payload.date.split("T")[0];
     crusher_powder_kg: payload.crusherPowder,
     fly_ash_kg: payload.flyAsh,
     cement_bags: payload.cement,
+    notes: payload.notes ?? null,
   };
 
   

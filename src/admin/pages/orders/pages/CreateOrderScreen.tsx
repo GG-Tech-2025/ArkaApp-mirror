@@ -9,8 +9,8 @@ import { cn } from '../../../../components/ui/utils';
 import { useAdminNavigation } from '../../../hooks/useAdminNavigation';
 import { useNavigate } from 'react-router-dom';
 import { validateCreateOrder } from '../../../validators/createOrder.validator';
-import { searchCustomers, getLoadmen, createOrder, validateSession, getUserProfile } from '../../../../services/middleware.service';
-import { Customer, EmployeeWithCategory } from '../../../../services/types';
+import { searchCustomers, getAllEmployees, createOrder, validateSession, getUserProfile } from '../../../../services/middleware.service';
+import { Customer, Employee } from '../../../../services/types';
 
 export interface CreateOrderInput {
   customerId: string;
@@ -25,6 +25,7 @@ export interface CreateOrderInput {
   amountPaid: number;
   gstNumber: string | null;
   deliveryChallanNumber: string;
+  loadingType:  'LOADING_UNLOADING' | 'LOADING_ONLY' | 'CUSTOMER_SELF';
   loadMen: string[];
 }
 
@@ -40,7 +41,7 @@ export function CreateOrderScreen() {
   const navigate = useNavigate();
   const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [loadmen, setLoadmen] = useState<EmployeeWithCategory[]>([]);
+  const [loadmen, setLoadmen] = useState<Employee[]>([]);
 
   const [createOrderInput, setCreateOrderInput] = useState<CreateOrderInput>({
     customerId: '',
@@ -55,6 +56,7 @@ export function CreateOrderScreen() {
     amountPaid: 0,
     gstNumber: null,
     deliveryChallanNumber: '',
+    loadingType: 'LOADING_UNLOADING',
     loadMen: [],
   });
 
@@ -94,12 +96,12 @@ export function CreateOrderScreen() {
     };
   }, [customerSearch]);
 
-  // Fetch loadmen once on mount
+  // Fetch all employees once on mount (previously only loadmen)
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const res = await getLoadmen();
+        const res = await getAllEmployees(true);
         if (mounted) setLoadmen(res);
       } catch (err) {
         console.error('Failed to load loadmen:', err);
@@ -168,6 +170,7 @@ export function CreateOrderScreen() {
         amount_paid: amountPaid,
         gst_number: createOrderInput.gstNumber || null,
         dc_number: createOrderInput.deliveryChallanNumber || null,
+        loading_type: createOrderInput.loadingType,
       };
 
       // validate session and role
@@ -469,35 +472,55 @@ export function CreateOrderScreen() {
               {errors.deliveryChallanNumber && <p className="text-red-600 text-sm mt-1">{errors.deliveryChallanNumber}</p>}
             </div>
 
-            {/* Load Men - Multi-select */}
+            {/* Loading Type */}
             <div>
-              <label className="block text-gray-700 mb-2">Load Men (Optional)</label>
-              <div className="border border-gray-300 rounded-lg p-4">
-                <div className="space-y-2">
-                  {loadmen.length > 0 ? loadmen.map((lm) => (
-                    <label
-                      key={lm.id}
-                      className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={createOrderInput.loadMen.includes(lm.id)}
-                        onChange={() => handleLoadManToggle(lm.id)}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                      />
-                      <span className="text-gray-900">{lm.name}</span>
-                    </label>
-                  )) : (
-                    <div className="text-gray-500 text-sm">No loadmen available</div>
-                  )}
-                </div>
-              </div>
-              {createOrderInput.loadMen.length > 0 && (
-                <p className="text-gray-600 text-sm mt-2">
-                  Selected: {createOrderInput.loadMen.join(', ')}
-                </p>
-              )}
+              <label className="block text-gray-700 mb-2">Loading Type</label>
+              <select
+                value={createOrderInput.loadingType}
+                onChange={(e) => updateCreateOrderInput('loadingType', e.target.value)}
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
+                  errors.loadingType ? 'border-red-600' : 'border-gray-300'
+                }`}
+              >
+                <option value="LOADING_UNLOADING">Loading and Unloading</option>
+                <option value="LOADING_ONLY">Loading Only</option>
+                <option value="CUSTOMER_SELF">Customer Self Loading</option>
+              </select>
+              {errors.loadingType && <p className="text-red-600 text-sm mt-1">{errors.loadingType}</p>}
             </div>
+            {/* Load Men - Multi-select (hidden when customer self loads) */}
+            {createOrderInput.loadingType !== 'CUSTOMER_SELF' && (
+              <div>
+                <label className="block text-gray-700 mb-2">Load Men (Optional)</label>
+                <div className="border border-gray-300 rounded-lg p-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                    {loadmen.length > 0 ? loadmen.map((lm) => (
+                      <label
+                        key={lm.id}
+                        className="flex items-center gap-3 p-2 rounded hover:bg-gray-50 w-full"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={createOrderInput.loadMen.includes(lm.id)}
+                          onChange={() => handleLoadManToggle(lm.id)}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-gray-900 truncate">{lm.name}</div>
+                        </div>
+                      </label>
+                    )) : (
+                      <div className="text-gray-500 text-sm">No loadmen available</div>
+                    )}
+                  </div>
+                </div>
+                {createOrderInput.loadMen.length > 0 && (
+                  <p className="text-gray-600 text-sm mt-2">
+                    Selected: {createOrderInput.loadMen.map(id => (loadmen.find(lm => lm.id === id)?.name ?? id)).join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Create Button */}
             <button

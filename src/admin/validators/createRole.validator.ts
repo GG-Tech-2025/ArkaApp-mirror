@@ -7,6 +7,7 @@ export interface CreateRoleFormInput {
   monthlySalary: string;
   ratePerLoad: string;
   minimumLoadRequirement: string;
+  no_loading_salary: boolean;
 }
 
 export function validateCreateRole(input: CreateRoleFormInput): Record<string, string> {

@@ -5,9 +5,10 @@ export type PaymentEntryTypeLabel =
   | 'Daily / Ad-hoc Payment'
   | 'Partial Settlement'
   | 'Full Settlement'
+  | 'Manual Salary Entry'
   | '';
 
-export type PaymentModeLabel = 'UPI' | 'Bank Transfer' | 'Cheque' | 'Cash';
+export type PaymentModeLabel = 'UPI' | 'Bank Transfer' | 'Cash';
 
 export interface AddPaymentFormInput {
   entryType: PaymentEntryTypeLabel;
@@ -21,7 +22,8 @@ export interface AddPaymentFormInput {
 
 export function validateAddPayment(
   input: AddPaymentFormInput,
-  runningBalance: number
+  runningBalance: number,
+  selectedAccountBalance?: number | null
 ): Record<string, string> {
   const errors: Record<string, string> = {};
 
@@ -48,16 +50,27 @@ export function validateAddPayment(
     errors.dateTime = 'Date cannot be in the future';
   }
 
-  if (!input.modeOfPayment) {
-    errors.modeOfPayment = 'Mode of payment is required';
-  }
-
-  if (input.modeOfPayment !== 'Cash') {
-    if (!input.senderAccountId) {
-      errors.senderAccountId = 'SAI is required';
+  if (input.entryType !== 'Manual Salary Entry') {
+    if (!input.modeOfPayment) {
+      errors.modeOfPayment = 'Mode of payment is required';
     }
-    if (!input.receiverAccountInfo.trim()) {
-      errors.receiverAccountInfo = 'RAI is required';
+
+    if (input.modeOfPayment !== 'Cash') {
+      if (!input.senderAccountId) {
+        errors.senderAccountId = 'SAI is required';
+      }
+      if (!input.receiverAccountInfo.trim()) {
+        errors.receiverAccountInfo = 'RAI is required';
+      }
+    }
+
+    // Validate that the selected account has sufficient balance
+    if (
+      !errors.amount &&
+      selectedAccountBalance != null &&
+      Number(input.amount) > selectedAccountBalance
+    ) {
+      errors.amount = `Insufficient account balance (₹${selectedAccountBalance.toLocaleString()} available)`;
     }
   }
 

@@ -17,6 +17,145 @@ export interface Profile {
   id: string;
   phone: string;
   role: UserRole;
+  organization_id: string | null;
+  default_branch_id: string | null;
+  is_super_admin: boolean;
+}
+
+/** A branch the signed-in user has access to (Phase 4). */
+export interface Branch {
+  id: string;
+  name: string;
+  code: string;
+  /** ACTIVE, or INACTIVE when the platform operator has paused it. */
+  status: string;
+  /** YYYY-MM-DD, or null when none has been set. */
+  renewalDate: string | null;
+  lastPaymentDate: string | null;
+}
+
+/** One client organization as the platform operator sees it (Phase 5). */
+export interface PlatformOrganization {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  createdAt: string;
+  contactEmail: string | null;
+  branchCount: number;
+  /** How many of its branches are paused. */
+  branchesPaused: number;
+  /** The earliest renewal date among its branches, YYYY-MM-DD, or null when none is set. */
+  nextRenewalDate: string | null;
+  adminPhones: string[];
+}
+
+/** A branch of a client organization as the platform operator sees it. */
+export interface PlatformBranch {
+  id: string;
+  name: string;
+  code: string;
+  status: string;
+  lastPaymentDate: string | null;
+  renewalDate: string | null;
+}
+
+/** One branch of any client, with its client's name and status (platform overview). */
+export interface PlatformBranchRow {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  organizationStatus: string;
+  name: string;
+  code: string;
+  status: string;
+  lastPaymentDate: string | null;
+  renewalDate: string | null;
+}
+
+/** One client organization's own details (platform client page). */
+export interface PlatformOrganizationDetail {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  createdAt: string;
+}
+
+/** An entry in the billing history: payments, pauses, resumes and renewal changes. */
+export interface BranchBillingEvent {
+  id: string;
+  branchId: string | null;
+  eventType: string;
+  happenedOn: string;
+  amount: number | null;
+  reference: string | null;
+  note: string | null;
+  renewalDateAfter: string | null;
+  actorId: string | null;
+  createdAt: string;
+}
+
+/** A client's admin as the platform operator sees them. */
+export interface OrganizationAdmin {
+  userId: string;
+  phone: string;
+  email: string;
+  lastSignInAt: string | null;
+  createdAt: string;
+}
+
+export interface RecordPaymentInput {
+  branchId: string;
+  /** YYYY-MM-DD, not in the future. */
+  paidOn: string;
+  /** The new renewal date, YYYY-MM-DD, after the payment date. */
+  renewalDate: string;
+  amount?: number;
+  reference?: string;
+  note?: string;
+  /** Resume the branch if it is paused (the default on the screen). */
+  resume: boolean;
+}
+
+export interface ProvisionOrganizationInput {
+  organizationName: string;
+  slug: string;
+  branchName: string;
+  branchCode: string;
+  adminEmail: string;
+  adminPhone: string;
+  contactEmail?: string;
+  /** First renewal date of the first branch, YYYY-MM-DD. */
+  renewalDate: string;
+  /** Optional: when they last paid, YYYY-MM-DD. */
+  lastPaymentDate?: string;
+}
+
+/** Returned once by the provision-organization Edge Function; the password is never retrievable again. */
+export interface ProvisionOrganizationResult {
+  organizationId: string;
+  branchId: string;
+  adminEmail: string;
+  temporaryPassword: string;
+}
+
+/** Tenancy claims injected into the JWT by custom_access_token_hook (Phase 2). */
+export interface SessionClaims {
+  organizationId: string | null;
+  defaultBranchId: string | null;
+  isSuperAdmin: boolean;
+}
+
+export interface AppSetting {
+  id: string;
+  key: string;
+  value: string;
+  description: string | null;
+  updated_at: string;
+  created_at: string;
 }
 
 export interface Material {
@@ -73,6 +212,7 @@ export interface OrderCustomer {
   phone: string;
 }
 
+export type LoadingType = 'LOADING_UNLOADING' | 'LOADING_ONLY' | 'CUSTOMER_SELF';
 export interface Order {
   id: string;
   customer_id: string;
@@ -84,6 +224,7 @@ export interface Order {
   final_price: number;
   location: string;
   payment_status: PaymentStatus;
+  loading_type: LoadingType;
   amount_paid: number;
   gst_number: string | null;
   dc_number: string | null;
@@ -92,6 +233,7 @@ export interface Order {
   created_at: string;
   customers?: OrderCustomer;
   time: string | null;
+  loadingType: LoadingType;
 }
 
 export interface Employee {
@@ -111,6 +253,7 @@ export interface EmployeeWithCategory extends Employee {
     name: string;
     category: EmployeeCategory;
     salary_value: number;
+    no_loading_salary: boolean;
   };
 }
 
@@ -136,6 +279,11 @@ export interface CreateCustomerPaymentInput {
   mode: "Cash" | "UPI" | "Bank Transfer" | "Cheque";
   sender_account_no?: string;        // ✅ text
   receiver_account_id?: string;      // ✅ uuid, optional for Cash
+}
+export interface CreateCustomerWriteOffInput {
+  customer_id: string;
+  amount: number;
+  reason: string;
 }
 export interface CreateOrderInput {
   customer_id: string;
@@ -183,11 +331,33 @@ export interface Account {
   opening_balance: number;
   balance: number;
   created_at: string;
+  /** True for the branch's single cash account (the database allows at most one per branch). */
+  is_cash: boolean;
 }
 
 export interface CreateAccountInput {
   account_number: string;
   opening_balance: number;
+}
+
+export interface CreateAccountTransferInput {
+  sender_account_id: string;
+  receiver_account_id: string;
+  amount: number;
+  transfer_date: string;
+  notes?: string | null;
+}
+
+export interface AccountTransfer {
+  id: number;
+  sender_account_id: string;
+  receiver_account_id: string;
+  amount: number;
+  transfer_date: string;
+  notes: string | null;
+  created_at: string;
+  sender_account?: { account_number: string };
+  receiver_account?: { account_number: string };
 }
 
 export interface Loan {
@@ -245,6 +415,7 @@ export interface RoleWithCategory {
   id: string;
   name: string;
   category: EmployeeCategory;
+  no_loading_salary: boolean;
 }
 
 export interface CreateEmployeeInput {
@@ -302,6 +473,7 @@ export interface CreateRoleInput {
   category: EmployeeCategory;
   salary_value: number;
   minimum_requirement?: number | null;
+  no_loading_salary?: boolean;
   active?: boolean;
 }
 
@@ -310,6 +482,7 @@ export interface UpdateRoleInput {
   category: EmployeeCategory;
   salary_value: number;
   minimum_requirement?: number | null;
+  no_loading_salary?: boolean;
   active?: boolean;
 }
 
@@ -319,6 +492,7 @@ export interface Role {
   category: EmployeeCategory;
   salary_value: number;
   minimum_requirement: number | null;
+  no_loading_salary: boolean;
   active: boolean;
 }
 
@@ -381,7 +555,7 @@ export interface SalaryLedgerTransaction {
   sender_account_id: string | null;
   receiver_account: string | null;
   notes: string | null;
-  created_at: string;
+  payment_at: string;
 }
 
 export interface EmployeeLedgerResponse {
@@ -411,10 +585,12 @@ export type SalaryLedgerEntryType =
   | "PARTIAL_SETTLEMENT"
   | "FULL_SETTLEMENT"
   | "SALARY_AUTO_ENTRY"
+  | "SALARY_MANUAL_ENTRY"
   | "DEDUCTION"
   | "AUTO";
 
 export interface CreateSalaryLedgerInput {
+  payment_at: string;
   employee_id: string;
   entry_type: SalaryLedgerEntryType;
   amount: number;
@@ -492,4 +668,23 @@ export interface SalaryEmployee {
   leave_days: number;
   half_days: number;
   base_salary: number;
+}
+
+export interface Withdrawal {
+  id: number;
+  date: string;
+  amount: number;
+  notes: string | null;
+  created_at: string;
+  account_id: string;
+  accounts?: {
+    account_number: string;
+  };
+}
+
+export interface CreateWithdrawalInput {
+  date: string;         // YYYY-MM-DD
+  amount: number;
+  notes?: string | null;
+  account_id: string;
 }

@@ -1,30 +1,60 @@
 import { useEffect, useState } from "react";
 import { createDelivery } from "../services/delivery.service";
 import { DeliveryInput } from "../types";
-import { getLoadmen, getOrderWithLoadmen, updateOrderWithLoadmen, createSalaryLedgerEntry } from "../../services/middleware.service";
+import { getDeliveryStaff, getOrderWithLoadmen, completeDelivery, getAppSettings } from "../../services/middleware.service";
+import type { DeliveryWages } from "../../services/middleware.service";
 import { EmployeeWithCategory, OrderWithLoadmen, Order } from "../../services/types";
 
 export function useDelivery(orderId: string) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Problems loading what the screen is built from: shown on the screen itself, apart from
+  // `error`, which belongs to saving.
+  const [orderLoadError, setOrderLoadError] = useState<string | null>(null);
+  const [staffLoadError, setStaffLoadError] = useState<string | null>(null);
   const [order, setOrder] = useState<OrderWithLoadmen | null>(null);
   const [loadmen, setLoadmen] = useState<EmployeeWithCategory[]>([]);
   const [deliveryInput, setDeliveryInput] = useState<DeliveryInput>({
     time: '',
     quantity: 0,
+    location: '',
     paymentStatus: 'NOT_PAID',
     paidAmount: 0,
     deliveryChallanNumber: '',
     gstNumber: '',
+    loadingType: 'LOADING_UNLOADING',
     loadMen: []
   });
   const [selectedLoadmen, setSelectedLoadmen] = useState<EmployeeWithCategory[]>([]);
+  const [loadingAndUnloadingCostPerBrick, setLoadingAndUnloadingCostPerBrick] = useState<number>();
 
   useEffect(() => {
     getOrderData();
-    getLoadmenData()
+    getLoadmenData();
+    getSettingsData();
   }, []);
 
+  async function getSettingsData() {
+    try {
+      const settings = await getAppSettings();
+      const found = settings.find(s => s.key === 'LOADING_AND_UNLOADING_PRICE_PER_BRICK');
+      if (found) {
+        const parsed = parseFloat(found.value);
+        if (!isNaN(parsed) && parsed > 0) {
+          setLoadingAndUnloadingCostPerBrick(parsed);
+        } else {
+          // App setting exists but invalid (non-numeric or non-positive)
+          setError('Invalid LOADING_AND_UNLOADING_PRICE_PER_BRICK value in app settings. It must be a number greater than 0.');
+        }
+      } else {
+        // App setting missing — this setting is required for salary calculation
+        setError('LOADING_AND_UNLOADING_PRICE_PER_BRICK is not configured. Please set it in App Settings.');
+      }
+    } catch (err) {
+      console.error('Failed to load app settings for loading price per brick', err);
+    }
+  }
+  
   useEffect(() => {
     if (order && loadmen.length > 0 && order.loadmen) {
       const selected = loadmen.filter(l => order.loadmen!.some(ol => ol.id === l.id));
@@ -55,26 +85,28 @@ export function useDelivery(orderId: string) {
       setDeliveryInput(prev => ({
         ...prev,
         quantity: orderData.brick_quantity,
+        location: orderData.location || '',
         paymentStatus: orderData.payment_status,
-        gstNumber: orderData.gst_number || undefined,
+        gstNumber: orderData.gst_number ?? '',
         paidAmount: orderData.amount_paid ?? 0,
         deliveryChallanNumber: orderData.dc_number || '',
-        time: orderData.time || ''
+        time: orderData.time || '',
+        loadingType: orderData.loading_type || '',
       }));
     }
     catch (error) {
-      setError("Failed to load order details");
-    } 
+      setOrderLoadError("Failed to load order details");
+    }
   }
 
   async function getLoadmenData() {
     try {
-      const loadmenData = await getLoadmen();
+  const loadmenData = await getDeliveryStaff();
       console.log("Fetched loadmen data:", loadmenData);
       setLoadmen(loadmenData);
     }
     catch (error) {
-      setError("Failed to load loadmen details");
+      setStaffLoadError("Failed to load the delivery staff");
     }
   }
 
@@ -132,31 +164,61 @@ export function useDelivery(orderId: string) {
       const orderUpdate: Partial<Order> = {
         time: deliveryInput.time,
         brick_quantity: deliveryInput.quantity,
+        location: deliveryInput.location,
         payment_status: deliveryInput.paymentStatus,
         amount_paid: amountPaid,
         gst_number: deliveryInput.gstNumber || null,
         dc_number: deliveryInput.deliveryChallanNumber,
-        delivered: true
+        loading_type: deliveryInput.loadingType
       };
 
-      await updateOrderWithLoadmen(orderId, orderUpdate, deliveryInput.loadMen);
+      // When the customer loads for themselves nobody is assigned and nobody is paid, even if
+      // load men were ticked before the loading type was switched (their ticks are only kept
+      // so they come back if the type is switched back).
+      const customerSelf = deliveryInput.loadingType === 'CUSTOMER_SELF';
+      const loadmenIds = customerSelf ? [] : deliveryInput.loadMen;
 
-      // Create auto salary ledger entries for each selected loadman
-      const salaryEntryDate = new Date().toISOString();
-      await Promise.all(
-        selectedLoadmen.map((loadman) =>
-          createSalaryLedgerEntry({
-            employee_id: loadman.id,
-            entry_type: "SALARY_AUTO_ENTRY",
-            amount: loadman.roles.salary_value,
-            payment_mode: null,
-            sender_account_id: null,
-            receiver_account: null,
-            notes: `Auto salary entry for delivery of order #${orderId}`,
-            created_at: salaryEntryDate,
-          })
-        )
-      );
+      // Exclude employees whose role is flagged as no_loading_salary (they get wages via attendance only)
+      const eligibleLoadmen = customerSelf
+        ? []
+        : selectedLoadmen.filter(
+            (l) => !l.roles?.no_loading_salary && deliveryInput.loadMen.includes(l.id)
+          );
+
+      // Work out the wages BEFORE completing the delivery, so a missing price setting stops
+      // the whole thing instead of leaving a delivered order with no wages.
+      let wages: DeliveryWages | undefined;
+
+      // Only proceed with salary calculation if there are eligible loadmen
+      if (eligibleLoadmen.length > 0) {
+        const costPerBrick = loadingAndUnloadingCostPerBrick;
+
+        // The loading/unloading price per brick is required for salary calculations.
+        if (!costPerBrick || costPerBrick <= 0) {
+          const msg = 'LOADING_AND_UNLOADING_PRICE_PER_BRICK is not configured or invalid. Salary calculation cannot proceed.';
+          setError(msg);
+          throw new Error(msg);
+        }
+
+        let multiplier = 1;
+        if (deliveryInput.loadingType === 'LOADING_ONLY') {
+          multiplier = 0.5;
+        }
+
+        // Total cost divided by ALL selected loadmen (including ineligible),
+        // so each eligible employee gets their fair individual share (ineligible share is not redistributed).
+        const salaryPerEmployee = (deliveryInput.quantity * costPerBrick * multiplier) / selectedLoadmen.length;
+
+        wages = {
+          loadmenIds: eligibleLoadmen.map((l) => l.id),
+          amountPerLoadman: salaryPerEmployee,
+          notes: `Auto salary entry for delivery of order #${orderId}`,
+          paymentAt: new Date().toISOString(),
+        };
+      }
+
+      // One database transaction: the delivery and every loadman's wage, or nothing.
+      await completeDelivery(orderId, orderUpdate, loadmenIds, wages);
 
       return { success: true };
     } catch (err) {
@@ -170,6 +232,8 @@ export function useDelivery(orderId: string) {
   return {
     loading,
     error,
+    orderLoadError,
+    staffLoadError,
     order,
     loadmen,
     deliveryInput,

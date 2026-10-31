@@ -20,6 +20,8 @@ export function DeliveryEntry() {
     updateDelivery, 
     loading, 
     error, 
+    orderLoadError,
+    staffLoadError,
     loadmen, 
     order,
     deliveryInput,
@@ -38,6 +40,21 @@ export function DeliveryEntry() {
 
   // Get today's date in YYYY-MM-DD format for max attribute
   const today = new Date().toISOString().split("T")[0];
+
+  // Editing a field clears its own error straight away, as on the other entry screens.
+  const changeField = (field: keyof DeliveryInput, value: string, ...clears: string[]) => {
+    updateDeliveryInput(field, value);
+    setErrors((prev) => {
+      const next = { ...prev };
+      for (const key of [field, ...clears]) delete next[key];
+      return next;
+    });
+  };
+
+  const toggleLoadMan = (id: string) => {
+    handleLoadManToggle(id);
+    setErrors((prev) => ({ ...prev, loadMen: "" }));
+  };
 
   const handleSubmit = async () => {
     console.log("Submitting delivery:", deliveryInput);
@@ -75,7 +92,14 @@ export function DeliveryEntry() {
           <p className="text-gray-600 mt-1">{isDelivered ? 'View delivery information' : 'Enter the delivery details'}</p>
         </div>
 
+        {orderLoadError && (
+          <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+            {orderLoadError}. Please go back and try again.
+          </div>
+        )}
+
         {/* Form */}
+        {!orderLoadError && (
         <div className="bg-white rounded-lg shadow-lg p-6 sm:p-8">
           <div className="space-y-6">
             {/* Delivered badge */}
@@ -169,7 +193,7 @@ export function DeliveryEntry() {
               <select
                 id="time"
                 value={deliveryInput?.time || ""}
-                onChange={(e) => updateDeliveryInput("time", e.target.value)}
+                onChange={(e) => changeField("time", e.target.value)}
                 disabled={isDelivered}
                 className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''}`}
               >
@@ -188,35 +212,36 @@ export function DeliveryEntry() {
             {/* Quantity */}
             <div>
               <label htmlFor="quantity" className="block text-gray-700 mb-2">
-                Quantity (bricks) <span className="text-red-600">*</span>
+                Quantity (bricks)
               </label>
               <input
                 id="quantity"
                 type="number"
-                value={deliveryInput?.quantity || ""}
-                onChange={(e) => updateDeliveryInput("quantity", parseInt(e.target.value) || 0)}
-                onWheel={(e) => e.currentTarget.blur()}
-                disabled={isDelivered}
-                className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                min="0"
+                value={order?.brick_quantity || ""}
+                disabled
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
               />
-              {errors.quantity && (
-                <p className="text-red-600 text-sm mt-1">{errors.quantity}</p>
-              )}
             </div>
 
             {/* Location */}
             <div>
               <label htmlFor="location" className="block text-gray-700 mb-2">
-                Location
+                Location <span className="text-red-600">*</span>
               </label>
               <input
                 id="location"
                 type="text"
-                value={order?.location}
-                disabled
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
+                value={deliveryInput?.location || ""}
+                onChange={(e) => changeField("location", e.target.value)}
+                placeholder="Enter location"
+                disabled={isDelivered}
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
+                  errors.location ? "border-red-500" : "border-gray-300"
+                } ${isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''}`}
               />
+              {errors.location && (
+                <p className="text-red-600 text-sm mt-1">{errors.location}</p>
+              )}
             </div>
 
             {/* Actual Amount */}
@@ -262,7 +287,7 @@ export function DeliveryEntry() {
                 id="deliveryChallanNumber"
                 type="text"
                 value={deliveryInput?.deliveryChallanNumber || ""}
-                onChange={(e) => updateDeliveryInput("deliveryChallanNumber", e.target.value)}
+                onChange={(e) => changeField("deliveryChallanNumber", e.target.value)}
                 placeholder="Enter delivery challan number"
                 disabled={isDelivered}
                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
@@ -278,26 +303,52 @@ export function DeliveryEntry() {
               )}
             </div>
 
-            {/* Load Man - Multi-select */}
+            {/* Loading Type */}
+            <div>
+              <label htmlFor="loadingType" className="block text-gray-700 mb-2">
+              Loading Type <span className="text-red-600">*</span>
+              </label>
+              <select
+              id="loadingType"
+              value={deliveryInput?.loadingType}
+              onChange={(e) => changeField("loadingType", e.target.value, "loadMen")}
+              disabled={isDelivered}
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
+                errors.loadingType ? "border-red-500" : "border-gray-300"
+              } ${isDelivered ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+              >
+              <option value="LOADING_UNLOADING">Loading and Unloading</option>
+                <option value="LOADING_ONLY">Loading Only</option>
+                <option value="CUSTOMER_SELF">Customer Self Loading</option>
+              </select>
+              {errors.loadingType && (
+              <p className="text-red-600 text-sm mt-1">{errors.loadingType}</p>
+              )}
+            </div>
+
+            {/* Load Men - Multi-select (hidden when customer self loads) */}
+            {deliveryInput.loadingType !== 'CUSTOMER_SELF' && (
             <div>
               <label className="block text-gray-700 mb-2">
                 Load Man <span className="text-red-600">*</span>
               </label>
               <div className="border border-gray-300 rounded-lg p-4">
-                <div className="space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                   {loadmen.map((loadMan) => (
                     <label
                       key={loadMan.id}
-                      className={`flex items-center gap-3 p-2 rounded ${isDelivered ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-50'}`}
+                      className={`flex items-center gap-3 p-2 rounded w-full ${isDelivered ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-50'}`}
                     >
                       <input
                         type="checkbox"
                         checked={selectedLoadmen.some(loadman => loadman.id === loadMan.id)}
-                        onChange={() => !isDelivered && handleLoadManToggle(loadMan.id)}
+                        onChange={() => !isDelivered && toggleLoadMan(loadMan.id)}
                         disabled={isDelivered}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 shrink-0"
                       />
-                      <span className="text-gray-900">{loadMan.name}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-gray-900 truncate">{loadMan.name}</div>
+                      </div>
                     </label>
                   ))}
                 </div>
@@ -310,7 +361,17 @@ export function DeliveryEntry() {
                   Selected: {selectedLoadmen.map(l => l.name).join(", ")}
                 </p>
               )}
-            </div>
+            </div>)}
+
+            {staffLoadError && (
+              <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                {staffLoadError}, so none can be selected. Go back and try again.
+              </div>
+            )}
+
+            {/* Problems with details the employee cannot edit here (they come from the order) */}
+            {errors.paidAmount && <p className="text-red-600 text-sm">{errors.paidAmount}</p>}
+            {errors.quantity && <p className="text-red-600 text-sm">{errors.quantity}</p>}
 
             {/* Submit Button - hidden for delivered orders */}
             {!isDelivered && (
@@ -326,6 +387,7 @@ export function DeliveryEntry() {
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* Success Popup */}

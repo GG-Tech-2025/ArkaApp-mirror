@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { AdminScreen, Expense } from '../../../../AdminApp';
 import { ArrowLeft, Save, Trash2 } from 'lucide-react';
 import { Popup } from '../../../../components/Popup';
 import { CreateExpenseTypePopup } from './CreateExpenseTypePopup';
 import { useParams } from 'react-router-dom';
 import { useAdminNavigation } from '../../../hooks/useAdminNavigation';
-import { getExpenseById, getExpenseTypes, getExpenseSubtypes } from '../../../../services/middleware.service';
+import { getExpenseById } from '../../../../services/middleware.service';
 
 const expenseTypes = [
   'Procurement',

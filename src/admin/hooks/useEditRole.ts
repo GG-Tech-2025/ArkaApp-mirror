@@ -29,6 +29,7 @@ export function useEditRole() {
     monthlySalary: '',
     ratePerLoad: '',
     minimumLoadRequirement: '',
+    no_loading_salary: false,
   });
 
   const [roleLoading, setRoleLoading] = useState(false);
@@ -59,6 +60,7 @@ export function useEditRole() {
             ratePerLoad: role.category === 'LOADMEN' ? role.salary_value.toString() : '',
             minimumLoadRequirement:
               role.minimum_requirement != null ? role.minimum_requirement.toString() : '',
+            no_loading_salary: role.no_loading_salary ?? false,
           });
         }
       } catch (err) {
@@ -80,7 +82,7 @@ export function useEditRole() {
     };
   }, [roleId]);
 
-  function updateEditRoleInput(field: keyof EditRoleFormInput, value: string) {
+  function updateEditRoleInput(field: keyof EditRoleFormInput, value: string | boolean) {
     setEditRoleInput(prev => ({ ...prev, [field]: value }));
   }
 
@@ -143,6 +145,7 @@ export function useEditRole() {
           editRoleInput.category === 'Loadmen' && editRoleInput.minimumLoadRequirement.trim()
             ? Number(editRoleInput.minimumLoadRequirement)
             : null,
+        no_loading_salary: editRoleInput.no_loading_salary,
       });
       setShowSuccessPopup(true);
     } catch (err) {

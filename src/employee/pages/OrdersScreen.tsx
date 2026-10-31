@@ -12,7 +12,18 @@ export function OrdersScreen() {
   }
 
   if (error) {
-    return <div className="p-6 text-red-600">{error}</div>;
+    return (
+      <div className="p-6">
+        <button
+          onClick={() => navigate("/employee/home")}
+          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          Back to Home
+        </button>
+        <p className="text-red-600">{error}</p>
+      </div>
+    );
   }
 
   const navigateToDeliveryEntryScreen = (orderId: string) => {
@@ -100,9 +111,7 @@ export function OrdersScreen() {
                     ₹{order.final_price}
                   </p>
                 </div>
-                <div 
-                  className="text-blue-600 group-hover:translate-x-1 transition-transform" 
-                  onClick={() => navigateToDeliveryEntryScreen(order.id)}>
+                <div className="text-blue-600 group-hover:translate-x-1 transition-transform">
                   Select Order →
                 </div>
               </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Info } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 import { useAdminNavigation } from '../hooks/useAdminNavigation';
@@ -12,6 +12,8 @@ import { Popup } from '../../components/Popup';
 export function ProductionStatisticsScreen() {
   const { goBack } = useAdminNavigation();
   const [showErrorPopup, setShowErrorPopup] = useState(false);
+  const [showEntryModal, setShowEntryModal] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState<any | null>(null);
 
   const { entries: productionEntries, loading, refetch, error } = useProductionEntries();
   // Hook currently returns `entries` and `refetch`. Normalize to the
@@ -28,6 +30,7 @@ export function ProductionStatisticsScreen() {
     crusherPowderKg: e.crusher_powder_kg ?? e.crusherPowderKg ?? 0,
     flyAshKg: e.fly_ash_kg ?? e.flyAshKg ?? 0,
     cementBags: e.cement_bags ?? e.cementBags ?? 0,
+    notes: e.notes ?? null,
   }));
   // Show error popup when API fails
   useEffect(() => {
@@ -242,6 +245,8 @@ export function ProductionStatisticsScreen() {
                     <th className="px-4 py-3 text-left text-gray-700">Crusher Powder (Tons)</th>
                     <th className="px-4 py-3 text-left text-gray-700">Fly Ash (Tons)</th>
                     <th className="px-4 py-3 text-left text-gray-700">Cement (Bags)</th>
+                    <th className="px-4 py-3 text-left text-gray-700">Notes</th>
+                    <th className="px-4 py-3 text-center text-gray-700">Details</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -265,6 +270,21 @@ export function ProductionStatisticsScreen() {
                       <td className="px-4 py-4 text-gray-900">
                         {formatCementBags(entry.cementBags).toFixed(0)}
                       </td>
+                      <td className="px-4 py-4 text-gray-500 max-w-37.5">
+                        {entry.notes
+                          ? entry.notes.length > 25
+                            ? entry.notes.slice(0, 25) + '...'
+                            : entry.notes
+                          : '—'}
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        <button
+                          onClick={() => { setSelectedEntry(entry); setShowEntryModal(true); }}
+                          className="text-blue-500 hover:text-blue-700"
+                        >
+                          <Info size={16} />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -285,6 +305,59 @@ export function ProductionStatisticsScreen() {
           </div>
         </div>
       </div>
+
+      {/* Entry Details Modal */}
+      {showEntryModal && selectedEntry && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Production Entry</h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Date</span>
+                <span className="text-gray-900 font-medium">{formatDate(selectedEntry.date)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Bricks</span>
+                <span className="text-gray-900 font-medium">{selectedEntry.bricks.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Round</span>
+                <span className="text-gray-900 font-medium">{selectedEntry.round}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Wet Ash</span>
+                <span className="text-gray-900 font-medium">{convertToTons(selectedEntry.round, selectedEntry.wetAshKg).toFixed(2)} Tons</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Marble Powder</span>
+                <span className="text-gray-900 font-medium">{convertToTons(selectedEntry.round, selectedEntry.marblePowderKg).toFixed(2)} Tons</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Crusher Powder</span>
+                <span className="text-gray-900 font-medium">{convertToTons(selectedEntry.round, selectedEntry.crusherPowderKg).toFixed(2)} Tons</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Fly Ash</span>
+                <span className="text-gray-900 font-medium">{convertToTons(selectedEntry.round, selectedEntry.flyAshKg).toFixed(2)} Tons</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Cement</span>
+                <span className="text-gray-900 font-medium">{formatCementBags(selectedEntry.cementBags).toFixed(0)} Bags</span>
+              </div>
+              <div className="pt-2 border-t border-gray-100">
+                <p className="text-gray-500 mb-1">Notes</p>
+                <p className="text-gray-900 whitespace-pre-wrap">{selectedEntry.notes || '—'}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowEntryModal(false)}
+              className="mt-5 w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Error Popup */}
       {showErrorPopup && (

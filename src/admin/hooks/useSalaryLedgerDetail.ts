@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
 import { useAdminNavigation } from './useAdminNavigation';
 import { getEmployeeLedger } from '../../services/middleware.service';
 import { EmployeeSummary, SalaryLedgerTransaction } from '../../services/types';
@@ -9,6 +9,7 @@ const PAGE_SIZE = 20;
 export function useSalaryLedgerDetail() {
   const { id: employeeId } = useParams<{ id: string }>();
   const { goBack, goTo } = useAdminNavigation();
+  const location = useLocation();
 
   // Employee & transaction state
   const [employee, setEmployee] = useState<EmployeeSummary | null>(null);
@@ -73,12 +74,20 @@ export function useSalaryLedgerDetail() {
     }
   }, []);
 
-  // Initial fetch on mount
+  // Initial fetch on mount or when navigating back to this screen
   useEffect(() => {
     if (employeeId) {
+      // Reset filters and page state for a clean fetch
+      setPage(0);
+      setStagedSortOrder('newest');
+      setStagedFromDate('');
+      setStagedToDate('');
+      setAppliedSortOrder('newest');
+      setAppliedFromDate('');
+      setAppliedToDate('');
       fetchLedger(employeeId, 0, 'newest', '', '', false);
     }
-  }, [employeeId]);
+  }, [employeeId, location.key]);
 
   // Make end date inclusive by adding one day
   const getInclusiveToDate = (toDate: string): string => {

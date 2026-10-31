@@ -26,7 +26,9 @@ export function AdminLoginScreen() {
       try {
         const profile = await getUserProfile(user.id);
 
-        if (profile.role === "ADMIN") {
+        if (profile.is_super_admin && !profile.organization_id) {
+          navigate("/platform", { replace: true });
+        } else if (profile.role === "ADMIN") {
           navigate("/admin/home", { replace: true });
         } else {
           await logout();
@@ -61,7 +63,10 @@ export function AdminLoginScreen() {
         return;
       }
 
-      navigate("/admin/home", { replace: true });
+      navigate(
+        profile.is_super_admin && !profile.organization_id ? "/platform" : "/admin/home",
+        { replace: true }
+      );
     } catch {
       setError("Incorrect credentials. Please check your email and password.");
     }
@@ -94,26 +99,30 @@ export function AdminLoginScreen() {
 
           <div className="space-y-6">
             <div>
-              <label className="block text-gray-700 mb-2">
+              <label htmlFor="email" className="block text-gray-700 mb-2">
                 Email Address
               </label>
               <input
+                id="email"
                 type="email"
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); setError(""); }}
+                onKeyPress={(e) => { if (e.key === "Enter") handleLogin(); }}
                 placeholder="Enter admin email"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
 
             <div>
-              <label className="block text-gray-700 mb-2">
+              <label htmlFor="password" className="block text-gray-700 mb-2">
                 Password
               </label>
               <input
+                id="password"
                 type="password"
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); setError(""); }}
+                onKeyPress={(e) => { if (e.key === "Enter") handleLogin(); }}
                 placeholder="Enter your password"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               />

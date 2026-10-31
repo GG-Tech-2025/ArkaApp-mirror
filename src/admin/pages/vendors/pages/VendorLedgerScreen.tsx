@@ -2,9 +2,10 @@ import  { useState, useRef } from 'react';
 import { ArrowLeft, Trash2, X, Filter } from 'lucide-react';
 import { Popup } from '../../../../components/Popup';
 import { useVendorLedger } from '../../../hooks/useVendorLedger';
-import { VendorLedgerExport } from './VendorLedgerExport';
+import { VendorLedgerExport, VendorLedgerExportHandle } from './VendorLedgerExport';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { getVendorProcurementsForExport, getVendorPaymentsForExport } from '../../../../services/middleware.service';
 
 export function VendorLedgerScreen() {
   const {
@@ -42,7 +43,7 @@ export function VendorLedgerScreen() {
     goBack,
     goTo,
   } = useVendorLedger();
-  const exportRef = useRef<HTMLDivElement>(null);
+  const exportRef = useRef<VendorLedgerExportHandle | null>(null);
 
   const [showPopup, setShowPopup] = useState(false);
   const [popupMessage, setPopupMessage] = useState('');
@@ -60,6 +61,7 @@ export function VendorLedgerScreen() {
   const [successMessage, setSuccessMessage] = useState('');
   const [exportProcurements, setExportProcurements] = useState<any[]>([]);
   const [exportPayments, setExportPayments] = useState<any[]>([]);
+  const [exporting, setExporting] = useState(false);
 
   // Delete Payment Confirmation states
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -146,7 +148,6 @@ export function VendorLedgerScreen() {
       return;
     }
     
-    // Filter procurements and payments within date range
     const fromDateObj = new Date(exportFromDate);
     const toDateObj = new Date(exportToDate);
 
@@ -154,65 +155,93 @@ export function VendorLedgerScreen() {
       setExportFromDateError('From date cannot be greater than To date.');
       return;
     }
-    
-    const procurementsInRange = procurements.filter(proc => {
-      const procDate = new Date(proc.date);
-      return procDate >= fromDateObj && procDate <= toDateObj;
-    });
-    
-    const paymentsInRange = payments.filter(payment => {
-      const paymentDate = new Date(payment.payment_date);
-      return paymentDate >= fromDateObj && paymentDate <= toDateObj;
-    });
-    
-    // Check if transactions exist
-    if (procurementsInRange.length === 0 && paymentsInRange.length === 0) {
-      setShowExportModal(false);
-      setShowNoTransactionsPopup(true);
-      return;
-    }
 
-    // Store filtered data for the export component
-    setExportProcurements(procurementsInRange);
-    setExportPayments(paymentsInRange);
+    // Fetch fresh data from API for the selected date range
+    setExporting(true);
+    try {
+      const [procurementsInRange, paymentsInRange] = await Promise.all([
+        getVendorProcurementsForExport(vendorId!, exportFromDate, exportToDate),
+        getVendorPaymentsForExport(vendorId!, exportFromDate, exportToDate),
+      ]);
 
-    // Wait for component render
-    setTimeout(async () => {
-      try {
-        const element = exportRef.current;
-        if (!element) return;
-
-        const canvas = await html2canvas(element, {
-          scale: 2,
-          useCORS: true,
-        });
-
-        const imgData = canvas.toDataURL('image/png');
-
-        if (exportFormat === 'Image') {
-          const link = document.createElement('a');
-          link.href = imgData;
-          link.download = `Arka_Vendor_Ledger_${vendor?.name}.png`;
-          link.click();
-        } else {
-          const pdf = new jsPDF('p', 'mm', 'a4');
-          const imgProps = pdf.getImageProperties(imgData);
-          const pdfWidth = pdf.internal.pageSize.getWidth();
-          const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-
-          pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-          pdf.save(`Arka_Vendor_Ledger_${vendor?.name}.pdf`);
-        }
-
+      // Check if transactions exist
+      if (procurementsInRange.length === 0 && paymentsInRange.length === 0) {
+        setExporting(false);
         setShowExportModal(false);
-        setSuccessMessage(`Vendor ledger exported successfully as ${exportFormat}`);
-        setShowSuccessPopup(true);
-      } catch (err) {
-        console.error(err);
-        setShowExportModal(false);
-        setShowExportErrorPopup(true);
+        setShowNoTransactionsPopup(true);
+        return;
       }
-    }, 400);
+
+      // Store fetched data for the export component
+      setExportProcurements(procurementsInRange);
+      setExportPayments(paymentsInRange);
+
+      // Wait for component render
+      setTimeout(async () => {
+        try {
+          const handle = exportRef.current;
+          if (!handle) return;
+
+          if (exportFormat === 'Image') {
+            // A PNG has no page boundary, so the single continuous render is
+            // captured as one image — no row-capping needed here at all.
+            if (!handle.flatRef) return;
+
+            const canvas = await html2canvas(handle.flatRef, {
+              scale: 2,
+              useCORS: true,
+            });
+            const imgData = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.href = imgData;
+            link.download = `Arka_Vendor_Ledger_${vendor?.name}.png`;
+            link.click();
+          } else {
+            // PDF pages have a fixed height, so VendorLedgerExport renders
+            // one self-contained div per page (rows capped per page) —
+            // each page is captured and placed independently, avoiding any
+            // slicing/measuring of a single tall image.
+            const pageElements = handle.pageRefs.filter(
+              (el): el is HTMLDivElement => el !== null,
+            );
+            if (pageElements.length === 0) return;
+
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+
+            for (let i = 0; i < pageElements.length; i++) {
+              const canvas = await html2canvas(pageElements[i], {
+                scale: 2,
+                useCORS: true,
+              });
+              const imgData = canvas.toDataURL('image/png');
+              const imgProps = pdf.getImageProperties(imgData);
+              const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+              if (i > 0) pdf.addPage();
+              pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgHeight);
+            }
+
+            pdf.save(`Arka_Vendor_Ledger_${vendor?.name}.pdf`);
+          }
+
+          setShowExportModal(false);
+          setSuccessMessage(`Vendor ledger exported successfully as ${exportFormat}`);
+          setShowSuccessPopup(true);
+        } catch (err) {
+          console.error(err);
+          setShowExportModal(false);
+          setShowExportErrorPopup(true);
+        } finally {
+          setExporting(false);
+        }
+      }, 400);
+    } catch (err) {
+      console.error('Failed to fetch export data:', err);
+      setExporting(false);
+      setShowExportModal(false);
+      setShowExportErrorPopup(true);
+    }
   };
 
   if (loading) {
@@ -607,9 +636,10 @@ export function VendorLedgerScreen() {
                 </button>
                 <button
                   onClick={handleDownloadExport}
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  disabled={exporting}
+                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Download
+                  {exporting ? 'Exporting...' : 'Download'}
                 </button>
               </div>
             </div>

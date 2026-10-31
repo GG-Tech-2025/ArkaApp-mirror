@@ -1,38 +1,4 @@
 import React, { useState } from 'react';
-import { OrderManagementScreen } from './admin/pages/OrderManagementScreen';
-import { CreateOrderScreen } from './components/admin/CreateOrderScreen';
-import { OrderDetailsScreen } from './components/admin/OrderDetailsScreen';
-import { ProductionStatisticsScreen } from './admin/pages/ProductionStatisticsScreen';
-import { InventoryManagementScreen } from './admin/pages/InventoryManagementScreen';
-import { CustomerManagementScreen } from './admin/pages/CustomerManagementScreen';
-import { CustomerDetailsScreen } from './components/admin/CustomerDetailsScreen';
-import { AccountsManagementScreen } from './admin/pages/AccountsManagementScreen';
-import { CreateExpenseScreen } from './components/admin/CreateExpenseScreen';
-import { CreateExpenseSubtypeScreen } from './admin/pages/accounts/pages/CreateExpenseSubtypeScreen';
-import { EditExpenseScreen } from './admin/pages/accounts/pages/EditExpenseScreen';
-import { MetricsScreen } from './admin/pages/MetricsScreen';
-import { EmployeeManagementScreen } from './admin/pages/EmployeeManagementScreen';
-import { CreateEmployeeScreen } from './components/admin/CreateEmployeeScreen';
-import { EditEmployeeScreen } from './components/admin/EditEmployeeScreen';
-import { CreateRoleScreen } from './admin/pages/employees/pages/CreateRoleScreen';
-import { EditRoleScreen } from './components/admin/EditRoleScreen';
-import { SalaryLedgerScreen } from './admin/pages/SalaryLedgerScreen';
-import { SalaryLedgerDetailScreen } from './components/admin/SalaryLedgerDetailScreen';
-import { AddPaymentScreen } from './components/admin/AddPaymentScreen';
-import { VendorManagementScreen } from './admin/pages/VendorManagementScreen';
-import { CreateVendorScreen } from './components/admin/CreateVendorScreen';
-import { EditVendorScreen } from './components/admin/EditVendorScreen';
-import { VendorLedgerScreen } from './components/admin/VendorLedgerScreen';
-import { CreateProcurementRequestScreen } from './components/admin/CreateProcurementRequestScreen';
-import { ProcurementRequestDetailScreen } from './components/admin/ProcurementRequestDetailScreen';
-import { VendorPaymentScreen } from './components/admin/VendorPaymentScreen';
-import { UnapprovedProcurementsScreen } from './components/admin/UnapprovedProcurementsScreen';
-import { CashFlowScreen } from './admin/pages/CashFlowScreen';
-import { CashLedgerScreen } from './components/admin/CashLedgerScreen';
-import { LoanManagementScreen } from './admin/pages/loans/pages/LoanManagementScreen';
-import { CreateLoanScreen } from './admin/pages/loans/pages/CreateLoanScreen';
-import { LoanLedgerScreen } from './admin/pages/loans/pages/LoanLedgerScreen';
-import { AddLoanTransactionScreen } from './admin/pages/loans/pages/AddLoanTransactionScreen';
 import { AdminRoutes } from './admin/routes';
 
 export type AdminScreen = 
@@ -103,6 +69,7 @@ export interface Customer {
   address: string;
   unpaidAmount: number;
   totalSales: number;
+  totalWrittenOff: number;
   gstNumber?: string;
 }
 
@@ -161,127 +128,10 @@ interface AdminAppProps {
 }
 
 export default function AdminApp({ onBack }: AdminAppProps) {
-  const [currentScreen, setCurrentScreen] = useState<AdminScreen>('login');
-  const [selectedOrder, setSelectedOrder] = useState<AdminOrder | null>(null);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
-  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
-  const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
-  const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
-
-  // Expense types and subtypes state
-  const [expenseTypes, setExpenseTypes] = useState<string[]>([
-    'Procurement',
-    'Salary',
-    'Equipment Service',
-    'Fuel',
-    'Others'
-  ]);
-  
-  const [expenseSubtypes, setExpenseSubtypes] = useState<Record<string, string[]>>({
-    'Procurement': ['Fly Ash', 'Crusher Powder', 'Sand', 'Cement'],
-    'Salary': ['Production Workers', 'Admin Staff', 'Drivers'],
-    'Equipment Service': ['Machine Maintenance', 'Repair', 'Parts Replacement'],
-    'Fuel': ['Diesel', 'Petrol'],
-    'Others': ['Office Supplies', 'Utilities', 'Miscellaneous']
-  });
-
-  const handleLogin = () => {
-    setCurrentScreen('home');
-  };
-
-  const handleLogout = () => {
-    setCurrentScreen('login');
-  };
-
-  const handleNavigate = (screen: AdminScreen) => {
-    setCurrentScreen(screen);
-  };
-
-  const handleOrderSelect = (order: AdminOrder) => {
-    setSelectedOrder(order);
-    setCurrentScreen('order-details');
-  };
-
-  const handleCustomerSelect = (customer: Customer) => {
-    setSelectedCustomer(customer);
-    setCurrentScreen('customer-details');
-  };
-
-  const handleEmployeeEdit = (employee: Employee) => {
-    setSelectedEmployee(employee);
-    setCurrentScreen('edit-employee');
-  };
-
-  const handleRoleEdit = (role: Role) => {
-    setSelectedRole(role);
-    setCurrentScreen('edit-role');
-  };
-
-  const handleVendorEdit = (vendor: Vendor) => {
-    setSelectedVendor(vendor);
-    setCurrentScreen('edit-vendor');
-  };
-
-  const handleExpenseEdit = (expense: Expense) => {
-    setSelectedExpense(expense);
-    setCurrentScreen('edit-expense');
-  };
-
-  const handleTypeCreated = (typeName: string) => {
-    setExpenseTypes([...expenseTypes, typeName]);
-    setExpenseSubtypes({ ...expenseSubtypes, [typeName]: [] });
-  };
-
-  const handleSubtypeCreated = (type: string, subtype: string) => {
-    const currentSubtypes = expenseSubtypes[type] || [];
-    setExpenseSubtypes({
-      ...expenseSubtypes,
-      [type]: [...currentSubtypes, subtype]
-    });
-  };
 
   return (
     <div className="min-h-screen bg-gray-50">
       <AdminRoutes />
-      {/* {currentScreen === 'login' && <AdminLoginScreen onLogin={handleLogin} onBack={onBack} />}
-      {currentScreen === 'home' && <AdminHomeScreen onNavigate={handleNavigate} onLogout={handleLogout} />}
-      {currentScreen === 'orders' && <OrderManagementScreen onNavigate={handleNavigate} onOrderSelect={handleOrderSelect} />}
-      {currentScreen === 'create-order' && <CreateOrderScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'order-details' && selectedOrder && <OrderDetailsScreen order={selectedOrder} onNavigate={handleNavigate} />}
-      {currentScreen === 'production' && <ProductionStatisticsScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'inventory' && <InventoryManagementScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'unapproved-procurements' && <UnapprovedProcurementsScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'customers' && <CustomerManagementScreen onNavigate={handleNavigate} onCustomerSelect={handleCustomerSelect} />}
-      {currentScreen === 'customer-details' && selectedCustomer && <CustomerDetailsScreen customer={selectedCustomer} onNavigate={handleNavigate} onOrderSelect={handleOrderSelect} />}
-      {currentScreen === 'accounts' && <AccountsManagementScreen onNavigate={handleNavigate} onExpenseEdit={handleExpenseEdit} onOrderSelect={handleOrderSelect} />}
-      {currentScreen === 'create-expense' && <CreateExpenseScreen onNavigate={handleNavigate} expenseTypes={expenseTypes} expenseSubtypes={expenseSubtypes} onTypeCreated={handleTypeCreated} onSubtypeCreated={handleSubtypeCreated} />}
-      {currentScreen === 'create-expense-subtype' && <CreateExpenseSubtypeScreen onNavigate={handleNavigate} expenseTypes={expenseTypes} expenseSubtypes={expenseSubtypes} onTypeCreated={handleTypeCreated} onSubtypeCreated={handleSubtypeCreated} />}
-      {currentScreen === 'edit-expense' && selectedExpense && <EditExpenseScreen expense={selectedExpense} onNavigate={handleNavigate} expenseTypes={expenseTypes} expenseSubtypes={expenseSubtypes} onTypeCreated={handleTypeCreated} onSubtypeCreated={handleSubtypeCreated} />}
-      {currentScreen === 'metrics' && <MetricsScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'employees' && <EmployeeManagementScreen onNavigate={handleNavigate} onEmployeeEdit={handleEmployeeEdit} />}
-      {currentScreen === 'create-employee' && <CreateEmployeeScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'edit-employee' && selectedEmployee && <EditEmployeeScreen employee={selectedEmployee} onNavigate={handleNavigate} />}
-      {currentScreen === 'attendance' && <EmployeeAttendanceScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'role-setup' && <RoleSalarySetupScreen onNavigate={handleNavigate} onRoleEdit={handleRoleEdit} />}
-      {currentScreen === 'create-role' && <CreateRoleScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'edit-role' && selectedRole && <EditRoleScreen role={selectedRole} onNavigate={handleNavigate} />}
-      {currentScreen === 'salary-ledger' && <SalaryLedgerScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'salary-ledger-detail' && <SalaryLedgerDetailScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'add-payment' && <AddPaymentScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'vendors' && <VendorManagementScreen onNavigate={handleNavigate} onVendorEdit={handleVendorEdit} />}
-      {currentScreen === 'create-vendor' && <CreateVendorScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'edit-vendor' && selectedVendor && <EditVendorScreen vendor={selectedVendor} onNavigate={handleNavigate} />}
-      {currentScreen === 'vendor-ledger' && <VendorLedgerScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'create-procurement-request' && <CreateProcurementRequestScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'procurement-request-detail' && <ProcurementRequestDetailScreen onNavigate={handleNavigate} requestId="PR-001" />}
-      {currentScreen === 'vendor-payment' && <VendorPaymentScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'cash-flow' && <CashFlowScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'cash-ledger' && <CashLedgerScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'loan-management' && <LoanManagementScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'create-loan' && <CreateLoanScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'loan-ledger' && <LoanLedgerScreen onNavigate={handleNavigate} />}
-      {currentScreen === 'add-loan-transaction' && <AddLoanTransactionScreen onNavigate={handleNavigate} />} */}
     </div>
   );
 }

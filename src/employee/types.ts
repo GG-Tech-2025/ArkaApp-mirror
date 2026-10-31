@@ -9,13 +9,16 @@ export interface Order {
 
 export type PaymentStatus = "FULLY_PAID" | "PARTIALLY_PAID" | "NOT_PAID";
 
+export type LoadingType = "LOADING_UNLOADING" | "LOADING_ONLY" | "CUSTOMER_SELF";
 export interface DeliveryInput {
   time: string;
   quantity: number;
+  location: string;
   paymentStatus: PaymentStatus;
   paidAmount?: number;
   gstNumber?: string;
   deliveryChallanNumber: string;
+  loadingType: LoadingType;
   loadMen: string[];
 }
 
@@ -57,5 +60,6 @@ export interface ProductionInput {
   crusherPowder: number;
   flyAsh: number;
   cement: number;
+  notes?: string;
 }
 

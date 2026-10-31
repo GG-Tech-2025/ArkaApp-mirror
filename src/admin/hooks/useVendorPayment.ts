@@ -7,7 +7,6 @@ import {
   getAccountsForPayments,
   getVendorPayments,
   createVendorPayment,
-  CASH_ACCOUNT_ID,
 } from '../../services/middleware.service';
 
 type PaymentMode = 'UPI' | 'Bank Transfer' | 'Cheque' | 'Cash';
@@ -39,7 +38,7 @@ export function useVendorPayment() {
     total_paid: number;
     outstanding_balance: number;
   } | null>(null);
-  const [accounts, setAccounts] = useState<{ id: string; account_number: string }[]>([]);
+  const [accounts, setAccounts] = useState<{ id: string; account_number: string; is_cash: boolean }[]>([]);
   const [lastTransactionDate, setLastTransactionDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -65,22 +64,46 @@ export function useVendorPayment() {
     const load = async () => {
       try {
         setLoading(true);
-        const [v, fin, accs, paymentsResult] = await Promise.all([
-          getVendorByIdWithMaterials(vendorId),
-          getVendorFinancials(vendorId),
-          getAccountsForPayments(),
-          getVendorPayments(vendorId, 1),
-        ]);
-        setVendor(v);
-        setFinancials({
-          total_purchase: Number(fin.total_purchase ?? 0),
-          total_paid: Number(fin.total_paid ?? 0),
-          outstanding_balance: Number(fin.outstanding_balance ?? 0),
-        });
-        setAccounts(accs);
-        // First entry is the most recent payment (ordered by payment_date desc)
-        if (paymentsResult.data.length > 0) {
-          setLastTransactionDate(paymentsResult.data[0].payment_date);
+
+        // Fetch each resource independently so one failure doesn't block others
+        const [vendorResult, financialsResult, accountsResult, paymentsResult] =
+          await Promise.allSettled([
+            getVendorByIdWithMaterials(vendorId),
+            getVendorFinancials(vendorId),
+            getAccountsForPayments(),
+            getVendorPayments(vendorId, 1),
+          ]);
+
+        // Vendor (critical)
+        if (vendorResult.status === 'fulfilled') {
+          setVendor(vendorResult.value);
+        } else {
+          console.error('Failed to load vendor:', vendorResult.reason);
+        }
+
+        // Financials (may not exist for new vendors)
+        if (financialsResult.status === 'fulfilled') {
+          const fin = financialsResult.value;
+          setFinancials({
+            total_purchase: Number(fin.total_purchase ?? 0),
+            total_paid: Number(fin.total_paid ?? 0),
+            outstanding_balance: Number(fin.outstanding_balance ?? 0),
+          });
+        } else {
+          console.error('Failed to load financials:', financialsResult.reason);
+          setFinancials({ total_purchase: 0, total_paid: 0, outstanding_balance: 0 });
+        }
+
+        // Accounts
+        if (accountsResult.status === 'fulfilled') {
+          setAccounts(accountsResult.value);
+        } else {
+          console.error('Failed to load accounts:', accountsResult.reason);
+        }
+
+        // Payments (last transaction date)
+        if (paymentsResult.status === 'fulfilled' && paymentsResult.value.data.length > 0) {
+          setLastTransactionDate(paymentsResult.value.data[0].payment_date);
         }
       } catch (err) {
         console.error('Failed to load vendor payment data:', err);
@@ -138,15 +161,22 @@ export function useVendorPayment() {
   const handleSubmit = async () => {
     if (!validate() || !vendorId) return;
 
+    if (formData.modeOfPayment === 'Cash' && !cashAccount) {
+      setPopupType('error');
+      setPopupMessage('This branch has no cash account set up. Please contact your administrator.');
+      setShowPopup(true);
+      return;
+    }
+
     try {
       setSubmitting(true);
 
       const dbMode = mapModeToDb(formData.modeOfPayment);
 
-      // For Cash mode, use the CASH_ACCOUNT_ID
+      // For Cash mode, pay from the branch's cash account
       const senderAccountId =
         formData.modeOfPayment === 'Cash'
-          ? CASH_ACCOUNT_ID
+          ? cashAccount!.id
           : formData.senderAccountId;
 
       await createVendorPayment({
@@ -180,8 +210,8 @@ export function useVendorPayment() {
   };
 
   // ─── Derived account lists ───
-  const cashAccount = accounts.find(a => a.id === CASH_ACCOUNT_ID) ?? null;
-  const nonCashAccounts = accounts.filter(a => a.id !== CASH_ACCOUNT_ID);
+  const cashAccount = accounts.find(a => a.is_cash) ?? null;
+  const nonCashAccounts = accounts.filter(a => !a.is_cash);
 
   // ─── Field updater ───
   const updateField = (field: string, value: string) => {
@@ -191,7 +221,7 @@ export function useVendorPayment() {
       // When mode changes, reset account fields appropriately
       if (field === 'modeOfPayment') {
         if (value === 'Cash') {
-          updated.senderAccountId = CASH_ACCOUNT_ID;
+          updated.senderAccountId = cashAccount?.id ?? '';
           updated.receiverAccountInfo = '';
         } else {
           updated.senderAccountId = '';

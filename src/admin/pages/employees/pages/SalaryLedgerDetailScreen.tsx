@@ -139,8 +139,9 @@ export function SalaryLedgerDetailScreen() {
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
-              <label className="block text-gray-700 text-sm mb-2">Sort Order</label>
+              <label htmlFor="ledgerSortOrder" className="block text-gray-700 text-sm mb-2">Sort Order</label>
               <select
+                id="ledgerSortOrder"
                 value={stagedSortOrder}
                 onChange={(e) => setStagedSortOrder(e.target.value as 'newest' | 'oldest')}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -150,8 +151,9 @@ export function SalaryLedgerDetailScreen() {
               </select>
             </div>
             <div className="flex-1">
-              <label className="block text-gray-700 text-sm mb-2">From Date</label>
+              <label htmlFor="ledgerFromDate" className="block text-gray-700 text-sm mb-2">From Date</label>
               <input
+                id="ledgerFromDate"
                 type="date"
                 value={stagedFromDate}
                 onChange={(e) => setStagedFromDate(e.target.value)}
@@ -159,8 +161,9 @@ export function SalaryLedgerDetailScreen() {
               />
             </div>
             <div className="flex-1">
-              <label className="block text-gray-700 text-sm mb-2">To Date</label>
+              <label htmlFor="ledgerToDate" className="block text-gray-700 text-sm mb-2">To Date</label>
               <input
+                id="ledgerToDate"
                 type="date"
                 value={stagedToDate}
                 onChange={(e) => setStagedToDate(e.target.value)}
@@ -218,7 +221,7 @@ export function SalaryLedgerDetailScreen() {
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                       {transactions.map((entry) => {
-                        const { date, time } = formatDateTime(entry.created_at);
+                        const { date, time } = formatDateTime(entry.payment_at);
                         return (
                           <tr key={entry.id} className="hover:bg-gray-50">
                             <td className="px-4 py-4 text-gray-900">{date}, {time}</td>
@@ -253,7 +256,7 @@ export function SalaryLedgerDetailScreen() {
                 {/* Mobile View */}
                 <div className="lg:hidden space-y-4">
                   {transactions.map((entry) => {
-                    const { date, time } = formatDateTime(entry.created_at);
+                    const { date, time } = formatDateTime(entry.payment_at);
                     return (
                       <div key={entry.id} className="border border-gray-200 rounded-lg p-4">
                         <div className="flex justify-between items-start mb-3">
@@ -333,7 +336,7 @@ export function SalaryLedgerDetailScreen() {
                 </div>
                 <div>
                   <p className="text-gray-600 text-sm">Created At</p>
-                  <p className="text-gray-900">{formatDateTime(selectedEntry.created_at).date}, {formatDateTime(selectedEntry.created_at).time}</p>
+                  <p className="text-gray-900">{formatDateTime(selectedEntry.payment_at).date}, {formatDateTime(selectedEntry.payment_at).time}</p>
                 </div>
                 <div>
                   <p className="text-gray-600 text-sm">Mode of Payment</p>

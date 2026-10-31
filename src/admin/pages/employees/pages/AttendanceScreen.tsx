@@ -1,5 +1,6 @@
 import React from 'react';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, LayoutGrid } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Popup } from '../../../../components/Popup';
 import { useAttendance } from '../../../hooks/useAttendance';
 import type { EmployeeCategory } from '../../../../services/types';
@@ -64,6 +65,7 @@ export function AttendanceScreen() {
     pendingBulkAction,
     errorMessage,
     isPastDate,
+    isRestrictedPastDate,
     isEditable,
     isAlreadySaved,
     handleDateChange,
@@ -77,6 +79,7 @@ export function AttendanceScreen() {
     goBack,
   } = useAttendance();
 
+  const navigate = useNavigate();
   const today = new Date().toISOString().split('T')[0];
 
   return (
@@ -91,16 +94,28 @@ export function AttendanceScreen() {
             <ArrowLeft className="w-5 h-5" />
             Back to Employee Management
           </button>
-          <h1 className="text-gray-900">Employee Attendance</h1>
-          <p className="text-gray-600 mt-1">Mark daily attendance for employees</p>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-gray-900">Employee Attendance</h1>
+              <p className="text-gray-600 mt-1">Mark daily attendance for employees</p>
+            </div>
+            <button
+              onClick={() => navigate('/admin/employees/attendance/view')}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm whitespace-nowrap"
+            >
+              <LayoutGrid className="w-4 h-4" />
+              View Attendance
+            </button>
+          </div>
         </div>
 
         {/* Date Selector and Bulk Actions */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <div className="flex flex-col gap-4">
             <div>
-              <label className="block text-gray-700 mb-2">Select Date</label>
+              <label htmlFor="attendanceDate" className="block text-gray-700 mb-2">Select Date</label>
               <input
+                id="attendanceDate"
                 type="date"
                 value={selectedDate}
                 onChange={(e) => handleDateChange(e.target.value)}
@@ -113,7 +128,9 @@ export function AttendanceScreen() {
             {isPastDate && (
               <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3">
                 <p className="text-yellow-800 text-sm">
-                  Attendance for past dates is view-only and cannot be updated.
+                  {isAlreadySaved
+                   ? 'Attendance for this past date has already been recorded and cannot be modified.'
+                   : isRestrictedPastDate ? 'You cannot modify attendance for dates more than 3 days in the past.' : 'You are marking attendance for a past date.' }
                 </p>
               </div>
             )}
