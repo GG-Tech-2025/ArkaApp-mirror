@@ -82,6 +82,8 @@ export function OrderManagementScreen() {
     fetchOrders(nextPage, false);
   };
 
+  const [deliveryTodayConfirmOrderId, setDeliveryTodayConfirmOrderId] = useState<string | null>(null);
+
   const handleToggleDeliveryToday = async (orderId: string) => {
     try {
       setLoading(true);
@@ -98,6 +100,7 @@ export function OrderManagementScreen() {
       console.error("Failed to update delivery date:", err);
       setError(err instanceof Error ? err.message : "Failed to update order");
     } finally {
+      setDeliveryTodayConfirmOrderId(null);
       setLoading(false);
     }
   };
@@ -299,6 +302,7 @@ export function OrderManagementScreen() {
                                 <input
                                   type="checkbox"
                                   checked={isDeliveryToday}
+                                  aria-label={`Delivery today for order ${order.id}`}
                                   onClick={(e) => e.stopPropagation()}
                                   onChange={(e) => {
                                     e.stopPropagation();
@@ -306,7 +310,7 @@ export function OrderManagementScreen() {
                                       // If delivery date is already today, navigate to edit screen
                                       goTo(`${order.id}`);
                                     } else {
-                                      handleToggleDeliveryToday(order.id);
+                                      setDeliveryTodayConfirmOrderId(order.id);
                                     }
                                   }}
                                   className="sr-only peer"
@@ -469,6 +473,37 @@ export function OrderManagementScreen() {
           </div>
         </div>
       </div>
+
+      {/* Delivery Today Confirmation Popup */}
+      {deliveryTodayConfirmOrderId && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delivery-today-title"
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+        >
+          <div className="bg-white rounded-lg shadow-xl p-6 mx-4 max-w-sm w-full">
+            <h3 id="delivery-today-title" className="text-lg font-semibold text-gray-900 mb-2">Deliver Today</h3>
+            <p className="text-gray-600 mb-6">Are you sure you want to move the delivery of order <span className="font-medium">{deliveryTodayConfirmOrderId}</span> to today?</p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setDeliveryTodayConfirmOrderId(null)}
+                disabled={loading}
+                className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
+              >
+                No
+              </button>
+              <button
+                onClick={() => handleToggleDeliveryToday(deliveryTodayConfirmOrderId)}
+                disabled={loading}
+                className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {loading ? "Updating..." : "Yes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Popup */}
       {deleteConfirmOrderId && (
