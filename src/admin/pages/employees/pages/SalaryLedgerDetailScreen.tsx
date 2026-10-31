@@ -325,10 +325,10 @@ export function SalaryLedgerDetailScreen() {
 
       {/* Audit Modal */}
       {showAuditModal && selectedEntry && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-8">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8">
             <div className="flex flex-col">
-              <h2 className="text-gray-900 mb-4">Audit Details</h2>
+              <h2 className="text-gray-900 mb-4 text-2xl font-semibold">Audit Details</h2>
               <div className="space-y-3">
                 <div>
                   <p className="text-gray-600 text-sm">Transaction ID</p>
@@ -359,7 +359,7 @@ export function SalaryLedgerDetailScreen() {
               </div>
               <button
                 onClick={() => setShowAuditModal(false)}
-                className="w-full mt-6 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                className="w-full mt-6 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors text-lg"
               >
                 Close
               </button>

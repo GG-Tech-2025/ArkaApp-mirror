@@ -19,13 +19,14 @@ const mocked = vi.mocked(middleware);
 // The screen compares delivery dates with today's UTC date.
 const TODAY = '2026-10-15';
 
-const order = (id: string, deliveryDate: string, customer: string) => ({
+const order = (id: string, deliveryDate: string, customer: string, location = '12 MG Road, Coimbatore') => ({
   id,
   customer_id: `cust-${id}`,
   order_date: '2026-10-01',
   delivery_date: deliveryDate,
   brick_quantity: 5000,
   final_price: 40000,
+  location,
   payment_status: 'NOT_PAID',
   dc_number: null,
   delivered: false,
@@ -33,7 +34,7 @@ const order = (id: string, deliveryDate: string, customer: string) => ({
 });
 
 const LATER = order('ord-1001', '2026-10-20', 'Rajesh Kumar');
-const TODAYS = order('ord-1002', TODAY, 'Priya Sharma');
+const TODAYS = order('ord-1002', TODAY, 'Priya Sharma', '45 Brigade Road, Erode');
 
 const page = (data: unknown[]) => ({ data, total: data.length, hasMore: false });
 
@@ -94,10 +95,40 @@ describe('OrderManagementScreen', () => {
       await user.click(toggleFor('ord-1001'));
 
       const dialog = screen.getByRole('dialog', { name: 'Deliver Today' });
-      expect(within(dialog).getByText(/Are you sure you want to move the delivery of order/)).toHaveTextContent('ord-1001');
+      expect(within(dialog).getByText('Are you sure you want to move the delivery of this order to today?')).toBeInTheDocument();
+      expect(within(dialog).getByText('Order ID').nextSibling).toHaveTextContent('ord-1001');
       expect(within(dialog).getByRole('button', { name: 'Yes' })).toBeEnabled();
       expect(within(dialog).getByRole('button', { name: 'No' })).toBeEnabled();
       expect(mocked.updateOrderWithLoadmen).not.toHaveBeenCalled();
+    });
+
+    it('shows who the order is for, where it goes and how many bricks, so it can be checked', async () => {
+      const user = await openUndelivered();
+
+      await user.click(toggleFor('ord-1001'));
+
+      const dialog = screen.getByRole('dialog', { name: 'Deliver Today' });
+      expect(within(dialog).getByText('Customer').nextSibling).toHaveTextContent('Rajesh Kumar');
+      expect(within(dialog).getByText('Phone').nextSibling).toHaveTextContent('9876543210');
+      expect(within(dialog).getByText('Address').nextSibling).toHaveTextContent('12 MG Road, Coimbatore');
+      expect(within(dialog).getByText('Brick quantity').nextSibling).toHaveTextContent('5,000');
+    });
+
+    it('shows a dash for a customer or address the order does not have', async () => {
+      mocked.getUndeliveredOrders.mockResolvedValue(
+        page([{ ...LATER, customers: undefined, location: '' }]) as never,
+      );
+      const user = userEvent.setup();
+      renderScreen();
+      await user.click(screen.getByRole('button', { name: 'Undelivered' }));
+      await waitFor(() => expect(toggleFor('ord-1001')).toBeInTheDocument());
+
+      await user.click(toggleFor('ord-1001'));
+
+      const dialog = screen.getByRole('dialog', { name: 'Deliver Today' });
+      expect(within(dialog).getByText('Customer').nextSibling).toHaveTextContent('-');
+      expect(within(dialog).getByText('Phone').nextSibling).toHaveTextContent('-');
+      expect(within(dialog).getByText('Address').nextSibling).toHaveTextContent('-');
     });
 
     it('moves the delivery to today and refreshes the list when confirmed', async () => {

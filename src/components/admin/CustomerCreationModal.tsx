@@ -66,17 +66,17 @@ export function CustomerCreationModal({ onClose, onCustomerCreated }: CustomerCr
 
   if (showSuccess) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-8">
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8">
           <div className="flex flex-col items-center text-center">
             <CheckCircle className="w-16 h-16 text-green-600 mb-4" />
-            <h2 className="text-gray-900 mb-3">Customer Created Successfully</h2>
-            <p className="text-gray-600 mb-6">
+            <h2 className="text-gray-900 mb-3 text-2xl font-semibold">Customer Created Successfully</h2>
+            <p className="text-gray-600 mb-6 text-lg">
               The customer has been added to the system.
             </p>
             <button
               onClick={onClose}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors"
+              className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors text-lg"
             >
               OK
             </button>
@@ -87,11 +87,11 @@ export function CustomerCreationModal({ onClose, onCustomerCreated }: CustomerCr
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-gray-900">Customer Creation</h2>
+          <h2 className="text-gray-900 text-2xl font-semibold">Customer Creation</h2>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -198,7 +198,7 @@ export function CustomerCreationModal({ onClose, onCustomerCreated }: CustomerCr
           <button
             onClick={handleCreate}
             disabled={loading}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+            className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-lg"
           >
             {loading ? 'Creating...' : 'Create'}
           </button>

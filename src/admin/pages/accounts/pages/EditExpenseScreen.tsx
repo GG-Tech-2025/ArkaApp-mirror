@@ -421,24 +421,24 @@ export function EditExpenseScreen() {
 
       {/* Delete Confirmation Popup */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-8">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8">
             <div className="flex flex-col items-center text-center">
               <Trash2 className="w-16 h-16 text-red-600 mb-4" />
-              <h2 className="text-gray-900 mb-3">Delete Expense?</h2>
-              <p className="text-gray-600 mb-6">
+              <h2 className="text-gray-900 mb-3 text-2xl font-semibold">Delete Expense?</h2>
+              <p className="text-gray-600 mb-6 text-lg">
                 Are you sure you want to delete this expense? This action cannot be undone.
               </p>
               <div className="flex gap-4 w-full">
                 <button
                   onClick={handleDelete}
-                  className="flex-1 bg-red-600 text-white py-3 rounded-lg hover:bg-red-700 transition-colors"
+                  className="flex-1 bg-red-600 text-white py-3 rounded-lg hover:bg-red-700 transition-colors text-lg"
                 >
                   Delete
                 </button>
                 <button
                   onClick={() => setShowDeleteConfirm(false)}
-                  className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg hover:bg-gray-300 transition-colors"
+                  className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg hover:bg-gray-300 transition-colors text-lg"
                 >
                   Cancel
                 </button>

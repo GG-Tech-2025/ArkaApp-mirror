@@ -1656,8 +1656,8 @@ export function CustomerDetailsScreen() {
 
       {/* Payment Modal */}
       {showPaymentModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8 relative">
             {/* Close Icon */}
             <button
               onClick={handleCancelPaymentModal}
@@ -1667,7 +1667,7 @@ export function CustomerDetailsScreen() {
               <X className="w-5 h-5" />
             </button>
 
-            <h2 className="text-gray-900 mb-6">
+            <h2 className="text-gray-900 mb-6 text-2xl font-semibold">
               {editingPayment ? "Edit Payment" : "Add Payment"}
             </h2>
 
@@ -1811,7 +1811,7 @@ export function CustomerDetailsScreen() {
               <div className="flex gap-3 pt-4 justify-end">
                 <button
                   onClick={handleCancelPaymentModal}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="px-8 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-lg"
                 >
                   Cancel
                 </button>
@@ -1845,8 +1845,8 @@ export function CustomerDetailsScreen() {
 
       {/* Edit Customer Modal */}
       {showEditCustomerModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8 relative">
             {/* Close Icon */}
             <button
               onClick={handleCloseEditCustomer}
@@ -1856,7 +1856,7 @@ export function CustomerDetailsScreen() {
               <X className="w-5 h-5" />
             </button>
 
-            <h2 className="text-gray-900 mb-6">Edit Customer Details</h2>
+            <h2 className="text-gray-900 mb-6 text-2xl font-semibold">Edit Customer Details</h2>
 
             <div className="space-y-4">
               {/* Name */}
@@ -1955,7 +1955,7 @@ export function CustomerDetailsScreen() {
               <div className="flex gap-3 pt-4 justify-end">
                 <button
                   onClick={handleCloseEditCustomer}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="px-8 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-lg"
                 >
                   Cancel
                 </button>
@@ -1987,8 +1987,8 @@ export function CustomerDetailsScreen() {
 
       {/* Delete Payment Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8 relative">
             <button
               onClick={() => {
                 setShowDeleteConfirm(false);
@@ -2000,8 +2000,8 @@ export function CustomerDetailsScreen() {
               <X className="w-5 h-5" />
             </button>
 
-            <h2 className="text-gray-900 mb-4">Delete Payment</h2>
-            <p className="text-gray-600 mb-6">
+            <h2 className="text-gray-900 mb-4 text-2xl font-semibold">Delete Payment</h2>
+            <p className="text-gray-600 mb-6 text-lg">
               Are you sure you want to delete this payment? This will reverse the
               settlement on associated orders and deduct the amount from the
               receiving account. This action cannot be undone.
@@ -2014,7 +2014,7 @@ export function CustomerDetailsScreen() {
                   setDeletingPaymentId(null);
                 }}
                 disabled={deletingPayment}
-                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                className="px-8 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-lg"
               >
                 Cancel
               </button>
@@ -2036,8 +2036,8 @@ export function CustomerDetailsScreen() {
 
       {/* Write Off Modal */}
       {showWriteOffModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8 relative">
             <button
               onClick={handleCancelWriteOffModal}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
@@ -2046,7 +2046,7 @@ export function CustomerDetailsScreen() {
               <X className="w-5 h-5" />
             </button>
 
-            <h2 className="text-gray-900 mb-2">Write Off Amount</h2>
+            <h2 className="text-gray-900 mb-2 text-2xl font-semibold">Write Off Amount</h2>
             <p className="text-gray-500 text-sm mb-6">
               Reduces outstanding amount without recording a real payment. Applied
               to the oldest outstanding delivered orders first.
@@ -2110,7 +2110,7 @@ export function CustomerDetailsScreen() {
               <div className="flex gap-3 pt-4 justify-end">
                 <button
                   onClick={handleCancelWriteOffModal}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="px-8 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-lg"
                 >
                   Cancel
                 </button>
@@ -2138,8 +2138,8 @@ export function CustomerDetailsScreen() {
 
       {/* Delete Write-off Confirmation Modal */}
       {showDeleteWriteOffConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8 relative">
             <button
               onClick={() => {
                 setShowDeleteWriteOffConfirm(false);
@@ -2151,8 +2151,8 @@ export function CustomerDetailsScreen() {
               <X className="w-5 h-5" />
             </button>
 
-            <h2 className="text-gray-900 mb-4">Delete Write-off</h2>
-            <p className="text-gray-600 mb-6">
+            <h2 className="text-gray-900 mb-4 text-2xl font-semibold">Delete Write-off</h2>
+            <p className="text-gray-600 mb-6 text-lg">
               Are you sure you want to delete this write-off? This will restore
               the outstanding amount on the associated orders. This action cannot
               be undone.
@@ -2165,7 +2165,7 @@ export function CustomerDetailsScreen() {
                   setDeletingWriteOffId(null);
                 }}
                 disabled={deletingWriteOff}
-                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                className="px-8 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-lg"
               >
                 Cancel
               </button>
@@ -2187,8 +2187,8 @@ export function CustomerDetailsScreen() {
 
       {/* Export Modal */}
       {showExportModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8 relative">
             {/* Close Icon */}
             <button
               onClick={handleCloseExportModal}
@@ -2198,7 +2198,7 @@ export function CustomerDetailsScreen() {
               <X className="w-5 h-5" />
             </button>
 
-            <h2 className="text-gray-900 mb-2">Export Customer Ledger</h2>
+            <h2 className="text-gray-900 mb-2 text-2xl font-semibold">Export Customer Ledger</h2>
             <p className="text-gray-500 text-sm mb-6">Orders are filtered by their delivered date</p>
 
             <div className="space-y-4">
@@ -2266,7 +2266,7 @@ export function CustomerDetailsScreen() {
               <div className="flex gap-3 pt-4 justify-end">
                 <button
                   onClick={handleCloseExportModal}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="px-8 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-lg"
                 >
                   Cancel
                 </button>

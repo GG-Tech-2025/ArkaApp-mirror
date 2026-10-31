@@ -880,9 +880,9 @@ export function InventoryManagementScreen() {
 
       {/* Custom Range Modal */}
       {showCustomRangeModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-            <h2 className="text-gray-900 mb-4">Custom Date Range</h2>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8">
+            <h2 className="text-gray-900 mb-4 text-2xl font-semibold">Custom Date Range</h2>
             
             <div className="space-y-4">
               {/* Start Date */}
@@ -919,7 +919,7 @@ export function InventoryManagementScreen() {
               <div className="flex gap-3 pt-4">
                 <button
                   onClick={handleCancelCustomRange}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-lg"
                 >
                   Cancel
                 </button>
@@ -942,9 +942,9 @@ export function InventoryManagementScreen() {
 
       {/* Make Adjustments Modal */}
       {showAdjustmentModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 my-8">
-            <h2 className="text-gray-900 mb-4">Make Adjustments</h2>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-8 my-8">
+            <h2 className="text-gray-900 mb-4 text-2xl font-semibold">Make Adjustments</h2>
             
             <div className="space-y-4">
               {/* Bricks Ready */}
@@ -1051,14 +1051,14 @@ export function InventoryManagementScreen() {
                 <button
                   onClick={handleCancelAdjustment}
                   disabled={adjLoading}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-8 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-lg"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSubmitAdjustment}
                   disabled={adjLoading}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed disabled:opacity-75 flex items-center gap-2"
+                  className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed disabled:opacity-75 flex items-center gap-2 text-lg"
                 >
                   {adjLoading && (
                     <svg className="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
