@@ -20,6 +20,12 @@ type Identity = typeof TEST_USER;
 const ORGANIZATION_ID = '1048da2b-af68-4174-b187-828e6ef156ac';
 const BRANCH_ID = '082e04bb-2a76-40b2-bce4-28630e32eeaa';
 
+/** Customers the admin Create Order search can find. */
+export const CUSTOMERS = [
+  { id: 'cust-1', name: 'Rajesh Kumar', phone: '9876543210', address: '12 MG Road, Coimbatore', gst_number: null, created_at: '2026-09-01T00:00:00Z' },
+  { id: 'cust-2', name: 'Priya Sharma', phone: '9876543211', address: '45 Brigade Road, Erode', gst_number: '33ABCDE1234F1Z5', created_at: '2026-09-02T00:00:00Z' },
+];
+
 export interface MockOptions {
   /** profiles.role for the signed-in user. */
   role?: 'EMPLOYEE' | 'ADMIN';
@@ -39,6 +45,18 @@ export interface MockOptions {
   orderUpdateFails?: boolean;
   /** Make loading one order (the delivery screen) fail. */
   orderFails?: boolean;
+  /** Hold the answer for every page of the order list after the first for this many milliseconds. */
+  nextPageDelayMs?: number;
+  /** Make deleting an order from the admin Order Management screen fail with a server error. */
+  orderDeleteFails?: boolean;
+  /** Make creating an order from the admin Create Order screen fail with a server error. */
+  orderCreateFails?: boolean;
+  /** The customers the admin customer search can find; defaults to CUSTOMERS. */
+  customers?: Array<Record<string, unknown>>;
+  /** Make the customer search fail with a server error. */
+  customerSearchFails?: boolean;
+  /** Make creating a customer fail with a server error. */
+  customerCreateFails?: boolean;
   /** Make completing a delivery fail with a server error. */
   deliveryFails?: boolean;
   /** The LOADING_AND_UNLOADING_PRICE_PER_BRICK app setting: a value, or "missing". */
@@ -307,6 +325,12 @@ export interface SupabaseMock {
   orderUpdates: Array<Record<string, unknown>>;
   /** Every delivery completed: which function was called and the arguments it got. */
   deliveries: Array<{ fn: string; args: Record<string, unknown> }>;
+  /** The ids of the orders the admin deleted. */
+  orderDeletes: string[];
+  /** Every order the admin created: the arguments sent to create_order. */
+  orderCreates: Array<Record<string, unknown>>;
+  /** Every customer the admin created: the row sent to the customers table. */
+  customerCreates: Array<Record<string, unknown>>;
 }
 
 const CORS = {
@@ -372,6 +396,9 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
   const delivered = new Map<string, Record<string, unknown>>();
   // Orders whose delivery date the admin has moved, by order id.
   const rescheduled = new Map<string, Record<string, unknown>>();
+  // Orders the admin has deleted, and customers the admin has created, by id.
+  const deletedOrders = new Set<string>();
+  const customerTable = (options.customers ?? CUSTOMERS).map((c) => ({ ...c }));
   let signedIn: Identity = options.signedInAs === 'admin' ? ADMIN_USER : TEST_USER;
   const employeeTable = (options.employees ?? EMPLOYEES).map((e) => ({ ...e }));
   const roleTable = (options.roles ?? ROLES).map((r) => ({ ...r }));
@@ -387,7 +414,7 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
     ledgerTable,
     accountTable,
     employeeTable,
-    roleTable, requests: [], signInAttempts: [], unexpected: [], procurements: [], productionEntries: [], orderListQueries: [], orderUpdates: [], deliveries: [] };
+    roleTable, requests: [], signInAttempts: [], unexpected: [], procurements: [], productionEntries: [], orderListQueries: [], orderUpdates: [], deliveries: [], orderDeletes: [], orderCreates: [], customerCreates: [] };
 
   const withRole = (e: Record<string, unknown>) => {
     const r = roleTable.find((x) => x.id === e.role_id);
@@ -725,6 +752,12 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
     if (pathname === '/rest/v1/orders') {
       const query = new URL(request.url()).searchParams;
       const id = query.get('id')?.replace('eq.', '');
+      if (request.method() === 'DELETE' && id) {
+        if (options.orderDeleteFails) return json(route, 500, { message: 'delete failed' });
+        deletedOrders.add(id);
+        mock.orderDeletes.push(id);
+        return route.fulfill({ status: 204, headers: CORS });
+      }
       if (id) {
         if (orderFails) return json(route, 500, { message: 'order failed' });
         const found = [
@@ -741,11 +774,41 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
       }
       mock.orderListQueries.push(request.url().split('?')[1] ?? '');
       if (ordersFail) return json(route, 500, { message: 'orders failed' });
+      // Like the real backend, honour the filters the app sends: delivered, delivery date and payment status.
+      const eq = (name: string) => query.get(name)?.replace(/^eq\./, '');
+      const paymentIn = query.get('payment_status')?.match(/^in\.\((.*)\)$/)?.[1].split(',');
+      const listed = orders
+        .filter((o) => !delivered.has(o.id as string) && !deletedOrders.has(o.id as string))
+        .map((o) => ({ ...o, ...rescheduled.get(o.id as string) }))
+        .filter((o) => eq('delivered') === undefined || String(o.delivered) === eq('delivered'))
+        .filter((o) => eq('delivery_date') === undefined || o.delivery_date === eq('delivery_date'))
+        .filter((o) => !paymentIn || paymentIn.includes(String(o.payment_status)));
+      if (options.nextPageDelayMs && Number(query.get('offset') ?? 0) > 0) {
+        await new Promise((resolve) => setTimeout(resolve, options.nextPageDelayMs));
+      }
+      return paged(route, listed, query);
+    }
+    if (pathname === '/rest/v1/customers') {
+      if (request.method() === 'POST') {
+        if (options.customerCreateFails) return json(route, 409, { message: 'A customer with this phone number already exists' });
+        const body = request.postDataJSON() as Record<string, unknown>;
+        const row = { id: `cust-new-${nextId++}`, created_at: new Date().toISOString(), ...body };
+        mock.customerCreates.push(body);
+        customerTable.push(row);
+        return rows(route, request, [row]);
+      }
+      if (options.customerSearchFails) return json(route, 500, { message: 'search failed' });
+      const term = /ilike\.%([^%]*)%/.exec(new URL(request.url()).searchParams.get('or') ?? '')?.[1]?.toLowerCase() ?? '';
       return rows(
         route,
         request,
-        orders.filter((o) => !delivered.has(o.id as string)).map((o) => ({ ...o, ...rescheduled.get(o.id as string) })),
+        customerTable.filter((c) => String(c.name).toLowerCase().includes(term) || String(c.phone).includes(term)),
       );
+    }
+    if (pathname === '/rest/v1/rpc/create_order') {
+      if (options.orderCreateFails) return json(route, 500, { message: 'Not enough stock for this order' });
+      mock.orderCreates.push(request.postDataJSON() as Record<string, unknown>);
+      return json(route, 200, 'ord-new-1');
     }
     if (pathname === '/rest/v1/rpc/update_order_with_loadmen') {
       if (options.orderUpdateFails) return json(route, 500, { message: 'update failed' });

@@ -94,6 +94,7 @@ export function CustomerCreationModal({ onClose, onCustomerCreated }: CustomerCr
           <h2 className="text-gray-900 text-2xl font-semibold">Customer Creation</h2>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="text-gray-400 hover:text-gray-600 transition-colors"
           >
             <X className="w-6 h-6" />
