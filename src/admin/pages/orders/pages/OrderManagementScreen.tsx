@@ -82,6 +82,8 @@ export function OrderManagementScreen() {
     fetchOrders(nextPage, false);
   };
 
+  const [deliveryTodayConfirmOrder, setDeliveryTodayConfirmOrder] = useState<Order | null>(null);
+
   const handleToggleDeliveryToday = async (orderId: string) => {
     try {
       setLoading(true);
@@ -98,6 +100,7 @@ export function OrderManagementScreen() {
       console.error("Failed to update delivery date:", err);
       setError(err instanceof Error ? err.message : "Failed to update order");
     } finally {
+      setDeliveryTodayConfirmOrder(null);
       setLoading(false);
     }
   };
@@ -299,6 +302,7 @@ export function OrderManagementScreen() {
                                 <input
                                   type="checkbox"
                                   checked={isDeliveryToday}
+                                  aria-label={`Delivery today for order ${order.id}`}
                                   onClick={(e) => e.stopPropagation()}
                                   onChange={(e) => {
                                     e.stopPropagation();
@@ -306,7 +310,7 @@ export function OrderManagementScreen() {
                                       // If delivery date is already today, navigate to edit screen
                                       goTo(`${order.id}`);
                                     } else {
-                                      handleToggleDeliveryToday(order.id);
+                                      setDeliveryTodayConfirmOrder(order);
                                     }
                                   }}
                                   className="sr-only peer"
@@ -470,23 +474,76 @@ export function OrderManagementScreen() {
         </div>
       </div>
 
+      {/* Delivery Today Confirmation Popup */}
+      {deliveryTodayConfirmOrder && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delivery-today-title"
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+        >
+          <div className="bg-white rounded-xl shadow-xl p-8 max-w-xl w-full">
+            <h3 id="delivery-today-title" className="text-2xl font-semibold text-gray-900 mb-3">Deliver Today</h3>
+            <p className="text-lg text-gray-600 mb-6">Are you sure you want to move the delivery of this order to today?</p>
+            <dl className="mb-8 space-y-3 rounded-lg bg-gray-50 p-5 text-lg">
+              <div className="border-b border-gray-200 pb-3">
+                <dt className="text-base text-gray-500">Order ID</dt>
+                <dd className="mt-1 break-all font-mono text-base text-gray-900">{deliveryTodayConfirmOrder.id}</dd>
+              </div>
+              <div className="flex justify-between gap-6">
+                <dt className="text-gray-500">Customer</dt>
+                <dd className="text-right font-medium text-gray-900">{deliveryTodayConfirmOrder.customers?.name || "-"}</dd>
+              </div>
+              <div className="flex justify-between gap-6">
+                <dt className="text-gray-500">Phone</dt>
+                <dd className="text-right font-medium text-gray-900">{deliveryTodayConfirmOrder.customers?.phone || "-"}</dd>
+              </div>
+              <div className="flex justify-between gap-6">
+                <dt className="text-gray-500">Address</dt>
+                <dd className="text-right font-medium text-gray-900">{deliveryTodayConfirmOrder.location || "-"}</dd>
+              </div>
+              <div className="flex justify-between gap-6">
+                <dt className="text-gray-500">Brick quantity</dt>
+                <dd className="text-right font-medium text-gray-900">{deliveryTodayConfirmOrder.brick_quantity.toLocaleString()}</dd>
+              </div>
+            </dl>
+            <div className="flex justify-end gap-4">
+              <button
+                onClick={() => setDeliveryTodayConfirmOrder(null)}
+                disabled={loading}
+                className="px-8 py-3 text-lg text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
+              >
+                No
+              </button>
+              <button
+                onClick={() => handleToggleDeliveryToday(deliveryTodayConfirmOrder.id)}
+                disabled={loading}
+                className="px-8 py-3 text-lg text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {loading ? "Updating..." : "Yes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete Confirmation Popup */}
       {deleteConfirmOrderId && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 mx-4 max-w-sm w-full">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Order</h3>
-            <p className="text-gray-600 mb-6">Are you sure you want to delete order <span className="font-medium">{deleteConfirmOrderId}</span>? This action cannot be undone.</p>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-8 mx-4 max-w-lg w-full">
+            <h3 className="font-semibold text-gray-900 mb-2 text-2xl">Delete Order</h3>
+            <p className="text-gray-600 mb-6 text-lg">Are you sure you want to delete order <span className="font-medium">{deleteConfirmOrderId}</span>? This action cannot be undone.</p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setDeleteConfirmOrderId(null)}
-                className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                className="px-8 py-3 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-lg"
               >
                 No
               </button>
               <button
                 onClick={handleDeleteOrder}
                 disabled={loading}
-                className="px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50"
+                className="px-8 py-3 text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 text-lg"
               >
                 {loading ? "Deleting..." : "Yes"}
               </button>

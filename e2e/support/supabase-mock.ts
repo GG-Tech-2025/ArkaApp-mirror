@@ -35,6 +35,8 @@ export interface MockOptions {
   orders?: Array<Record<string, unknown>>;
   /** Make the orders list fail to load. */
   ordersFail?: boolean;
+  /** Make updating an order from the admin Order Management screen fail with a server error. */
+  orderUpdateFails?: boolean;
   /** Make loading one order (the delivery screen) fail. */
   orderFails?: boolean;
   /** Make completing a delivery fail with a server error. */
@@ -301,6 +303,8 @@ export interface SupabaseMock {
   roleTable: Array<Record<string, unknown>>;
   /** The query strings of every request that listed orders (to check the filters used). */
   orderListQueries: string[];
+  /** Every order update the admin Order Management screen saved: the argument objects sent to update_order_with_loadmen. */
+  orderUpdates: Array<Record<string, unknown>>;
   /** Every delivery completed: which function was called and the arguments it got. */
   deliveries: Array<{ fn: string; args: Record<string, unknown> }>;
 }
@@ -366,6 +370,8 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
   // Like the real backend: an order that has been delivered leaves the undelivered list, and
   // opening it again shows what was recorded.
   const delivered = new Map<string, Record<string, unknown>>();
+  // Orders whose delivery date the admin has moved, by order id.
+  const rescheduled = new Map<string, Record<string, unknown>>();
   let signedIn: Identity = options.signedInAs === 'admin' ? ADMIN_USER : TEST_USER;
   const employeeTable = (options.employees ?? EMPLOYEES).map((e) => ({ ...e }));
   const roleTable = (options.roles ?? ROLES).map((r) => ({ ...r }));
@@ -381,7 +387,7 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
     ledgerTable,
     accountTable,
     employeeTable,
-    roleTable, requests: [], signInAttempts: [], unexpected: [], procurements: [], productionEntries: [], orderListQueries: [], deliveries: [] };
+    roleTable, requests: [], signInAttempts: [], unexpected: [], procurements: [], productionEntries: [], orderListQueries: [], orderUpdates: [], deliveries: [] };
 
   const withRole = (e: Record<string, unknown>) => {
     const r = roleTable.find((x) => x.id === e.role_id);
@@ -735,7 +741,18 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
       }
       mock.orderListQueries.push(request.url().split('?')[1] ?? '');
       if (ordersFail) return json(route, 500, { message: 'orders failed' });
-      return rows(route, request, orders.filter((o) => !delivered.has(o.id as string)));
+      return rows(
+        route,
+        request,
+        orders.filter((o) => !delivered.has(o.id as string)).map((o) => ({ ...o, ...rescheduled.get(o.id as string) })),
+      );
+    }
+    if (pathname === '/rest/v1/rpc/update_order_with_loadmen') {
+      if (options.orderUpdateFails) return json(route, 500, { message: 'update failed' });
+      const args = request.postDataJSON() as Record<string, unknown>;
+      mock.orderUpdates.push(args);
+      rescheduled.set(args.p_order_id as string, args.p_update as Record<string, unknown>);
+      return json(route, 200, null);
     }
     if (pathname === '/rest/v1/rpc/get_delivery_staff') {
       if (staffFails) return json(route, 500, { message: 'staff failed' });
