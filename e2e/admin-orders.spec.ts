@@ -48,6 +48,10 @@ test.describe('Admin Order Management: Delivery Today toggle', () => {
       const dialog = page.getByRole('dialog', { name: 'Deliver Today' });
       await expect(dialog).toBeVisible();
       await expect(dialog).toContainText('ord-1001');
+      await expect(dialog).toContainText('Rajesh Kumar');
+      await expect(dialog).toContainText('9876543210');
+      await expect(dialog).toContainText('12 MG Road, Coimbatore');
+      await expect(dialog).toContainText('5,000');
       await expect(dialog.getByRole('button', { name: 'Yes' })).toBeEnabled();
       await expect(dialog.getByRole('button', { name: 'No' })).toBeEnabled();
       expect(mock.orderUpdates).toHaveLength(0);
