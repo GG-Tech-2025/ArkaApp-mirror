@@ -83,7 +83,8 @@ export function OrderDetailsScreen() {
         amountPaid: orderData.amount_paid || 0,
         gstNumber: orderData.gst_number || null,
         deliveryChallanNumber: orderData.dc_number || '',
-        loadingType: orderData.loading_type || '',
+        // Older orders have no load type; the select shows the first option, so save that one.
+        loadingType: orderData.loading_type || 'LOADING_UNLOADING',
         loadMen: orderData.loadmen?.map(l => l.id) || [],
       });
     } catch (err) {
