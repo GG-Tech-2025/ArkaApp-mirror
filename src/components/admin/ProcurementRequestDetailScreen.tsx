@@ -352,14 +352,14 @@ export function ProcurementRequestDetailScreen({ onNavigate, requestId }: Procur
 
       {/* Approve Confirmation Dialog */}
       {showApproveDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8">
             <div className="flex items-start gap-3 mb-4">
               <div className="bg-green-100 p-2 rounded-full">
                 <CheckCircle className="w-6 h-6 text-green-600" />
               </div>
               <div className="flex-1">
-                <h3 className="text-gray-900 mb-2">Approve Procurement Request</h3>
+                <h3 className="text-gray-900 mb-2 text-2xl font-semibold">Approve Procurement Request</h3>
                 <p className="text-gray-600 text-sm">
                   Are you sure you want to approve this procurement request for {request.quantity.toLocaleString()} {request.unit} of {request.material}?
                 </p>
@@ -371,13 +371,13 @@ export function ProcurementRequestDetailScreen({ onNavigate, requestId }: Procur
             <div className="flex gap-3">
               <button
                 onClick={() => setShowApproveDialog(false)}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-lg"
               >
                 Cancel
               </button>
               <button
                 onClick={handleApprove}
-                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                className="flex-1 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-lg"
               >
                 Confirm Approval
               </button>
@@ -388,14 +388,14 @@ export function ProcurementRequestDetailScreen({ onNavigate, requestId }: Procur
 
       {/* Reject Confirmation Dialog */}
       {showRejectDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8">
             <div className="flex items-start gap-3 mb-4">
               <div className="bg-red-100 p-2 rounded-full">
                 <XCircle className="w-6 h-6 text-red-600" />
               </div>
               <div className="flex-1">
-                <h3 className="text-gray-900 mb-2">Reject Procurement Request</h3>
+                <h3 className="text-gray-900 mb-2 text-2xl font-semibold">Reject Procurement Request</h3>
                 <p className="text-gray-600 text-sm mb-4">
                   Please provide a reason for rejecting this procurement request.
                 </p>
@@ -414,13 +414,13 @@ export function ProcurementRequestDetailScreen({ onNavigate, requestId }: Procur
                   setShowRejectDialog(false);
                   setRejectionReason('');
                 }}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-lg"
               >
                 Cancel
               </button>
               <button
                 onClick={handleReject}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                className="flex-1 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-lg"
               >
                 Confirm Rejection
               </button>

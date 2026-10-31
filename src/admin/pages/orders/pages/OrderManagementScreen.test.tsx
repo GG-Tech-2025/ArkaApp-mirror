@@ -95,7 +95,8 @@ describe('OrderManagementScreen', () => {
       await user.click(toggleFor('ord-1001'));
 
       const dialog = screen.getByRole('dialog', { name: 'Deliver Today' });
-      expect(within(dialog).getByText(/Are you sure you want to move the delivery of order/)).toHaveTextContent('ord-1001');
+      expect(within(dialog).getByText('Are you sure you want to move the delivery of this order to today?')).toBeInTheDocument();
+      expect(within(dialog).getByText('Order ID').nextSibling).toHaveTextContent('ord-1001');
       expect(within(dialog).getByRole('button', { name: 'Yes' })).toBeEnabled();
       expect(within(dialog).getByRole('button', { name: 'No' })).toBeEnabled();
       expect(mocked.updateOrderWithLoadmen).not.toHaveBeenCalled();

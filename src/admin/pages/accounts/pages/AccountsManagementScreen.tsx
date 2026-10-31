@@ -766,8 +766,8 @@ export function AccountsManagementScreen() {
 
       {/* Error Popup - Income */}
       {showIncomeError && incomeError && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8 relative">
             <button
               onClick={closeIncomeError}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
@@ -783,11 +783,11 @@ export function AccountsManagementScreen() {
                 </div>
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Income Data</h3>
+                <h3 className="font-medium text-gray-900 mb-2 text-2xl">Error Loading Income Data</h3>
                 <p className="text-gray-600 text-sm mb-4">{incomeError}</p>
                 <button
                   onClick={closeIncomeError}
-                  className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  className="w-full px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-lg"
                 >
                   Close
                 </button>
@@ -799,8 +799,8 @@ export function AccountsManagementScreen() {
 
       {/* Error Popup - Expenses */}
       {showExpensesError && expensesError && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8 relative">
             <button
               onClick={closeExpensesError}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
@@ -816,11 +816,11 @@ export function AccountsManagementScreen() {
                 </div>
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Expenses Data</h3>
+                <h3 className="font-medium text-gray-900 mb-2 text-2xl">Error Loading Expenses Data</h3>
                 <p className="text-gray-600 text-sm mb-4">{expensesError}</p>
                 <button
                   onClick={closeExpensesError}
-                  className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  className="w-full px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-lg"
                 >
                   Close
                 </button>
@@ -832,8 +832,8 @@ export function AccountsManagementScreen() {
 
       {/* Error Popup - Loan Income */}
       {showLoanIncomeError && loanIncomeError && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8 relative">
             <button
               onClick={closeLoanIncomeError}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
@@ -849,11 +849,11 @@ export function AccountsManagementScreen() {
                 </div>
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Loan Income Data</h3>
+                <h3 className="font-medium text-gray-900 mb-2 text-2xl">Error Loading Loan Income Data</h3>
                 <p className="text-gray-600 text-sm mb-4">{loanIncomeError}</p>
                 <button
                   onClick={closeLoanIncomeError}
-                  className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  className="w-full px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-lg"
                 >
                   Close
                 </button>
@@ -865,8 +865,8 @@ export function AccountsManagementScreen() {
 
       {/* Error Popup - Loan Interest */}
       {showLoanInterestError && loanInterestError && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8 relative">
             <button
               onClick={closeLoanInterestError}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
@@ -882,11 +882,11 @@ export function AccountsManagementScreen() {
                 </div>
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Loan Interest Data</h3>
+                <h3 className="font-medium text-gray-900 mb-2 text-2xl">Error Loading Loan Interest Data</h3>
                 <p className="text-gray-600 text-sm mb-4">{loanInterestError}</p>
                 <button
                   onClick={closeLoanInterestError}
-                  className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  className="w-full px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-lg"
                 >
                   Close
                 </button>
@@ -898,8 +898,8 @@ export function AccountsManagementScreen() {
 
       {/* Custom Range Modal */}
       {showCustomRangeModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8 relative">
             {/* Close Icon */}
             <button
               onClick={handleCloseCustomRangeModal}
@@ -909,7 +909,7 @@ export function AccountsManagementScreen() {
               <X className="w-5 h-5" />
             </button>
 
-            <h2 className="text-gray-900 mb-6">Custom Date Range</h2>
+            <h2 className="text-gray-900 mb-6 text-2xl font-semibold">Custom Date Range</h2>
 
             <div className="space-y-4">
               {/* Start Date */}
@@ -946,7 +946,7 @@ export function AccountsManagementScreen() {
               <div className="flex gap-3 pt-4 justify-end">
                 <button
                   onClick={handleCloseCustomRangeModal}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="px-8 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-lg"
                 >
                   Cancel
                 </button>
@@ -969,8 +969,8 @@ export function AccountsManagementScreen() {
 
       {/* Delete Expense Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8 relative">
             <button
               onClick={handleCloseDeleteConfirm}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
@@ -979,8 +979,8 @@ export function AccountsManagementScreen() {
               <X className="w-5 h-5" />
             </button>
 
-            <h2 className="text-gray-900 mb-4">Delete Expense</h2>
-            <p className="text-gray-600 mb-6">
+            <h2 className="text-gray-900 mb-4 text-2xl font-semibold">Delete Expense</h2>
+            <p className="text-gray-600 mb-6 text-lg">
               Are you sure you want to delete this expense? The amount will be
               added back to the account from which it was paid. This action
               cannot be undone.
@@ -990,7 +990,7 @@ export function AccountsManagementScreen() {
               <button
                 onClick={handleCloseDeleteConfirm}
                 disabled={deletingExpense}
-                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                className="px-8 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-lg"
               >
                 Cancel
               </button>

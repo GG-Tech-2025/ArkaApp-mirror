@@ -446,10 +446,10 @@ export function CustomerManagementScreen() {
 
       {/* Add Customer Modal */}
       {showAddCustomerModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-2xl">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-gray-900">Add Customer</h2>
+              <h2 className="text-gray-900 text-2xl font-semibold">Add Customer</h2>
               <button
                 onClick={handleCloseAddCustomerModal}
                 className="text-gray-600 hover:text-gray-900"
@@ -541,14 +541,14 @@ export function CustomerManagementScreen() {
                 <button
                   type="button"
                   onClick={handleCloseAddCustomerModal}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors mr-2"
+                  className="px-8 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors mr-2 text-lg"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={handleSubmitCustomer}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-lg"
                 >
                   Add Customer
                 </button>

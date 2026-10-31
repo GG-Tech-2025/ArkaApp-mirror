@@ -53,8 +53,8 @@ export function CreateExpenseTypePopup({ onClose, onTypeCreated, existingTypes }
 
   return (
     <>
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8 relative">
           {/* Close Icon */}
           <button
             onClick={onClose}
@@ -64,7 +64,7 @@ export function CreateExpenseTypePopup({ onClose, onTypeCreated, existingTypes }
             <X className="w-5 h-5" />
           </button>
 
-          <h2 className="text-gray-900 mb-6">Create Expense Type</h2>
+          <h2 className="text-gray-900 mb-6 text-2xl font-semibold">Create Expense Type</h2>
 
           <div className="space-y-4">
             {/* Type Name */}
@@ -92,14 +92,14 @@ export function CreateExpenseTypePopup({ onClose, onTypeCreated, existingTypes }
             <div className="flex justify-end gap-3 pt-4">
               <button
                 onClick={onClose}
-                className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                className="px-8 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-lg"
               >
                 Cancel
               </button>
               <button
                 onClick={handleCreate}
                 disabled={isSubmitting}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-lg"
               >
                 {isSubmitting ? 'Creating...' : 'Create'}
               </button>

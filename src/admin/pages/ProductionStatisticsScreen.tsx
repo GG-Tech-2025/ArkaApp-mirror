@@ -309,8 +309,8 @@ export function ProductionStatisticsScreen() {
       {/* Entry Details Modal */}
       {showEntryModal && selectedEntry && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Production Entry</h3>
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-8">
+            <h3 className="font-semibold text-gray-800 mb-4 text-2xl">Production Entry</h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-500">Date</span>
@@ -351,7 +351,7 @@ export function ProductionStatisticsScreen() {
             </div>
             <button
               onClick={() => setShowEntryModal(false)}
-              className="mt-5 w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="mt-5 w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-lg"
             >
               Close
             </button>

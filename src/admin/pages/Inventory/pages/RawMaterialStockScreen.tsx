@@ -225,13 +225,13 @@ export function RawMaterialStockScreen() {
 
         {/* Error Popup */}
         {showError && error && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Error</h2>
-              <p className="text-gray-600 mb-6">{error}</p>
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8">
+              <h2 className="font-semibold text-gray-900 mb-4 text-2xl">Error</h2>
+              <p className="text-gray-600 mb-6 text-lg">{error}</p>
               <button
                 onClick={closeError}
-                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-lg"
               >
                 Close
               </button>
