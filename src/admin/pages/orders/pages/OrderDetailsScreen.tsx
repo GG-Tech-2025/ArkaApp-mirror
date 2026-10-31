@@ -126,6 +126,16 @@ export function OrderDetailsScreen() {
     setOrderDetailsInput(prev => ({ ...prev, [field]: value }));
   }
 
+  function handleLoadingTypeChange(loadingType: OrderDetailsInput['loadingType']) {
+    // Customer loads it themselves, so no loadmen stay mapped to the order.
+    if (loadingType === 'CUSTOMER_SELF') {
+      setSelectedLoadmen([]);
+      setOrderDetailsInput(prev => ({ ...prev, loadingType, loadMen: [] }));
+      return;
+    }
+    updateOrderDetailsInput('loadingType', loadingType);
+  }
+
   function handleLoadManToggle(loadMan: EmployeeWithCategory) {
     if (selectedLoadmen.some(l => l.id === loadMan.id)) {
       setSelectedLoadmen(prev => prev.filter(l => l.id !== loadMan.id));
@@ -485,7 +495,7 @@ export function OrderDetailsScreen() {
               <select
                 id="loadingType"
                 value={orderDetailsInput.loadingType}
-                onChange={(e) => updateOrderDetailsInput('loadingType', e.target.value)}
+                onChange={(e) => handleLoadingTypeChange(e.target.value as OrderDetailsInput['loadingType'])}
                 disabled={isDelivered}
                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
                   errors.loadingType ? 'border-red-600' : 'border-gray-300'
