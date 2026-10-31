@@ -104,6 +104,65 @@ describe('OrderDetailsScreen', () => {
       expect(mocked.updateOrderWithLoadmen.mock.calls[0][1]).toMatchObject({ loading_type: 'CUSTOMER_SELF' });
     });
 
+    describe('loadmen when the load type changes', () => {
+      const RAJU = { id: 'emp-1', name: 'Raju Kumar' };
+      const SURESH = { id: 'emp-2', name: 'Suresh Yadav' };
+
+      beforeEach(() => {
+        mocked.getOrderWithLoadmen.mockResolvedValue({
+          ...ORDER,
+          loading_type: 'LOADING_UNLOADING',
+          loadmen: [RAJU, SURESH],
+        } as never);
+        mocked.getAllEmployees.mockResolvedValue([RAJU, SURESH] as never);
+      });
+
+      it('removes all the mapped loadmen when switched to customer self loading', async () => {
+        const user = userEvent.setup();
+        renderScreen();
+        await loaded();
+        await waitFor(() => expect(screen.getByRole('checkbox', { name: /Raju Kumar/ })).toBeChecked());
+        expect(screen.getByRole('checkbox', { name: /Suresh Yadav/ })).toBeChecked();
+
+        await user.selectOptions(loadType(), 'CUSTOMER_SELF');
+        await user.click(screen.getByRole('button', { name: 'Confirm' }));
+
+        await waitFor(() => expect(mocked.updateOrderWithLoadmen).toHaveBeenCalled());
+        expect(mocked.updateOrderWithLoadmen).toHaveBeenCalledWith(
+          'ord-1001',
+          expect.objectContaining({ loading_type: 'CUSTOMER_SELF' }),
+          [],
+        );
+      });
+
+      it('does not bring the old loadmen back when switched away and back again', async () => {
+        const user = userEvent.setup();
+        renderScreen();
+        await loaded();
+        await waitFor(() => expect(screen.getByRole('checkbox', { name: /Raju Kumar/ })).toBeChecked());
+
+        await user.selectOptions(loadType(), 'CUSTOMER_SELF');
+        await user.selectOptions(loadType(), 'LOADING_ONLY');
+
+        expect(screen.getByRole('checkbox', { name: /Raju Kumar/ })).not.toBeChecked();
+        expect(screen.getByRole('checkbox', { name: /Suresh Yadav/ })).not.toBeChecked();
+        expect(screen.queryByText(/^Selected:/)).not.toBeInTheDocument();
+      });
+
+      it('keeps the loadmen when switched between the other load types', async () => {
+        const user = userEvent.setup();
+        renderScreen();
+        await loaded();
+        await waitFor(() => expect(screen.getByRole('checkbox', { name: /Raju Kumar/ })).toBeChecked());
+
+        await user.selectOptions(loadType(), 'LOADING_ONLY');
+        await user.click(screen.getByRole('button', { name: 'Confirm' }));
+
+        await waitFor(() => expect(mocked.updateOrderWithLoadmen).toHaveBeenCalled());
+        expect(mocked.updateOrderWithLoadmen.mock.calls[0][2]).toEqual(['emp-1', 'emp-2']);
+      });
+    });
+
     it('saves a valid load type for an older order that has none', async () => {
       mocked.getOrderWithLoadmen.mockResolvedValue({ ...ORDER, loading_type: null } as never);
       const user = userEvent.setup();

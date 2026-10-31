@@ -127,6 +127,15 @@ export function CreateOrderScreen() {
     }));
   }
 
+  function handleLoadingTypeChange(loadingType: CreateOrderInput['loadingType']) {
+    // Customer loads it themselves, so no loadmen stay chosen for the order.
+    setCreateOrderInput(prev => ({
+      ...prev,
+      loadingType,
+      loadMen: loadingType === 'CUSTOMER_SELF' ? [] : prev.loadMen,
+    }));
+  }
+
   function handleLoadManToggle(loadMan: string) {
     setCreateOrderInput(prev => ({
       ...prev,
@@ -474,10 +483,11 @@ export function CreateOrderScreen() {
 
             {/* Loading Type */}
             <div>
-              <label className="block text-gray-700 mb-2">Loading Type</label>
+              <label htmlFor="loadingType" className="block text-gray-700 mb-2">Loading Type</label>
               <select
+                id="loadingType"
                 value={createOrderInput.loadingType}
-                onChange={(e) => updateCreateOrderInput('loadingType', e.target.value)}
+                onChange={(e) => handleLoadingTypeChange(e.target.value as CreateOrderInput['loadingType'])}
                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
                   errors.loadingType ? 'border-red-600' : 'border-gray-300'
                 }`}

@@ -99,3 +99,70 @@ test.describe('Admin Order Management: Delivery Today toggle', () => {
     expect(mock.orderUpdates).toHaveLength(0);
   });
 });
+
+test.describe('Admin Edit Order: loadmen and the load type', () => {
+  const WITH_LOADMEN = [
+    { ...ORDERS[0], delivery_date: '2026-10-15', order_loadmen: [{ employee_id: 'emp-1' }, { employee_id: 'emp-3' }] },
+  ];
+
+  let mock: SupabaseMock;
+
+  test.beforeEach(async ({ page }) => {
+    await page.clock.setFixedTime(NOW);
+    mock = await mockSupabase(page, { signedInAs: 'admin', orders: WITH_LOADMEN });
+    await signInAsAdmin(page);
+    await openUndeliveredOrders(page);
+    await flip(page, 'ord-1001');
+    await expect(page).toHaveURL(/\/admin\/orders\/ord-1001$/);
+    await expect(page.getByLabel('Load Type')).toHaveValue('LOADING_UNLOADING');
+  });
+
+  test('removes the mapped loadmen when the order is switched to customer self loading', async ({ page }) => {
+    await expect(page.getByRole('checkbox', { name: /Ravi Kumar/ })).toBeChecked();
+    await expect(page.getByRole('checkbox', { name: /Mohan Das/ })).toBeChecked();
+
+    await page.getByLabel('Load Type').selectOption('CUSTOMER_SELF');
+    await expect(page.getByRole('checkbox', { name: /Ravi Kumar/ })).toBeHidden();
+    await page.getByRole('button', { name: 'Confirm' }).click();
+
+    await expect(page.getByText('Order Edited Successfully')).toBeVisible();
+    expect(mock.orderUpdates).toHaveLength(1);
+    expect(mock.orderUpdates[0]).toMatchObject({
+      p_order_id: 'ord-1001',
+      p_update: { loading_type: 'CUSTOMER_SELF' },
+      p_loadmen: [],
+    });
+  });
+
+  test('keeps the mapped loadmen when the order is switched to another loading type', async ({ page }) => {
+    await page.getByLabel('Load Type').selectOption('LOADING_ONLY');
+    await page.getByRole('button', { name: 'Confirm' }).click();
+
+    await expect(page.getByText('Order Edited Successfully')).toBeVisible();
+    expect(mock.orderUpdates[0]).toMatchObject({ p_update: { loading_type: 'LOADING_ONLY' } });
+    expect([...(mock.orderUpdates[0].p_loadmen as string[])].sort()).toEqual(['emp-1', 'emp-3']);
+  });
+});
+
+test.describe('Admin Create Order: loadmen and the loading type', () => {
+  test('drops the chosen loadmen when switched to customer self loading', async ({ page }) => {
+    await page.clock.setFixedTime(NOW);
+    await mockSupabase(page, { signedInAs: 'admin', orders: UNDELIVERED });
+    await signInAsAdmin(page);
+    await page.getByRole('button', { name: /Order Management/ }).click();
+    await page.getByRole('button', { name: 'Create Order' }).click();
+    await expect(page.getByRole('heading', { name: 'Create Order' })).toBeVisible();
+
+    await page.getByRole('checkbox', { name: /Ravi Kumar/ }).check();
+    await page.getByRole('checkbox', { name: /Mohan Das/ }).check();
+    await expect(page.getByText('Selected: Ravi Kumar, Mohan Das')).toBeVisible();
+
+    await page.getByLabel('Loading Type').selectOption('CUSTOMER_SELF');
+    await expect(page.getByRole('checkbox', { name: /Ravi Kumar/ })).toBeHidden();
+    await page.getByLabel('Loading Type').selectOption('LOADING_ONLY');
+
+    await expect(page.getByRole('checkbox', { name: /Ravi Kumar/ })).not.toBeChecked();
+    await expect(page.getByRole('checkbox', { name: /Mohan Das/ })).not.toBeChecked();
+    await expect(page.getByText(/^Selected:/)).toBeHidden();
+  });
+});
