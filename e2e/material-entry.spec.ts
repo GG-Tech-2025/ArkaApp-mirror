@@ -41,6 +41,7 @@ test.describe('Material Purchase Entry screen', () => {
         'Cement',
         'Fly Ash Powder',
         'Wet Ash',
+        'Crusher Powder',
       ]);
       await expect(vendor(page).locator('option')).toHaveText(['Select Vendor', 'ABC Suppliers', 'XYZ Materials']);
     });
@@ -56,11 +57,14 @@ test.describe('Material Purchase Entry screen', () => {
       await expect(page.getByText(/^Quantity/)).not.toContainText('(');
 
       await material(page).selectOption({ label: 'Cement' });
-      await expect(page.getByText(/^Quantity/)).toContainText('(bags)');
-      await expect(quantity(page)).toHaveAttribute('placeholder', 'Enter quantity in bags');
+      await expect(page.getByText(/^Quantity/)).toContainText('(Bags)');
+      await expect(quantity(page)).toHaveAttribute('placeholder', 'Enter quantity in Bags');
 
       await material(page).selectOption({ label: 'Wet Ash' });
-      await expect(page.getByText(/^Quantity/)).toContainText('(tons)');
+      await expect(page.getByText(/^Quantity/)).toContainText('(Tons)');
+
+      await material(page).selectOption({ label: 'Crusher Powder' });
+      await expect(page.getByText(/^Quantity/)).toContainText('(Units)');
     });
 
     test('Back to Home returns to the dashboard without saving anything', async ({ page }) => {

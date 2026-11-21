@@ -100,6 +100,21 @@ export interface MockOptions {
   organizationStatus?: 'ACTIVE' | 'SUSPENDED';
   /** Hold the answer to completing a delivery for this many milliseconds. */
   deliveryDelayMs?: number;
+  /** Procurements (approved and not) behind the admin Inventory screens; defaults to PROCUREMENTS. */
+  procurementRows?: Array<Record<string, unknown>>;
+  /** inventory_stock rows (material, kg, updated_at) behind the Inventory screens; defaults to INVENTORY_STOCK. */
+  stockRows?: Array<Record<string, unknown>>;
+  /** Bricks ready (product_inventory); defaults to 33100. */
+  bricksReady?: number;
+  /** Inventory adjustment history; defaults to ADJUSTMENTS. */
+  adjustments?: Array<Record<string, unknown>>;
+  /** Make loading stock, procurements, bricks and adjustments fail with a server error. */
+  inventoryLoadFails?: boolean;
+  /** Make approving or rejecting a procurement fail with a server error. */
+  approveFails?: boolean;
+  rejectFails?: boolean;
+  /** Make saving an inventory adjustment fail with a server error. */
+  adjustmentFails?: boolean;
 }
 
 function order(overrides: Record<string, unknown>) {
@@ -291,9 +306,11 @@ export const LOADMEN = [
 ];
 
 export const MATERIALS = [
-  { id: 'mat-cement', name: 'Cement', unit: 'bags' },
-  { id: 'mat-fly-ash', name: 'Fly Ash Powder', unit: 'tons' },
-  { id: 'mat-wet-ash', name: 'Wet Ash', unit: 'tons' },
+  // Real material rows store unit "kg"; the screens show bags / units / tons from the name.
+  { id: 'mat-cement', name: 'Cement', unit: 'kg' },
+  { id: 'mat-fly-ash', name: 'Fly Ash Powder', unit: 'kg' },
+  { id: 'mat-wet-ash', name: 'Wet Ash', unit: 'kg' },
+  { id: 'mat-crusher', name: 'Crusher Powder', unit: 'kg' },
 ];
 
 export const VENDORS = [
@@ -301,7 +318,102 @@ export const VENDORS = [
   { id: 'ven-xyz', name: 'XYZ Materials' },
 ];
 
+const mat = (id: string, name: string) => ({ id, name, unit: 'kg' });
+const M_WET = mat('mat-wet-ash', 'Wet Ash');
+const M_MARBLE = mat('mat-marble', 'Marble Powder');
+const M_CRUSHER = mat('mat-crusher', 'Crusher Powder');
+const M_FLY = mat('mat-fly-ash', 'Fly Ash');
+const M_CEMENT = mat('mat-cement', 'Cement');
+const V_ABC = { id: 'ven-abc', name: 'ABC Suppliers', phone: null };
+const V_XYZ = { id: 'ven-xyz', name: 'XYZ Materials', phone: null };
+
+function procurement(
+  id: string,
+  materials: typeof M_WET,
+  vendors: typeof V_ABC,
+  quantity: number,
+  date: string,
+  approved: boolean,
+  rate = 0,
+) {
+  return {
+    id,
+    material_id: materials.id,
+    vendor_id: vendors.id,
+    quantity,
+    rate_per_unit: approved ? rate : 0,
+    total_price: approved ? rate * quantity : 0,
+    date,
+    approved,
+    created_by: ADMIN_USER.id,
+    created_at: `${date}T09:00:00Z`,
+    materials,
+    vendors,
+  };
+}
+
+/**
+ * Procurements for the Inventory screens, dated around 15 Oct 2026 (the date the inventory
+ * specs fix the browser clock to). Quantities are in tons (bags for cement, loads for crusher powder).
+ */
+export const PROCUREMENTS = [
+  procurement('proc-a1', M_WET, V_ABC, 60, '2026-10-05', true, 900),
+  procurement('proc-a2', M_CEMENT, V_XYZ, 100, '2026-10-08', true, 380),
+  procurement('proc-a3', M_CRUSHER, V_ABC, 5, '2026-10-10', true, 3200),
+  procurement('proc-a4', M_WET, V_ABC, 30, '2026-09-12', true, 900),
+  procurement('proc-a5', M_CEMENT, V_XYZ, 80, '2025-06-10', true, 360),
+  procurement('proc-u1', M_WET, V_ABC, 30, '2026-10-12', false),
+  procurement('proc-u2', M_CEMENT, V_XYZ, 200, '2026-10-13', false),
+  procurement('proc-u3', M_CRUSHER, V_ABC, 3, '2026-10-14', false),
+];
+
+/** Material stock in kg, as inventory_stock stores it. */
+export const INVENTORY_STOCK = [
+  { material_id: M_WET.id, quantity: 34308, updated_at: '2026-10-12T10:00:00Z', materials: M_WET },
+  { material_id: M_MARBLE.id, quantity: 14260, updated_at: '2026-10-12T10:00:00Z', materials: M_MARBLE },
+  { material_id: M_CRUSHER.id, quantity: 18422.5, updated_at: '2026-10-12T10:00:00Z', materials: M_CRUSHER },
+  { material_id: M_FLY.id, quantity: 7975, updated_at: '2026-10-12T10:00:00Z', materials: M_FLY },
+  { material_id: M_CEMENT.id, quantity: 2775, updated_at: '2026-10-12T10:00:00Z', materials: M_CEMENT },
+];
+
+export const ADJUSTMENTS = [
+  {
+    id: 'adj-1',
+    adjustment_date: '2026-10-12',
+    actual_bricks: 33100,
+    adjusted_bricks: 33000,
+    actual_wet_ash_kg: 34308,
+    adjusted_wet_ash_kg: 34308,
+    actual_marble_powder_kg: 14260,
+    adjusted_marble_powder_kg: 14300,
+    actual_crusher_powder_kg: null,
+    adjusted_crusher_powder_kg: null,
+    actual_fly_ash_kg: 7975,
+    adjusted_fly_ash_kg: 7975,
+    actual_cement_bags: 55.5,
+    adjusted_cement_bags: 55.5,
+    reason: 'Physical count correction',
+    created_by: ADMIN_USER.id,
+    created_at: '2026-10-12T09:00:00Z',
+  },
+];
+
+/** kg added to stock per unit approved: cement is counted in 50 kg bags, crusher powder in 4,500 kg loads, the rest in tons. */
+const kgPerUnit = (materialName: string) => {
+  const name = materialName.toLowerCase();
+  return name.includes('cement') ? 50 : name.includes('crusher') ? 4500 : 1000;
+};
+
 export interface SupabaseMock {
+  /** Every procurement approval: the argument objects sent to approve_procurement. */
+  approvals: Array<Record<string, unknown>>;
+  /** The ids of the procurements rejected (deleted) from the Unapproved Procurements screen. */
+  procurementRejections: string[];
+  /** Every inventory adjustment saved: the argument objects sent to create_inventory_adjustment. */
+  adjustmentCreates: Array<Record<string, unknown>>;
+  /** The live procurement and stock tables behind the Inventory screens. */
+  procurementTable: Array<Record<string, unknown>>;
+  stockTable: Array<Record<string, unknown>>;
   /** Every request the page made to the fake Supabase host, as "METHOD /path". */
   requests: string[];
   /** The JSON bodies sent to the password sign-in endpoint. */
@@ -412,7 +524,16 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
   const ledgerTable = (options.ledger ?? LEDGER).map((r) => ({ ...r }));
   const accountTable = ACCOUNTS.map((a) => ({ ...a }));
   const generatedMonths: string[] = options.salaryGenerated ? [options.salaryGenerated] : [];
+  const procurementTable = (options.procurementRows ?? PROCUREMENTS).map((r) => ({ ...r }));
+  const stockTable = (options.stockRows ?? INVENTORY_STOCK).map((r) => ({ ...r }));
+  const adjustmentTable = (options.adjustments ?? ADJUSTMENTS).map((r) => ({ ...r }));
+  let bricksReady = options.bricksReady ?? 33100;
   const mock: SupabaseMock = {
+    approvals: [],
+    procurementRejections: [],
+    adjustmentCreates: [],
+    procurementTable,
+    stockTable,
     attendanceSaves: [],
     salaryBatches: [],
     ledgerEntries: [],
@@ -752,8 +873,105 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
     }
     if (pathname === '/rest/v1/procurements' && request.method() === 'POST') {
       if (procurementFails) return json(route, 500, { message: 'insert failed' });
-      mock.procurements.push(request.postDataJSON() as Record<string, unknown>);
+      const body = request.postDataJSON() as Record<string, unknown>;
+      mock.procurements.push(body);
+      const material = [...INVENTORY_STOCK.map((s) => s.materials), ...MATERIALS].find((m) => m.id === body.material_id);
+      const vendor = VENDORS.find((v) => v.id === body.vendor_id);
+      procurementTable.push({
+        id: `proc-new-${nextId++}`,
+        created_at: new Date().toISOString(),
+        ...body,
+        materials: material ?? null,
+        vendors: vendor ? { ...vendor, phone: null } : null,
+      });
       return route.fulfill({ status: 201, headers: CORS });
+    }
+    if (pathname === '/rest/v1/procurements') {
+      const query = new URL(request.url()).searchParams;
+      if (request.method() === 'DELETE') {
+        if (options.rejectFails) return json(route, 500, { message: 'delete failed' });
+        const id = query.get('id')?.replace(/^eq\./, '');
+        const at = procurementTable.findIndex((p) => p.id === id);
+        if (at >= 0) procurementTable.splice(at, 1);
+        mock.procurementRejections.push(String(id));
+        return route.fulfill({ status: 204, headers: CORS });
+      }
+      if (options.inventoryLoadFails) return json(route, 500, { message: 'procurements failed' });
+      const approved = query.get('approved')?.replace(/^eq\./, '');
+      const listed = procurementTable
+        .filter((p) => approved === undefined || String(p.approved) === approved)
+        .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+      if (request.method() === 'HEAD') {
+        // supabase-js reads the total from the part after the slash
+        return route.fulfill({ status: 200, headers: { ...CORS, 'content-range': `*/${listed.length}` } });
+      }
+      return json(route, 200, listed);
+    }
+    if (pathname === '/rest/v1/inventory_stock') {
+      if (options.inventoryLoadFails) return json(route, 500, { message: 'stock failed' });
+      return json(route, 200, [...stockTable].sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at))));
+    }
+    if (pathname === '/rest/v1/product_inventory') {
+      if (options.inventoryLoadFails) return json(route, 500, { message: 'bricks failed' });
+      return rows(route, request, [{ id: 'pi-1', product_type: 'BRICKS', quantity: bricksReady, updated_at: '2026-10-13T10:00:00Z' }]);
+    }
+    if (pathname === '/rest/v1/inventory_adjustments') {
+      if (options.inventoryLoadFails) return json(route, 500, { message: 'adjustments failed' });
+      return json(route, 200, [...adjustmentTable].sort((a, b) => String(b.adjustment_date).localeCompare(String(a.adjustment_date))));
+    }
+    if (pathname === '/rest/v1/rpc/approve_procurement') {
+      if (options.approveFails) return json(route, 500, { message: 'approve failed' });
+      const args = request.postDataJSON() as { p_procurement_id: string; p_rate_per_unit: number; p_total_price: number };
+      const found = procurementTable.find((p) => p.id === args.p_procurement_id) as
+        | { approved: boolean; quantity: number; material_id: string; materials: { name: string } }
+        | undefined;
+      if (!found) return json(route, 404, { code: 'P0002', message: 'Procurement not found' });
+      if (found.approved) return json(route, 400, { code: '22023', message: 'This procurement is already approved' });
+      mock.approvals.push(args);
+      Object.assign(found, { approved: true, rate_per_unit: args.p_rate_per_unit, total_price: args.p_total_price });
+      const stock = stockTable.find((s) => s.material_id === found.material_id);
+      if (stock) {
+        stock.quantity = Number(stock.quantity) + found.quantity * kgPerUnit(found.materials.name);
+        stock.updated_at = new Date().toISOString();
+      }
+      return json(route, 200, null);
+    }
+    if (pathname === '/rest/v1/rpc/create_inventory_adjustment') {
+      if (options.adjustmentFails) return json(route, 500, { message: 'adjustment failed' });
+      const a = request.postDataJSON() as Record<string, number | string | null>;
+      mock.adjustmentCreates.push(a);
+      adjustmentTable.push({
+        id: `adj-new-${nextId++}`,
+        adjustment_date: a.p_adjustment_date,
+        actual_bricks: a.p_actual_bricks,
+        actual_wet_ash_kg: a.p_actual_wet_ash_kg,
+        actual_marble_powder_kg: a.p_actual_marble_powder_kg,
+        actual_crusher_powder_kg: a.p_actual_crusher_powder_kg,
+        actual_fly_ash_kg: a.p_actual_fly_ash_kg,
+        actual_cement_bags: a.p_actual_cement_bags,
+        adjusted_bricks: a.p_adjusted_bricks,
+        adjusted_wet_ash_kg: a.p_adjusted_wet_ash_kg,
+        adjusted_marble_powder_kg: a.p_adjusted_marble_powder_kg,
+        adjusted_crusher_powder_kg: a.p_adjusted_crusher_powder_kg,
+        adjusted_fly_ash_kg: a.p_adjusted_fly_ash_kg,
+        adjusted_cement_bags: a.p_adjusted_cement_bags,
+        reason: a.p_reason,
+        created_by: signedIn.id,
+        created_at: new Date().toISOString(),
+      });
+      // Same as the database function: the adjusted figures become the new stock.
+      if (a.p_adjusted_bricks !== null) bricksReady = Number(a.p_adjusted_bricks);
+      const setStock = (pattern: string, kg: number | string | null) => {
+        if (kg === null) return;
+        const row = stockTable.find((s) => String((s.materials as { name: string }).name).toLowerCase().includes(pattern));
+        if (row) Object.assign(row, { quantity: Number(kg), updated_at: new Date().toISOString() });
+      };
+      setStock('wet ash', a.p_adjusted_wet_ash_kg);
+      setStock('marble', a.p_adjusted_marble_powder_kg);
+      setStock('crusher', a.p_adjusted_crusher_powder_kg);
+      setStock('fly ash', a.p_adjusted_fly_ash_kg);
+      setStock('cement', a.p_adjusted_cement_bags === null ? null : Number(a.p_adjusted_cement_bags) * 50);
+      return json(route, 200, null);
     }
     if (pathname === '/rest/v1/orders') {
       const query = new URL(request.url()).searchParams;

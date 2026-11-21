@@ -6,6 +6,7 @@ import { useAdminNavigation } from '../../../hooks/useAdminNavigation';
 import { useAllUnapprovedProcurements } from '../../../hooks/useProcurementsWithFilters';
 import { approveProcurement, deleteProcurement } from '../../../../services/middleware.service';
 import { ProcurementWithDetails } from '../../../../services/middleware.service';
+import { getProcurementUnit } from '../../../../utils/procurementUnit';
 
 export function UnapprovedProcurementsScreen() {
   const {goBack} = useAdminNavigation();
@@ -97,17 +98,7 @@ export function UnapprovedProcurementsScreen() {
     return (selectedProcurement.quantity * rateValue).toFixed(2);
   };
 
-  const getDisplayUnit = () => {
-    const materialName = getMaterialName().toLowerCase();
-    
-    if (materialName.includes('cement')) {
-      return 'Bags';
-    } else if (materialName.includes('crusher')) {
-      return 'Units';
-    }
-    // Wet Ash, Marble Powder, Fly Ash
-    return 'Tons';
-  };
+  const getDisplayUnit = () => getProcurementUnit(getMaterialName());
 
   const getPriceLabel = () => {
     const materialName = getMaterialName().toLowerCase();
@@ -207,7 +198,7 @@ export function UnapprovedProcurementsScreen() {
                         </div>
                         <div>
                           <p className="text-gray-500 text-sm">Quantity</p>
-                          <p className="text-gray-900">{procurement.quantity} {procurement.materials?.unit || ''}</p>
+                          <p className="text-gray-900">{procurement.quantity} {getProcurementUnit(procurement.materials?.name)}</p>
                         </div>
                       </div>
 

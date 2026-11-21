@@ -15,9 +15,10 @@ vi.mock('../../services/middleware.service', () => ({
 const mocked = vi.mocked(middleware);
 
 const MATERIALS = [
-  { id: 'mat-cement', name: 'Cement', unit: 'bags' },
-  { id: 'mat-fly-ash', name: 'Fly Ash Powder', unit: 'tons' },
-  { id: 'mat-wet-ash', name: 'Wet Ash', unit: 'tons' },
+  { id: 'mat-cement', name: 'Cement', unit: 'kg' },
+  { id: 'mat-fly-ash', name: 'Fly Ash Powder', unit: 'kg' },
+  { id: 'mat-wet-ash', name: 'Wet Ash', unit: 'kg' },
+  { id: 'mat-crusher', name: 'Crusher Powder', unit: 'kg' },
 ];
 const VENDORS = [
   { id: 'ven-abc', name: 'ABC Suppliers' },
@@ -97,7 +98,7 @@ describe('MaterialPurchaseEntry', () => {
 
       const materials = within(materialField()).getAllByRole('option').map((o) => o.textContent);
       const vendors = within(vendorField()).getAllByRole('option').map((o) => o.textContent);
-      expect(materials).toEqual(['Select Material', 'Cement', 'Fly Ash Powder', 'Wet Ash']);
+      expect(materials).toEqual(['Select Material', 'Cement', 'Fly Ash Powder', 'Wet Ash', 'Crusher Powder']);
       expect(vendors).toEqual(['Select Vendor', 'ABC Suppliers', 'XYZ Materials']);
     });
 
@@ -167,10 +168,11 @@ describe('MaterialPurchaseEntry', () => {
     });
 
     it.each([
-      ['Cement', 'bags'],
-      ['Fly Ash Powder', 'tons'],
-      ['Wet Ash', 'tons'],
-    ])('shows the unit for %s as %s', async (name, unit) => {
+      ['Cement', 'Bags'],
+      ['Fly Ash Powder', 'Tons'],
+      ['Wet Ash', 'Tons'],
+      ['Crusher Powder', 'Units'],
+    ])('shows the unit for %s as %s, whatever unit the material row stores', async (name, unit) => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       renderScreen();
       await loaded();

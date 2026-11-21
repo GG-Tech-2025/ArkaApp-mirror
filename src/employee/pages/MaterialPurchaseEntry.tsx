@@ -13,6 +13,7 @@ import { useNavigate } from "react-router-dom";
 import { validateMaterialPurchase } from "../validators/materialPurchase.validator";
 import { MaterialPurchaseInput } from "../types";
 import { useMaterialPurchase } from "../hooks/useMaterialPurchase";
+import { getProcurementUnit } from "../../utils/procurementUnit";
 
 export function MaterialPurchaseEntry() {
   const navigate = useNavigate();
@@ -33,7 +34,8 @@ export function MaterialPurchaseEntry() {
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [showErrorPopup, setShowErrorPopup] = useState(false);
 
-  const selectedMaterialUnit = materials.find(m => m.id === material)?.unit;
+  const selectedMaterial = materials.find(m => m.id === material);
+  const selectedMaterialUnit = selectedMaterial ? getProcurementUnit(selectedMaterial.name) : undefined;
 
   const handleSubmit = async () => {
     const payload: MaterialPurchaseInput = {

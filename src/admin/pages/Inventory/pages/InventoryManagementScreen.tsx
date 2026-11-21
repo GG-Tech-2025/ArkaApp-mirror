@@ -10,6 +10,7 @@ import { useProductInventory } from '../../../hooks/useProductInventory';
 import { useAdjustments } from '../../../hooks/useAdjustments';
 import { validateSession } from '../../../../services/middleware.service';
 import { createAdjustment } from '../../../../services/middleware.service';
+import { getProcurementUnit } from '../../../../utils/procurementUnit';
 
 type FilterType = 'Current month' | 'Last month' | 'Last year' | 'Custom range';
 type TabType = 'Procurement' | 'Usage' | 'Adjustments';
@@ -740,7 +741,7 @@ export function InventoryManagementScreen() {
                         </div>
                         <div>
                           <p className="text-gray-500 text-sm">Quantity</p>
-                          <p className="text-gray-900">{entry.quantity} {entry.materials?.unit || ''}</p>
+                          <p className="text-gray-900">{entry.quantity} {getProcurementUnit(entry.materials?.name)}</p>
                         </div>
                         <div>
                           <p className="text-gray-500 text-sm">Total Price</p>
