@@ -9,6 +9,43 @@ import { Popup } from '../../components/Popup';
 
 // fetch handled by `useProductionEntries` hook in admin/hooks
 
+// The backend stores each material as kg used per round, so the day's total kg is
+// round × kg, and tons is that total divided by 1000.
+const totalKg = (round: number, kgPerRound: number): number => round * kgPerRound;
+
+// `production_date` is a date-only string (2026-10-14). `new Date()` reads that as UTC midnight,
+// which shows the previous day anywhere behind UTC, so build it as a local date instead.
+const parseDate = (dateString: string): Date => {
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString);
+  return dateOnly
+    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    : new Date(dateString);
+};
+
+// Cement is stored as a number of bags, and half bags are real (inventory uses 50 kg a bag),
+// so show them as entered instead of rounding to a whole bag.
+const formatBags = (bags: number): string =>
+  bags.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+
+const formatKg = (kg: number): string =>
+  `${kg.toLocaleString('en-IN', { maximumFractionDigits: 2 })} kg`;
+
+type MaterialAmountProps = {
+  round: number;
+  kgPerRound: number;
+};
+
+/** Tons as the headline figure with the total kg beneath it, so both units are visible at a glance. */
+function MaterialAmount({ round, kgPerRound }: MaterialAmountProps) {
+  const total = totalKg(round, kgPerRound);
+  return (
+    <span className="inline-flex flex-col items-start leading-tight">
+      <span className="text-gray-900">{(total / 1000).toFixed(2)} Tons</span>
+      <span className="text-xs text-gray-500">{formatKg(total)}</span>
+    </span>
+  );
+}
+
 export function ProductionStatisticsScreen() {
   const { goBack } = useAdminNavigation();
   const [showErrorPopup, setShowErrorPopup] = useState(false);
@@ -58,11 +95,9 @@ export function ProductionStatisticsScreen() {
     return (round * kgs) / 1000;
   };
 
-  // Cement is stored as number of bags in the backend — display directly
-  const formatCementBags = (bags: number): number => bags;
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    const date = parseDate(dateString);
     const day = date.getDate().toString().padStart(2, '0');
     const month = date.toLocaleString('en-US', { month: 'short' });
     const year = date.getFullYear();
@@ -70,7 +105,7 @@ export function ProductionStatisticsScreen() {
   };
 
   function formatGraphLabel(dateString: string) {
-    const d = new Date(dateString);
+    const d = parseDate(dateString);
     return `${d.getDate()} ${d.toLocaleString('en-US', { month: 'short' })}`;
   }
 
@@ -171,53 +206,69 @@ export function ProductionStatisticsScreen() {
               <div className="flex-1 space-y-3 w-full">
                 <div className="flex items-center gap-3">
                   <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                  <div className="flex justify-between w-full">
+                  <div className="flex justify-between items-center w-full">
                     <span className="text-gray-700">Round:</span>
                     <span className="text-gray-900">{yesterday ? yesterday.round : '-'}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                  <div className="flex justify-between w-full">
+                  <div className="flex justify-between items-center w-full">
                     <span className="text-gray-700">Wet Ash:</span>
-                    <span className="text-gray-900">
-                      {yesterday ? convertToTons(yesterday.round, yesterday.wetAshKg).toFixed(2) + ' Tons' : '-'}
+                    <span className="text-gray-900 text-right">
+                      {yesterday ? (
+                        <MaterialAmount round={yesterday.round} kgPerRound={yesterday.wetAshKg} />
+                      ) : (
+                        '-'
+                      )}
                     </span>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                  <div className="flex justify-between w-full">
+                  <div className="flex justify-between items-center w-full">
                     <span className="text-gray-700">Marble Powder:</span>
-                    <span className="text-gray-900">
-                      {yesterday ? convertToTons(yesterday.round, yesterday.marblePowderKg).toFixed(2) + ' Tons' : '-'}
+                    <span className="text-gray-900 text-right">
+                      {yesterday ? (
+                        <MaterialAmount round={yesterday.round} kgPerRound={yesterday.marblePowderKg} />
+                      ) : (
+                        '-'
+                      )}
                     </span>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                  <div className="flex justify-between w-full">
+                  <div className="flex justify-between items-center w-full">
                     <span className="text-gray-700">Crusher Powder:</span>
-                    <span className="text-gray-900">
-                      {yesterday ? convertToTons(yesterday.round, yesterday.crusherPowderKg).toFixed(2) + ' Tons' : '-'}
+                    <span className="text-gray-900 text-right">
+                      {yesterday ? (
+                        <MaterialAmount round={yesterday.round} kgPerRound={yesterday.crusherPowderKg} />
+                      ) : (
+                        '-'
+                      )}
                     </span>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                  <div className="flex justify-between w-full">
+                  <div className="flex justify-between items-center w-full">
                     <span className="text-gray-700">Fly Ash:</span>
-                    <span className="text-gray-900">
-                      {yesterday ? convertToTons(yesterday.round, yesterday.flyAshKg).toFixed(2) + ' Tons' : '-'}
+                    <span className="text-gray-900 text-right">
+                      {yesterday ? (
+                        <MaterialAmount round={yesterday.round} kgPerRound={yesterday.flyAshKg} />
+                      ) : (
+                        '-'
+                      )}
                     </span>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                  <div className="flex justify-between w-full">
+                  <div className="flex justify-between items-center w-full">
                     <span className="text-gray-700">Cement:</span>
                     <span className="text-gray-900">
-                      {yesterday ? formatCementBags(yesterday.cementBags).toFixed(0) + ' Bags' : '-'}
+                      {yesterday ? formatBags(yesterday.cementBags) + ' Bags' : '-'}
                     </span>
                   </div>
                 </div>
@@ -240,10 +291,10 @@ export function ProductionStatisticsScreen() {
                     <th className="px-4 py-3 text-left text-gray-700">Date</th>
                     <th className="px-4 py-3 text-left text-gray-700">No of Bricks</th>
                     <th className="px-4 py-3 text-left text-gray-700">Round</th>
-                    <th className="px-4 py-3 text-left text-gray-700">Wet Ash (Tons)</th>
-                    <th className="px-4 py-3 text-left text-gray-700">Marble Powder (Tons)</th>
-                    <th className="px-4 py-3 text-left text-gray-700">Crusher Powder (Tons)</th>
-                    <th className="px-4 py-3 text-left text-gray-700">Fly Ash (Tons)</th>
+                    <th className="px-4 py-3 text-left text-gray-700">Wet Ash (Tons / kg)</th>
+                    <th className="px-4 py-3 text-left text-gray-700">Marble Powder (Tons / kg)</th>
+                    <th className="px-4 py-3 text-left text-gray-700">Crusher Powder (Tons / kg)</th>
+                    <th className="px-4 py-3 text-left text-gray-700">Fly Ash (Tons / kg)</th>
                     <th className="px-4 py-3 text-left text-gray-700">Cement (Bags)</th>
                     <th className="px-4 py-3 text-left text-gray-700">Notes</th>
                     <th className="px-4 py-3 text-center text-gray-700">Details</th>
@@ -255,20 +306,20 @@ export function ProductionStatisticsScreen() {
                       <td className="px-4 py-4 text-gray-900">{formatDate(entry.date)}</td>
                       <td className="px-4 py-4 text-gray-900">{entry.bricks.toLocaleString()}</td>
                       <td className="px-4 py-4 text-gray-900">{entry.round}</td>
-                      <td className="px-4 py-4 text-gray-900">
-                        {convertToTons(entry.round, entry.wetAshKg).toFixed(2)}
+                      <td className="px-4 py-4">
+                        <MaterialAmount round={entry.round} kgPerRound={entry.wetAshKg} />
+                      </td>
+                      <td className="px-4 py-4">
+                        <MaterialAmount round={entry.round} kgPerRound={entry.marblePowderKg} />
+                      </td>
+                      <td className="px-4 py-4">
+                        <MaterialAmount round={entry.round} kgPerRound={entry.crusherPowderKg} />
+                      </td>
+                      <td className="px-4 py-4">
+                        <MaterialAmount round={entry.round} kgPerRound={entry.flyAshKg} />
                       </td>
                       <td className="px-4 py-4 text-gray-900">
-                        {convertToTons(entry.round, entry.marblePowderKg).toFixed(2)}
-                      </td>
-                      <td className="px-4 py-4 text-gray-900">
-                        {convertToTons(entry.round, entry.crusherPowderKg).toFixed(2)}
-                      </td>
-                      <td className="px-4 py-4 text-gray-900">
-                        {convertToTons(entry.round, entry.flyAshKg).toFixed(2)}
-                      </td>
-                      <td className="px-4 py-4 text-gray-900">
-                        {formatCementBags(entry.cementBags).toFixed(0)}
+                        {formatBags(entry.cementBags)}
                       </td>
                       <td className="px-4 py-4 text-gray-500 max-w-37.5">
                         {entry.notes
@@ -279,6 +330,7 @@ export function ProductionStatisticsScreen() {
                       </td>
                       <td className="px-4 py-4 text-center">
                         <button
+                          aria-label={`View details for ${formatDate(entry.date)}`}
                           onClick={() => { setSelectedEntry(entry); setShowEntryModal(true); }}
                           className="text-blue-500 hover:text-blue-700"
                         >
@@ -324,25 +376,53 @@ export function ProductionStatisticsScreen() {
                 <span className="text-gray-500">Round</span>
                 <span className="text-gray-900 font-medium">{selectedEntry.round}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-start">
                 <span className="text-gray-500">Wet Ash</span>
-                <span className="text-gray-900 font-medium">{convertToTons(selectedEntry.round, selectedEntry.wetAshKg).toFixed(2)} Tons</span>
+                <span className="text-right">
+                  <span className="block text-gray-900 font-medium">
+                    {convertToTons(selectedEntry.round, selectedEntry.wetAshKg).toFixed(2)} Tons
+                  </span>
+                  <span className="block text-xs text-gray-500">
+                    {formatKg(selectedEntry.wetAshKg)} × {selectedEntry.round} {selectedEntry.round === 1 ? 'round' : 'rounds'} = {formatKg(totalKg(selectedEntry.round, selectedEntry.wetAshKg))}
+                  </span>
+                </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-start">
                 <span className="text-gray-500">Marble Powder</span>
-                <span className="text-gray-900 font-medium">{convertToTons(selectedEntry.round, selectedEntry.marblePowderKg).toFixed(2)} Tons</span>
+                <span className="text-right">
+                  <span className="block text-gray-900 font-medium">
+                    {convertToTons(selectedEntry.round, selectedEntry.marblePowderKg).toFixed(2)} Tons
+                  </span>
+                  <span className="block text-xs text-gray-500">
+                    {formatKg(selectedEntry.marblePowderKg)} × {selectedEntry.round} {selectedEntry.round === 1 ? 'round' : 'rounds'} = {formatKg(totalKg(selectedEntry.round, selectedEntry.marblePowderKg))}
+                  </span>
+                </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-start">
                 <span className="text-gray-500">Crusher Powder</span>
-                <span className="text-gray-900 font-medium">{convertToTons(selectedEntry.round, selectedEntry.crusherPowderKg).toFixed(2)} Tons</span>
+                <span className="text-right">
+                  <span className="block text-gray-900 font-medium">
+                    {convertToTons(selectedEntry.round, selectedEntry.crusherPowderKg).toFixed(2)} Tons
+                  </span>
+                  <span className="block text-xs text-gray-500">
+                    {formatKg(selectedEntry.crusherPowderKg)} × {selectedEntry.round} {selectedEntry.round === 1 ? 'round' : 'rounds'} = {formatKg(totalKg(selectedEntry.round, selectedEntry.crusherPowderKg))}
+                  </span>
+                </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-start">
                 <span className="text-gray-500">Fly Ash</span>
-                <span className="text-gray-900 font-medium">{convertToTons(selectedEntry.round, selectedEntry.flyAshKg).toFixed(2)} Tons</span>
+                <span className="text-right">
+                  <span className="block text-gray-900 font-medium">
+                    {convertToTons(selectedEntry.round, selectedEntry.flyAshKg).toFixed(2)} Tons
+                  </span>
+                  <span className="block text-xs text-gray-500">
+                    {formatKg(selectedEntry.flyAshKg)} × {selectedEntry.round} {selectedEntry.round === 1 ? 'round' : 'rounds'} = {formatKg(totalKg(selectedEntry.round, selectedEntry.flyAshKg))}
+                  </span>
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Cement</span>
-                <span className="text-gray-900 font-medium">{formatCementBags(selectedEntry.cementBags).toFixed(0)} Bags</span>
+                <span className="text-gray-900 font-medium">{formatBags(selectedEntry.cementBags)} Bags</span>
               </div>
               <div className="pt-2 border-t border-gray-100">
                 <p className="text-gray-500 mb-1">Notes</p>

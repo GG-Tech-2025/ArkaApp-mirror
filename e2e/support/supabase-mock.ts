@@ -37,6 +37,12 @@ export interface MockOptions {
   listsFail?: boolean;
   /** Make recording a production entry fail with a server error. */
   productionFails?: boolean;
+  /** The production_entries rows the admin Production Statistics screen lists, newest first. */
+  productionHistory?: Array<Record<string, unknown>>;
+  /** Make loading the production history fail with a server error. */
+  productionHistoryFails?: boolean;
+  /** Hold the answer for the production history for this many milliseconds. */
+  productionHistoryDelayMs?: number;
   /** The undelivered orders the Orders screen lists; defaults to ORDERS. */
   orders?: Array<Record<string, unknown>>;
   /** Make the orders list fail to load. */
@@ -851,6 +857,11 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
         order_loadmen: (args.p_loadmen as string[]).map((id) => ({ employee_id: id })),
       });
       return json(route, 200, null);
+    }
+    if (pathname === '/rest/v1/production_entries') {
+      if (options.productionHistoryDelayMs) await new Promise((resolve) => setTimeout(resolve, options.productionHistoryDelayMs));
+      if (options.productionHistoryFails) return json(route, 500, { message: 'history failed' });
+      return rows(route, request, options.productionHistory ?? []);
     }
     if (pathname === '/rest/v1/rpc/record_production_entry') {
       if (productionFails) return json(route, 500, { message: 'rpc failed' });
